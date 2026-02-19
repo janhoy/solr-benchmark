@@ -1,5 +1,5 @@
 
-OpenSearch Benchmark includes the following third-party software:
+Apache Solr Benchmark includes the following third-party software:
 
 This program, "pbzip2" is copyright (C) 2003-2011 Jeff Gilchrist.
 All rights reserved.
