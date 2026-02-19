@@ -341,7 +341,7 @@ Pipeline("from-distribution",
          "Downloads an OpenSearch distribution, provisions it, runs a benchmark and publishes results.", from_distribution)
 
 Pipeline("benchmark-only",
-         "Assumes an already running OpenSearch instance, runs a benchmark and publishes results", benchmark_only)
+         "Assumes an already running search engine instance, runs a benchmark and publishes results", benchmark_only)
 
 # Very experimental Docker pipeline. Should only be used with great care and is also not supported on all platforms.
 Pipeline("docker",
