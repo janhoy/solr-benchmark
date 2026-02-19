@@ -105,18 +105,18 @@
 
 **Purpose**: ASF licensing compliance, branding cleanup, documentation, and unit test coverage.
 
-- [ ] T028 [P] Update `NOTICE` — place `Apache Solr Benchmark\nCopyright [YEAR] The Apache Solr project` at top; retain existing attribution chain verbatim: OpenSearch Contributors (Copyright 2022), Elasticsearch/Rally
+- [x] T028 [P] Update `NOTICE` — place `Apache Solr Benchmark\nCopyright [YEAR] The Apache Solr project` at top; retain existing attribution chain verbatim: OpenSearch Contributors (Copyright 2022), Elasticsearch/Rally
 - [ ] T029 [P] Update `LICENSE` — reflect Apache Solr PMC identity in preamble; retain full Apache 2.0 license text unchanged
 - [ ] T030 Audit all per-file license headers using a scan script — apply Category A/B/C rules from `research.md`: retain OpenSearch header on unchanged files, add Solr attribution line on substantially modified files, use full ASF header on new files; produce `specs/001-solr-benchmark-fork/checklists/legal-review.md` checklist (FR-031)
 - [ ] T031 Remove remaining OpenSearch branding from all user-facing console output, error messages, log messages, and workload example files
 - [ ] T032 [P] Update `README.md` for Solr context — project name, purpose, quickstart commands, links to Solr docs
 - [ ] T033 [P] Update `DEVELOPER_GUIDE.md` and `CONTRIBUTING.md` — replace OpenSearch-specific instructions with Solr equivalents; reference `specs/001-solr-benchmark-fork/quickstart.md`
 - [ ] T034 Verify all generic framework unit tests in `tests/unit/` pass without modification (SC-006) — run `make test` and fix any import errors caused by deleted modules
-- [ ] T035 [P] Write unit tests for `osbenchmark/solr/client.py` in `tests/unit/solr/test_client.py` — mock `requests.Session`; cover `get_version()`, `upload_configset()`, `create_collection()`, `delete_collection()`, `get_node_metrics()` (both JSON and Prometheus format), error cases
-- [ ] T036 [P] Write unit tests for `osbenchmark/solr/runner.py` in `tests/unit/solr/test_runner.py` — mock `pysolr.Solr` and `SolrAdminClient`; cover `bulk_index` NDJSON translation (assert `_id`→`"id"`, `_type` dropped, `_index` not in document), both `search` modes, two-step `create_collection` sequence
-- [ ] T037 [P] Write unit tests for `osbenchmark/solr/result_writer.py` in `tests/unit/solr/test_result_writer.py` — cover `LocalFilesystemResultWriter` lifecycle, output file creation, `WRITER_REGISTRY`, unknown writer error
-- [ ] T038 [P] Write unit tests for `osbenchmark/solr/telemetry.py` in `tests/unit/solr/test_telemetry.py` — cover `SolrJvmStats` parsing both 9.x JSON and 10.x Prometheus responses; cover `SolrNodeStats` and `SolrCollectionStats` metric extraction
-- [ ] T039 [P] Write unit tests for `osbenchmark/tools/migrate_workload.py` in `tests/unit/solr/test_migrate_workload.py` — cover translation of each supported operation type, presence of `# TODO` for unsupported ops, no silent drops
+- [x] T035 [P] Write unit tests for `osbenchmark/solr/client.py` in `tests/unit/solr/test_client.py` — mock `requests.Session`; cover `get_version()`, `upload_configset()`, `create_collection()`, `delete_collection()`, `get_node_metrics()` (both JSON and Prometheus format), error cases
+- [x] T036 [P] Write unit tests for `osbenchmark/solr/runner.py` in `tests/unit/solr/test_runner.py` — mock `pysolr.Solr` and `SolrAdminClient`; cover `bulk_index` NDJSON translation (assert `_id`→`"id"`, `_type` dropped, `_index` not in document), both `search` modes, two-step `create_collection` sequence
+- [x] T037 [P] Write unit tests for `osbenchmark/solr/result_writer.py` in `tests/unit/solr/test_result_writer.py` — cover `LocalFilesystemResultWriter` lifecycle, output file creation, `WRITER_REGISTRY`, unknown writer error
+- [x] T038 [P] Write unit tests for `osbenchmark/solr/telemetry.py` in `tests/unit/solr/test_telemetry.py` — cover `SolrJvmStats` parsing both 9.x JSON and 10.x Prometheus responses; cover `SolrNodeStats` and `SolrCollectionStats` metric extraction
+- [x] T039 [P] Write unit tests for `osbenchmark/tools/migrate_workload.py` in `tests/unit/solr/test_migrate_workload.py` — cover translation of each supported operation type, presence of `# TODO` for unsupported ops, no silent drops
 
 **Checkpoint**: All tests pass, ASF licensing checklist complete, branding is Solr throughout (SC-006, SC-009).
 
