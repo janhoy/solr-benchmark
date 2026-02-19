@@ -95,3 +95,10 @@ Workloads can be loaded from a git repository (`--workload-repository`), local p
 2. **Build** (optional) — Download and provision OpenSearch cluster
 3. **Run** — Execute test procedure via worker coordinator and drivers
 4. **Publish** — Store metrics, generate report
+
+## Active Technologies
+- Python 3.10+ (001-solr-benchmark-fork)
+- Local filesystem (JSON + CSV result files, configurable path). No external store required. (001-solr-benchmark-fork)
+
+## Recent Changes
+- 001-solr-benchmark-fork: Added Python 3.10+
