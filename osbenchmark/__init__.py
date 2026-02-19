@@ -30,7 +30,7 @@ from importlib.metadata import version as get_version
 
 __version__ = get_version("solr-benchmark")
 
-# Allow an alternative program name be set in case OSB is invoked a wrapper script
+# Allow an alternative program name to be set in case solr-benchmark is invoked via a wrapper script
 PROGRAM_NAME = os.getenv("BENCHMARK_ALTERNATIVE_BINARY_NAME", os.path.basename(sys.argv[0]))
 
 DOC_LINK = "https://solr.apache.org/guide/"
@@ -81,7 +81,7 @@ $$$$$$$$$$""""           ""$$$$$$$$$$$"
 
 def check_python_version():
     if sys.version_info.major != 3 or sys.version_info.minor < 8:
-        raise RuntimeError("OSB requires at least Python 3.10 but you are using:\n\nPython %s" % str(sys.version))
+        raise RuntimeError("solr-benchmark requires at least Python 3.10 but you are using:\n\nPython %s" % str(sys.version))
 
 
 def doc_link(path=None):
