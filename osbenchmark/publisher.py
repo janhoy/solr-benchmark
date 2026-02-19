@@ -33,6 +33,7 @@ from enum import Enum
 import tabulate
 
 from osbenchmark import metrics, exceptions
+from osbenchmark.solr import result_writer as solr_result_writer
 from osbenchmark.utils import convert, io as rio, console
 
 FINAL_SCORE = r"""
@@ -134,6 +135,14 @@ class SummaryResultsPublisher:
             "latency": comma_separated_string_to_number_list(config.opts("workload", "latency.percentiles", mandatory=False))
         }
         self.logger = logging.getLogger(__name__)
+        writer_name = config.opts("reporting", "results_writer", mandatory=False, default_value=None)
+        results_path = config.opts("reporting", "results_path", mandatory=False, default_value=None)
+        if writer_name and results_path:
+            self._result_writer = solr_result_writer.create_writer(
+                writer_name, results_path=rio.normalize_path(results_path)
+            )
+        else:
+            self._result_writer = None
 
     def publish_operational_statistics(self, metrics_table: list, warnings: list, record, task):
         metrics_table.extend(self._publish_throughput(record, task))
@@ -225,6 +234,17 @@ class SummaryResultsPublisher:
                             headers=["Metric", "Task", "Value", "Unit"],
                             data_plain=metrics_table,
                             data_rich=metrics_table)
+        if self._result_writer is not None:
+            structured = [
+                {"name": row[0], "task": row[1], "value": row[2], "unit": row[3] or ""}
+                for row in metrics_table if row
+            ]
+            run_metadata = self.results.as_dict() if hasattr(self.results, "as_dict") else {}
+            try:
+                self._result_writer.open(run_metadata)
+                self._result_writer.write(structured)
+            finally:
+                self._result_writer.close()
 
     def _publish_throughput(self, values, task):
         throughput = values["throughput"]

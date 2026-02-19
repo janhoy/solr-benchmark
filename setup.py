@@ -56,11 +56,14 @@ supported_python_versions = [(3, 10), (3, 11), (3, 13)]
 #
 ################################################################################################
 install_requires = [
+    # License: BSD
+    # Solr HTTP client for data operations (indexing, search, commit, optimize)
+    "pysolr>=3.10.0",
     # License: Apache 2.0
+    # HTTP client for Solr V2 API admin operations
     # transitive dependencies:
     #   urllib3: MIT
-    #   aiohttp: Apache 2.0
-    "opensearch-py[async]>=2.5.0,<3.0.0",
+    "requests>=2.28.0",
     # License: BSD
     "psutil>=5.8.0",
     # License: MIT
@@ -101,35 +104,16 @@ install_requires = [
     "boto3>=1.28.62",
     # Licence: BSD-3-Clause
     "zstandard>=0.22.0",
-    # License: BSD
-    # Required for knnvector workload
-    "h5py>=3.10.0",
-    # License: BSD
-    # Required for knnvector workload
-    "numpy>=1.24.2,<=1.26.4",
-    # License: Apache 2.0
-    # Required for Kafka message producer
-    "aiokafka>=0.11.0",
     # License: MIT
     "tqdm",
     # License: MIT
     "faker",
     # License: MIT
-    # This version is required for Python 3.8 and 3.9 to work
     "mimesis==11.1.0",
-    # Licence: BSD-3-Clause
-    "dask",
-    # Licence: BSD-3-Clause
-    "dask[distributed]",
-    # Licence: BSD-3-Clause
-    "bokeh!=3.0.*,>=2.4.2",
     # License: MIT
     "pydantic>=2.10.6",
     # License: MIT
     "pydantic_core>=2.27.2",
-    # License: Apache 2.0
-    # gRPC & proto deps
-    "opensearch-protobufs==0.19.0"
 ]
 
 tests_require = [
@@ -157,21 +141,12 @@ first_supported_version = "{}.{}".format(supported_python_versions[0][0], suppor
 # next minor after the latest supported version
 first_unsupported_version = "{}.{}".format(supported_python_versions[-1][0], supported_python_versions[-1][1] + 1)
 
-setup(name="opensearch-benchmark",
-      author="Ian Hoang, Govind Kamat, Mingyang Shi, Chinmay Gadgil, Rishabh Singh, Vijayan Balasubramanian",
-      author_email="ianhoang16@gmail.com, govind_kamat@yahoo.com, mmyyshi@gmail.com, chinmay5j@gmail.com, rishabhksingh@gmail.com, vijayan.balasubramanian@gmail.com",
-      maintainer="Ian Hoang, Govind Kamat, Mingyang Shi, Chinmay Gadgil, Rishabh Singh, Vijayan Balasubramanian",
-      maintainer_email="ianhoang16@gmail.com, govind_kamat@yahoo.com, mmyyshi@gmail.com, chinmay5j@gmail.com, rishabhksingh@gmail.com, vijayan.balasubramanian@gmail.com",
+setup(name="solr-benchmark",
       version=__versionstr__,
-      description="Macrobenchmarking framework for OpenSearch",
+      description="Macrobenchmarking framework for Apache Solr",
       long_description=long_description,
       long_description_content_type='text/markdown',
-      project_urls={
-        "Documentation": "https://opensearch.org/docs/benchmark",
-        "Source Code": "https://github.com/opensearch-project/OpenSearch-Benchmark",
-        "Issue Tracker": "https://github.com/opensearch-project/OpenSearch-Benchmark/issues",
-      },
-      url="https://github.com/opensearch-project/OpenSearch-Benchmark",
+      url="https://github.com/apache/solr-benchmark",
       license="Apache License, Version 2.0",
       packages=find_packages(
           where=".",
@@ -201,10 +176,8 @@ setup(name="opensearch-benchmark",
       },
       entry_points={
           "console_scripts": [
-              "opensearch-benchmark=osbenchmark.benchmark:main",
-              "opensearch-benchmarkd=osbenchmark.benchmarkd:main",
-              "osb=osbenchmark.benchmark:main",
-              "osbd=osbenchmark.benchmarkd:main",
+              "solr-benchmark=osbenchmark.benchmark:main",
+              "solr-benchmarkd=osbenchmark.benchmarkd:main",
           ],
       },
       scripts=['scripts/expand-data-corpus.py', 'scripts/pbzip2' ],

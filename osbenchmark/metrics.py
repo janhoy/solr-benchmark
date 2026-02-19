@@ -38,10 +38,9 @@ import webbrowser
 from enum import Enum, IntEnum
 from http.client import responses
 import psutil
-import opensearchpy.helpers
 import tabulate
 
-from osbenchmark import client, time, exceptions, config, version, paths
+from osbenchmark import time, exceptions, config, version, paths
 from osbenchmark.utils import convert, console, io, versions
 from osbenchmark.visualizations.benchmark_report_renderer import render_results_html
 from osbenchmark.cloud_provider import CloudProviderFactory
@@ -324,10 +323,7 @@ def metrics_store(cfg, read_only=True, workload=None, test_procedure=None, clust
 
 
 def metrics_store_class(cfg):
-    if cfg.opts("reporting", "datastore.type") == "opensearch":
-        return OsMetricsStore
-    else:
-        return InMemoryMetricsStore
+    return InMemoryMetricsStore
 
 
 def extract_user_tags_from_config(cfg):

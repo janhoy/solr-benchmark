@@ -2021,3 +2021,65 @@ register_param_source_for_operation(workload.OperationType.ProduceStreamMessage,
 
 # Also register by name, so users can use it too
 register_param_source_for_name("file-reader", BulkIndexParamSource)
+
+
+# ---------------------------------------------------------------------------
+# Solr-specific param sources
+# ---------------------------------------------------------------------------
+
+class SolrSearchParamSource(ParamSource):
+    """
+    Param source for Solr search operations.
+
+    Supports two modes:
+
+    Mode 1 — Classic Solr params (default when no ``body`` key is present):
+      ``q``, ``fl``, ``rows``, ``fq``, ``sort``, ``request-params``
+
+    Mode 2 — JSON Query DSL (when ``body`` key is present):
+      Pass the query body dict directly; it is forwarded as-is to
+      ``POST /solr/{collection}/query``.
+
+    Common params:
+      - ``collection`` — target Solr collection (required)
+      - ``host``, ``port``, ``username``, ``password``, ``tls``, ``timeout``
+      - ``cache``      — ignored for Solr (kept for API compatibility)
+    """
+
+    def __init__(self, workload, params, **kwargs):
+        super().__init__(workload, params, **kwargs)
+        collection = params.get("collection")
+        if not collection:
+            raise exceptions.InvalidSyntax(
+                f"'collection' is mandatory and is missing for operation '{kwargs.get('operation_name')}'"
+            )
+
+        self.query_params = {
+            "collection": collection,
+            "host": params.get("host", "localhost"),
+            "port": params.get("port", 8983),
+            "tls": params.get("tls", False),
+            "timeout": params.get("timeout", 30),
+        }
+        if params.get("username"):
+            self.query_params["username"] = params["username"]
+        if params.get("password"):
+            self.query_params["password"] = params["password"]
+
+        if "body" in params:
+            # Mode 2: JSON Query DSL
+            self.query_params["body"] = params["body"]
+        else:
+            # Mode 1: Classic Solr params
+            for key in ("q", "fl", "rows", "fq", "sort"):
+                if key in params:
+                    self.query_params[key] = params[key]
+            if "request-params" in params:
+                self.query_params["request-params"] = params["request-params"]
+
+    def params(self):
+        return self.query_params
+
+
+register_param_source_for_name("solr-search", SolrSearchParamSource)
+register_param_source_for_name("bulk-index", BulkIndexParamSource)

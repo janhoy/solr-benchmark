@@ -251,7 +251,10 @@ class Config:
             (Scope.application, "provisioning", "node.http.port"): 39200,
             (Scope.application, "builder", "cluster_config.repository.dir"): "cluster_configs",
             (Scope.application, "builder", "cluster_config.default.repository"): "default",
-
+            # Solr-specific defaults
+            (Scope.application, "solr", "port"): 8983,
+            (Scope.application, "reporting", "results_writer"): "local_filesystem",
+            (Scope.application, "reporting", "results_path"): "~/.solr-benchmark/results",
         }
 
     def _fill_from_config_file(self, config):

@@ -16,10 +16,10 @@
 
 **Purpose**: Create the new package skeleton and remove OpenSearch-only modules that would conflict with Solr code. These tasks unblock all subsequent work.
 
-- [ ] T001 Add `pysolr >= 3.10` to `setup.py` install_requires and remove `elasticsearch-py` dependency
-- [ ] T002 Create `osbenchmark/solr/` package: add `osbenchmark/solr/__init__.py`
-- [ ] T003 [P] Create `solrbenchmark/` thin wrapper package: add `solrbenchmark/__init__.py` and `solrbenchmark/main.py` (re-exports from `osbenchmark`)
-- [ ] T004 [P] Delete OpenSearch-only modules: remove `osbenchmark/async_connection.py`, `osbenchmark/kafka_client.py`, `osbenchmark/data_streaming/` directory, and any gRPC proto stubs
+- [x] T001 Add `pysolr >= 3.10` to `setup.py` install_requires and remove `elasticsearch-py` dependency
+- [x] T002 Create `osbenchmark/solr/` package: add `osbenchmark/solr/__init__.py`
+- [x] T003 [P] Create `solrbenchmark/` thin wrapper package: add `solrbenchmark/__init__.py` and `solrbenchmark/main.py` (re-exports from `osbenchmark`)
+- [x] T004 [P] Delete OpenSearch-only modules: remove `osbenchmark/async_connection.py`, `osbenchmark/kafka_client.py`, `osbenchmark/data_streaming/` directory, and any gRPC proto stubs
 
 ---
 
@@ -29,11 +29,11 @@
 
 **⚠️ CRITICAL**: All four user stories depend on the Solr client, result writer, config, and metrics being in place.
 
-- [ ] T005 Create `osbenchmark/solr/client.py` — `SolrAdminClient` class wrapping `requests.Session` with methods: `get_version()`, `get_major_version()`, `upload_configset(name, configset_dir)` (builds ZIP in-memory, PUT to `/api/cluster/configs/{name}`), `delete_configset(name)`, `create_collection(name, configset, num_shards, replication_factor)`, `delete_collection(name)`, `get_cluster_status()`, `get_node_metrics()` (returns dict for 9.x JSON or str for 10.x Prometheus, detected via Content-Type), `raw_request(method, path, body, headers)`; include `SolrClientError`, `CollectionAlreadyExistsError`, `CollectionNotFoundError` exception classes
-- [ ] T006 [P] Create `osbenchmark/solr/result_writer.py` — `ResultWriter` ABC with `open(run_metadata: dict)`, `write(metrics: list[dict])`, `close()` abstract methods; `LocalFilesystemResultWriter` implementation that writes `results.json`, `results.csv`, `summary.txt` (markdown table) to `{results_path}/{run_id}/` and prints summary to stdout; `WRITER_REGISTRY` dict and `create_writer(name)` factory function
-- [ ] T007 Adapt `osbenchmark/metrics.py` — remove OpenSearch metrics store backend (the embedded OpenSearch index writer); retain all in-memory metric accumulation, aggregation, and `MetricsStore` interface
-- [ ] T008 [P] Adapt `osbenchmark/config.py` — remove OpenSearch-specific config keys, add `results_writer` (default: `local_filesystem`), `results_path`, and `solr.port` (default: `8983`) keys
-- [ ] T009 Wire `ResultWriter` into `osbenchmark/publisher.py` — replace direct `format_as_markdown`/`format_as_csv` calls with `create_writer()` factory; `open()` before writing, `write(metrics)` per batch, `close()` at end
+- [x] T005 Create `osbenchmark/solr/client.py` — `SolrAdminClient` class wrapping `requests.Session` with methods: `get_version()`, `get_major_version()`, `upload_configset(name, configset_dir)` (builds ZIP in-memory, PUT to `/api/cluster/configs/{name}`), `delete_configset(name)`, `create_collection(name, configset, num_shards, replication_factor)`, `delete_collection(name)`, `get_cluster_status()`, `get_node_metrics()` (returns dict for 9.x JSON or str for 10.x Prometheus, detected via Content-Type), `raw_request(method, path, body, headers)`; include `SolrClientError`, `CollectionAlreadyExistsError`, `CollectionNotFoundError` exception classes
+- [x] T006 [P] Create `osbenchmark/solr/result_writer.py` — `ResultWriter` ABC with `open(run_metadata: dict)`, `write(metrics: list[dict])`, `close()` abstract methods; `LocalFilesystemResultWriter` implementation that writes `results.json`, `results.csv`, `summary.txt` (markdown table) to `{results_path}/{run_id}/` and prints summary to stdout; `WRITER_REGISTRY` dict and `create_writer(name)` factory function
+- [x] T007 Adapt `osbenchmark/metrics.py` — remove OpenSearch metrics store backend (the embedded OpenSearch index writer); retain all in-memory metric accumulation, aggregation, and `MetricsStore` interface
+- [x] T008 [P] Adapt `osbenchmark/config.py` — remove OpenSearch-specific config keys, add `results_writer` (default: `local_filesystem`), `results_path`, and `solr.port` (default: `8983`) keys
+- [x] T009 Wire `ResultWriter` into `osbenchmark/publisher.py` — replace direct `format_as_markdown`/`format_as_csv` calls with `create_writer()` factory; `open()` before writing, `write(metrics)` per batch, `close()` at end
 
 **Checkpoint**: Foundation ready — Solr client, result output, config, and metrics all functional without OpenSearch.
 
@@ -45,13 +45,13 @@
 
 **Independent Test**: Start Solr 9.x via Docker (`docker run -p 8983:8983 solr:9`), run `./solr-benchmark execute-test --workload=<workload> --pipeline=benchmark-only --target-hosts=localhost:8983`, verify a benchmark report is produced with throughput and latency metrics.
 
-- [ ] T010 [P] [US1] Create `osbenchmark/solr/runner.py` — implement `bulk_index` runner: reads NDJSON line pairs from corpus, extracts `_id` → injects as `"id"` field in document body, records `_index` for routing/logging (not stored), drops `_type`, batches translated documents into configurable size (default 500), calls `pysolr.Solr.add(batch, commit=False)`; returns throughput and error metrics
-- [ ] T011 [P] [US1] Add `search` runner to `osbenchmark/solr/runner.py` — Mode 1 (classic params: `q`, `fl`, `rows`, `fq`, `sort`, `request-params`) via `pysolr.Solr.search()`→`/select`; Mode 2 (JSON Query DSL: `body` dict) via plain `requests.post()`→`/query`; mode selected by presence of `body` key; records latency and hit count for both modes
-- [ ] T012 [P] [US1] Add `commit` (hard and soft via `soft-commit` bool param) and `optimize` (with `max-segments` param) runners to `osbenchmark/solr/runner.py` using `pysolr.Solr.commit()` and `pysolr.Solr.optimize()`
-- [ ] T013 [US1] Add `create_collection` runner to `osbenchmark/solr/runner.py` — reads `configset-path` from Collection params, builds ZIP of `conf/` subtree in-memory, calls `SolrAdminClient.upload_configset()` then `SolrAdminClient.create_collection()`; add `delete_collection` runner that calls `SolrAdminClient.delete_collection()` then `SolrAdminClient.delete_configset()`; add `raw_request` runner that delegates to `SolrAdminClient.raw_request()`
-- [ ] T014 [US1] Register all Solr runners in `osbenchmark/worker_coordinator/` — replace OpenSearch runner registrations with Solr equivalents (`bulk-index`, `search`, `commit`, `optimize`, `create-collection`, `delete-collection`, `raw-request`)
-- [ ] T015 [US1] Adapt `osbenchmark/workload/params.py` — update `BulkIndexParamSource` with NDJSON-to-Solr translation logic (`_id`→`"id"`, `_index` available for routing, `_type` dropped); add `SolrSearchParamSource` supporting both classic params and JSON DSL `body` pass-through; remove OpenSearch-specific param sources
-- [ ] T016 [US1] Rename CLI entry points: update `osbenchmark/benchmark.py` (rename to `solr-benchmark`), `osbenchmark/benchmarkd.py` (rename to `solr-benchmarkd`), and `setup.py` `entry_points` console_scripts; remove OpenSearch-specific CLI flags
+- [x] T010 [P] [US1] Create `osbenchmark/solr/runner.py` — implement `bulk_index` runner: reads NDJSON line pairs from corpus, extracts `_id` → injects as `"id"` field in document body, records `_index` for routing/logging (not stored), drops `_type`, batches translated documents into configurable size (default 500), calls `pysolr.Solr.add(batch, commit=False)`; returns throughput and error metrics
+- [x] T011 [P] [US1] Add `search` runner to `osbenchmark/solr/runner.py` — Mode 1 (classic params: `q`, `fl`, `rows`, `fq`, `sort`, `request-params`) via `pysolr.Solr.search()`→`/select`; Mode 2 (JSON Query DSL: `body` dict) via plain `requests.post()`→`/query`; mode selected by presence of `body` key; records latency and hit count for both modes
+- [x] T012 [P] [US1] Add `commit` (hard and soft via `soft-commit` bool param) and `optimize` (with `max-segments` param) runners to `osbenchmark/solr/runner.py` using `pysolr.Solr.commit()` and `pysolr.Solr.optimize()`
+- [x] T013 [US1] Add `create_collection` runner to `osbenchmark/solr/runner.py` — reads `configset-path` from Collection params, builds ZIP of `conf/` subtree in-memory, calls `SolrAdminClient.upload_configset()` then `SolrAdminClient.create_collection()`; add `delete_collection` runner that calls `SolrAdminClient.delete_collection()` then `SolrAdminClient.delete_configset()`; add `raw_request` runner that delegates to `SolrAdminClient.raw_request()`
+- [x] T014 [US1] Register all Solr runners in `osbenchmark/worker_coordinator/` — replace OpenSearch runner registrations with Solr equivalents (`bulk-index`, `search`, `commit`, `optimize`, `create-collection`, `delete-collection`, `raw-request`)
+- [x] T015 [US1] Adapt `osbenchmark/workload/params.py` — update `BulkIndexParamSource` with NDJSON-to-Solr translation logic (`_id`→`"id"`, `_index` available for routing, `_type` dropped); add `SolrSearchParamSource` supporting both classic params and JSON DSL `body` pass-through; remove OpenSearch-specific param sources
+- [x] T016 [US1] Rename CLI entry points: update `osbenchmark/benchmark.py` (rename to `solr-benchmark`), `osbenchmark/benchmarkd.py` (rename to `solr-benchmarkd`), and `setup.py` `entry_points` console_scripts; remove OpenSearch-specific CLI flags
 
 **Checkpoint**: `./solr-benchmark execute-test --pipeline=benchmark-only --target-hosts=localhost:8983` completes a full create-collection → bulk-index 10k docs → search → delete-collection cycle and produces a results report (SC-007).
 
