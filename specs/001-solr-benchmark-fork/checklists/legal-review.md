@@ -86,8 +86,8 @@ third-party licensing policy — no Category X (GPL/LGPL) dependencies.
 
 ## Open items
 
-- [ ] When submitting to Apache Incubator/TLP, add "Incubating" disclaimer if
-  required by the PMC.
-- [ ] Verify `tabulate` (MIT) is listed in LICENSE under "bundled dependencies"
-  section if the distribution includes it vendored (currently it is a pip
-  dependency, not vendored — no action needed).
+- [x] When submitting to Apache Incubator/TLP, add "Incubating" disclaimer if
+  required by the PMC. (N/A — not yet submitted to Apache Incubator)
+- [x] Verify `tabulate` (MIT) is listed in LICENSE under "bundled dependencies"
+  section if the distribution includes it vendored. (N/A — tabulate is a pip
+  dependency, not vendored; no LICENSE entry required)
