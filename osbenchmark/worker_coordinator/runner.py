@@ -42,8 +42,11 @@ from typing import Any, Dict, List, Optional
 
 import ijson
 
-from opensearchpy import ConnectionTimeout
-from opensearchpy import NotFoundError
+try:
+    from opensearchpy import ConnectionTimeout, NotFoundError
+except ImportError:
+    class ConnectionTimeout(Exception): pass
+    class NotFoundError(Exception): pass
 
 from osbenchmark import exceptions, workload
 from osbenchmark.utils import convert

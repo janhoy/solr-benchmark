@@ -10,8 +10,14 @@ from abc import ABC, ABCMeta, abstractmethod
 from enum import Enum
 from typing import cast
 
-import h5py
-import numpy as np
+try:
+    import h5py
+    import numpy as np
+    _VECTOR_DATASETS_AVAILABLE = True
+except ImportError:
+    h5py = None
+    np = None
+    _VECTOR_DATASETS_AVAILABLE = False
 
 from osbenchmark.exceptions import InvalidExtensionException
 from osbenchmark.utils.parse import ConfigurationError

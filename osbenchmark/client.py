@@ -25,17 +25,36 @@
 import logging
 import time
 
-import certifi
-import opensearchpy
-import urllib3
-from urllib3.util.ssl_ import is_ipaddress
+try:
+    import certifi
+    import opensearchpy
+    import urllib3
+    from urllib3.util.ssl_ import is_ipaddress
+    _OPENSEARCH_CLIENT_AVAILABLE = True
+except ImportError:
+    opensearchpy = None
+    _OPENSEARCH_CLIENT_AVAILABLE = False
 
-import grpc
-from opensearch.protobufs.services.document_service_pb2_grpc import DocumentServiceStub
-from opensearch.protobufs.services.search_service_pb2_grpc import SearchServiceStub
+try:
+    import grpc
+    from opensearch.protobufs.services.document_service_pb2_grpc import DocumentServiceStub
+    from opensearch.protobufs.services.search_service_pb2_grpc import SearchServiceStub
+    _GRPC_AVAILABLE = True
+except ImportError:
+    grpc = None
+    DocumentServiceStub = None
+    SearchServiceStub = None
+    _GRPC_AVAILABLE = False
 
-from osbenchmark.kafka_client import KafkaMessageProducer
-from osbenchmark import exceptions, doc_link, async_connection
+try:
+    from osbenchmark.kafka_client import KafkaMessageProducer
+except ImportError:
+    KafkaMessageProducer = None
+from osbenchmark import exceptions, doc_link
+try:
+    from osbenchmark import async_connection
+except ImportError:
+    async_connection = None
 from osbenchmark.context import RequestContextHolder
 from osbenchmark.utils import console, convert
 from osbenchmark.cloud_provider import CloudProviderFactory

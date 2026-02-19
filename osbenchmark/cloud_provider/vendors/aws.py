@@ -17,11 +17,18 @@
 import os
 import logging
 
-import opensearchpy
+try:
+    import opensearchpy
+except ImportError:
+    opensearchpy = None
 import boto3
 from botocore.credentials import Credentials
 
-from osbenchmark import exceptions, async_connection
+from osbenchmark import exceptions
+try:
+    from osbenchmark import async_connection
+except ImportError:
+    async_connection = None
 from ..cloud_provider import CloudProvider
 
 class AWSProvider(CloudProvider):

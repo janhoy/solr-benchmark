@@ -11,11 +11,20 @@ from types import ModuleType
 from typing import Optional, Callable
 from typing import Generator
 
-from dask.distributed import Client
-from mimesis import Generic
-from mimesis.locales import Locale
-from mimesis.random import Random
-from mimesis.providers.base import BaseProvider
+try:
+    from dask.distributed import Client
+except ImportError:
+    Client = None
+try:
+    from mimesis import Generic
+    from mimesis.locales import Locale
+    from mimesis.random import Random
+    from mimesis.providers.base import BaseProvider
+except ImportError:
+    Generic = None
+    Locale = None
+    Random = None
+    BaseProvider = None
 
 from osbenchmark import exceptions
 from osbenchmark.synthetic_data_generator.strategies import DataGenerationStrategy

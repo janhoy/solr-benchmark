@@ -28,7 +28,7 @@ import urllib
 
 from importlib.metadata import version as get_version
 
-__version__ = get_version("opensearch-benchmark")
+__version__ = get_version("solr-benchmark")
 
 # Allow an alternative program name be set in case OSB is invoked a wrapper script
 PROGRAM_NAME = os.getenv("BENCHMARK_ALTERNATIVE_BINARY_NAME", os.path.basename(sys.argv[0]))

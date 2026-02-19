@@ -32,7 +32,10 @@ import traceback
 from collections import defaultdict
 
 import thespian.actors
-from opensearchpy.exceptions import NotFoundError
+try:
+    from opensearchpy.exceptions import NotFoundError
+except ImportError:
+    class NotFoundError(Exception): pass
 
 from osbenchmark import (PROGRAM_NAME, actor, client, config, exceptions,
                          metrics, paths)

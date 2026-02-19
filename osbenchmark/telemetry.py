@@ -28,7 +28,12 @@ import fnmatch
 import os
 import threading
 from collections import deque
-import opensearchpy
+try:
+    import opensearchpy
+    _OPENSEARCHPY_AVAILABLE = True
+except ImportError:
+    opensearchpy = None
+    _OPENSEARCHPY_AVAILABLE = False
 import tabulate
 
 from osbenchmark import metrics, time, exceptions

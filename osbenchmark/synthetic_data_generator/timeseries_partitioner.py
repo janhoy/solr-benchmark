@@ -12,7 +12,12 @@ import sys
 from typing import Generator
 import time
 
-import pandas as pd
+try:
+    import pandas as pd
+    _PANDAS_AVAILABLE = True
+except ImportError:
+    pd = None
+    _PANDAS_AVAILABLE = False
 
 import osbenchmark.exceptions as exceptions
 

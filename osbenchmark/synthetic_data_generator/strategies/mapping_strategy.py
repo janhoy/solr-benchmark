@@ -12,10 +12,18 @@ import random
 import datetime
 import uuid
 
-from dask.distributed import Client
-from mimesis import Generic
-from mimesis.locales import Locale
-from mimesis.random import Random
+try:
+    from dask.distributed import Client
+except ImportError:
+    Client = None
+try:
+    from mimesis import Generic
+    from mimesis.locales import Locale
+    from mimesis.random import Random
+except ImportError:
+    Generic = None
+    Locale = None
+    Random = None
 
 from osbenchmark import exceptions
 from osbenchmark.synthetic_data_generator.strategies import DataGenerationStrategy

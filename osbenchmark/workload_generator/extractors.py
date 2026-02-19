@@ -13,7 +13,10 @@ import os
 from abc import ABC, abstractmethod
 
 from tqdm import tqdm
-import opensearchpy.exceptions
+try:
+    import opensearchpy.exceptions
+except ImportError:
+    opensearchpy = None
 
 from osbenchmark import exceptions
 from osbenchmark.utils import console
