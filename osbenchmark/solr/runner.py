@@ -31,9 +31,64 @@ import time
 import pysolr
 import requests
 
+from osbenchmark import exceptions as benchmark_exceptions
 from osbenchmark.solr.client import SolrAdminClient, CollectionAlreadyExistsError, CollectionNotFoundError
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Error translation helpers
+# ---------------------------------------------------------------------------
+
+def _translate_solr_error(e):
+    """Translate a pysolr or requests exception to a BenchmarkTransportError.
+
+    This ensures that worker_coordinator's generic error handler can record
+    proper error metadata (http-status, error-description) for Solr runs
+    without needing opensearchpy to be installed.
+    """
+    if isinstance(e, requests.exceptions.ConnectionError):
+        return benchmark_exceptions.BenchmarkConnectionError(str(e), cause=e)
+    if isinstance(e, (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout)):
+        return benchmark_exceptions.BenchmarkConnectionTimeout(str(e), cause=e)
+    if isinstance(e, requests.exceptions.HTTPError):
+        status_code = e.response.status_code if e.response is not None else None
+        if status_code == 404:
+            return benchmark_exceptions.BenchmarkNotFoundError(str(e), cause=e)
+        return benchmark_exceptions.BenchmarkTransportError(
+            str(e), cause=e, status_code=status_code,
+            error=f"HTTP {status_code}", info=str(e))
+    if isinstance(e, pysolr.SolrError):
+        # pysolr.SolrError message often contains the HTTP status in its string
+        msg = str(e)
+        status_code = None
+        # Extract status code from messages like "[Reason: None]\n\t400 request error"
+        for part in msg.split():
+            if part.isdigit():
+                code = int(part)
+                if 100 <= code < 600:
+                    status_code = code
+                    break
+        return benchmark_exceptions.BenchmarkTransportError(
+            msg, cause=e, status_code=status_code, error="SolrError", info=msg)
+    # Fallback: wrap any other exception as a generic transport error
+    return benchmark_exceptions.BenchmarkTransportError(str(e), cause=e, error=type(e).__name__, info=str(e))
+
+
+def solr_runner(fn):
+    """Decorator that translates pysolr/requests exceptions to BenchmarkTransportError."""
+    import functools
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except benchmark_exceptions.BenchmarkTransportError:
+            raise
+        except (pysolr.SolrError, requests.exceptions.RequestException) as e:
+            raise _translate_solr_error(e) from e
+    return wrapper
 
 
 # ---------------------------------------------------------------------------
@@ -142,10 +197,28 @@ def _translate_ndjson_batch(lines):
 
 
 # ---------------------------------------------------------------------------
+# Base runner with automatic error translation
+# ---------------------------------------------------------------------------
+
+class SolrRunner:
+    """Base class for all Solr runners.
+
+    Wraps ``__call__`` so that pysolr and requests exceptions are automatically
+    translated to ``BenchmarkTransportError`` subclasses before they reach the
+    worker_coordinator framework.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__call__" in cls.__dict__:
+            cls.__call__ = solr_runner(cls.__call__)
+
+
+# ---------------------------------------------------------------------------
 # Runner: bulk-index
 # ---------------------------------------------------------------------------
 
-class SolrBulkIndex:
+class SolrBulkIndex(SolrRunner):
     """
     Index documents from an NDJSON corpus into Solr.
 
@@ -201,7 +274,7 @@ class SolrBulkIndex:
 # Runner: search
 # ---------------------------------------------------------------------------
 
-class SolrSearch:
+class SolrSearch(SolrRunner):
     """
     Execute a Solr search query.
 
@@ -274,7 +347,7 @@ class SolrSearch:
 # Runner: commit
 # ---------------------------------------------------------------------------
 
-class SolrCommit:
+class SolrCommit(SolrRunner):
     """
     Commit pending changes in Solr.
 
@@ -304,7 +377,7 @@ class SolrCommit:
 # Runner: optimize
 # ---------------------------------------------------------------------------
 
-class SolrOptimize:
+class SolrOptimize(SolrRunner):
     """
     Force-merge Solr segments (optimize).
 
@@ -331,7 +404,7 @@ class SolrOptimize:
 # Runner: create-collection (two-step: upload configset, then create)
 # ---------------------------------------------------------------------------
 
-class SolrCreateCollection:
+class SolrCreateCollection(SolrRunner):
     """
     Two-step collection creation:
       1. Upload configset ZIP to /api/cluster/configs/{configset-name}
@@ -391,7 +464,7 @@ class SolrCreateCollection:
 # Runner: delete-collection
 # ---------------------------------------------------------------------------
 
-class SolrDeleteCollection:
+class SolrDeleteCollection(SolrRunner):
     """
     Delete a Solr collection and its associated configset.
 
@@ -433,7 +506,7 @@ class SolrDeleteCollection:
 # Runner: raw-request
 # ---------------------------------------------------------------------------
 
-class SolrRawRequest:
+class SolrRawRequest(SolrRunner):
     """
     Send an arbitrary HTTP request to any Solr endpoint.
 

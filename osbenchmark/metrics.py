@@ -111,7 +111,13 @@ class OsClient:
 
     def guarded(self, target, *args, **kwargs):
         # pylint: disable=import-outside-toplevel
-        import opensearchpy
+        try:
+            import opensearchpy
+        except ImportError as exc:
+            raise exceptions.SystemSetupError(
+                "The OpenSearch metrics datastore requires opensearchpy. "
+                "Install it with: pip install opensearch-py"
+            ) from exc
         max_execution_count = 11
         execution_count = 0
 

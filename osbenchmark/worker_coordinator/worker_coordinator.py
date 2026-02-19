@@ -47,6 +47,11 @@ import thespian.actors
 
 from osbenchmark.utils import opts
 from osbenchmark import actor, config, exceptions, metrics, workload, client, paths, PROGRAM_NAME, telemetry
+
+try:
+    import opensearchpy as _opensearchpy
+except ImportError:
+    _opensearchpy = None
 from osbenchmark.worker_coordinator import runner, scheduler
 from osbenchmark.workload import WorkloadProcessorRegistry, load_workload, load_workload_plugins, ingestion_manager
 from osbenchmark.utils import convert, console, net
@@ -2540,8 +2545,6 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
 
     :return: a triple of: total number of operations, unit of operations, a dict of request meta data (may be None).
     """
-    # pylint: disable=import-outside-toplevel
-    import opensearchpy
     fatal_error = False
     if client_enabled:
         try:
@@ -2560,11 +2563,30 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
                 total_ops = 1
                 total_ops_unit = "ops"
                 request_meta_data = {"success": True}
-        except opensearchpy.TransportError as e:
+        except Exception as e:
+            # Translate opensearchpy exceptions to our backend-agnostic hierarchy
+            # so that this handler works whether or not opensearchpy is installed.
+            if _opensearchpy and isinstance(e, _opensearchpy.TransportError):
+                status_code = e.status_code if isinstance(e.status_code, int) else None
+                err_attr = e.error
+                info_attr = getattr(e, "info", None)
+                # pylint: disable=unidiomatic-typecheck
+                if type(e) is _opensearchpy.ConnectionError:
+                    e = exceptions.BenchmarkConnectionError(str(e), status_code=status_code,
+                                                            error=err_attr, info=info_attr)
+                elif isinstance(e, _opensearchpy.ConnectionTimeout):
+                    e = exceptions.BenchmarkConnectionTimeout(str(e), status_code=status_code,
+                                                              error=err_attr, info=info_attr)
+                else:
+                    e = exceptions.BenchmarkTransportError(str(e), status_code=status_code,
+                                                           error=err_attr, info=info_attr)
+
+            if not isinstance(e, exceptions.BenchmarkTransportError):
+                raise
+
             request_context_holder.on_client_request_end()
-            # we *specifically* want to distinguish connection refused (a node died?) from connection timeouts
-            # pylint: disable=unidiomatic-typecheck
-            if type(e) is opensearchpy.ConnectionError:
+            # BenchmarkConnectionError means the node is unreachable — treat as fatal.
+            if isinstance(e, exceptions.BenchmarkConnectionError):
                 fatal_error = True
 
             total_ops = 0
@@ -2573,20 +2595,17 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
                 "success": False,
                 "error-type": "transport"
             }
-            # The OS client will sometimes return string like "N/A" or "TIMEOUT" for connection errors.
             if isinstance(e.status_code, int):
                 request_meta_data["http-status"] = e.status_code
-            # connection timeout errors don't provide a helpful description
-            if isinstance(e, opensearchpy.ConnectionTimeout):
+            if isinstance(e, exceptions.BenchmarkConnectionTimeout):
                 request_meta_data["error-description"] = "network connection timed out"
             elif e.info:
                 request_meta_data["error-description"] = f"{e.error} ({e.info})"
             else:
-                if isinstance(e.error, bytes):
-                    error_description = e.error.decode("utf-8")
-                else:
-                    error_description = str(e.error)
-                request_meta_data["error-description"] = error_description
+                error_val = e.error or str(e)
+                if isinstance(error_val, bytes):
+                    error_val = error_val.decode("utf-8")
+                request_meta_data["error-description"] = str(error_val)
         except KeyError as e:
             request_context_holder.on_client_request_end()
             logging.getLogger(__name__).exception("Cannot execute runner [%s]; most likely due to missing parameters.", str(runner))

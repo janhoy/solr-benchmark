@@ -45,8 +45,8 @@ import ijson
 try:
     from opensearchpy import ConnectionTimeout, NotFoundError
 except ImportError:
-    class ConnectionTimeout(Exception): pass
-    class NotFoundError(Exception): pass
+    from osbenchmark.exceptions import BenchmarkConnectionTimeout as ConnectionTimeout
+    from osbenchmark.exceptions import BenchmarkNotFoundError as NotFoundError
 
 from osbenchmark import exceptions, workload
 from osbenchmark.utils import convert
@@ -1880,11 +1880,9 @@ class DeleteComponentTemplate(Runner):
         request_params = mandatory(params, "request-params", self)
 
         async def _exists(name):
-            # pylint: disable=import-outside-toplevel
-            from opensearchpy.client import _make_path
             # currently not supported by client and hence custom request
             return await opensearch.transport.perform_request(
-                "HEAD", _make_path("_component_template", name)
+                "HEAD", f"/_component_template/{name}"
             )
 
         ops_count = 0
@@ -2775,8 +2773,11 @@ class Retry(Runner, Delegator):
 
     async def __call__(self, opensearch, params):
         # pylint: disable=import-outside-toplevel
-        import opensearchpy
         import socket
+        try:
+            import opensearchpy as _opensearchpy
+        except ImportError:
+            _opensearchpy = None
 
         retry_until_success = params.get("retry-until-success", self.retry_until_success)
         if retry_until_success:
@@ -2805,19 +2806,29 @@ class Retry(Runner, Delegator):
                         await asyncio.sleep(sleep_time)
                 else:
                     return return_value
-            except (socket.timeout, opensearchpy.exceptions.ConnectionError):
-                if last_attempt or not retry_on_timeout:
+            except Exception as e:
+                # Translate opensearchpy exceptions to our backend-agnostic hierarchy.
+                if _opensearchpy and isinstance(e, _opensearchpy.exceptions.ConnectionError):
+                    e = exceptions.BenchmarkConnectionError(str(e))
+                elif _opensearchpy and isinstance(e, _opensearchpy.exceptions.TransportError):
+                    status_code = e.status_code if isinstance(e.status_code, int) else None
+                    e = exceptions.BenchmarkTransportError(str(e), status_code=status_code)
+
+                if isinstance(e, (socket.timeout, exceptions.BenchmarkConnectionError)):
+                    if last_attempt or not retry_on_timeout:
+                        raise e
+                    else:
+                        await asyncio.sleep(sleep_time)
+                elif isinstance(e, exceptions.BenchmarkTransportError):
+                    if last_attempt or not retry_on_timeout:
+                        raise e
+                    elif e.status_code == 408:
+                        self.logger.info("[%s] has timed out. Retrying in [%.2f] seconds.", repr(self.delegate), sleep_time)
+                        await asyncio.sleep(sleep_time)
+                    else:
+                        raise e
+                else:
                     raise
-                else:
-                    await asyncio.sleep(sleep_time)
-            except opensearchpy.exceptions.TransportError as e:
-                if last_attempt or not retry_on_timeout:
-                    raise e
-                elif e.status_code == 408:
-                    self.logger.info("[%s] has timed out. Retrying in [%.2f] seconds.", repr(self.delegate), sleep_time)
-                    await asyncio.sleep(sleep_time)
-                else:
-                    raise e
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         return await self.delegate.__aexit__(exc_type, exc_val, exc_tb)
