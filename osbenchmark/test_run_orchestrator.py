@@ -33,6 +33,7 @@ import thespian.actors
 from osbenchmark import actor, config, doc_link, \
     worker_coordinator, exceptions, builder, metrics, \
         publisher, workload, version, PROGRAM_NAME
+from osbenchmark.solr.provisioner import SolrProvisioner, SolrDockerLauncher
 from osbenchmark.utils import console, opts, versions
 
 
@@ -345,6 +346,84 @@ Pipeline("benchmark-only",
 # Very experimental Docker pipeline. Should only be used with great care and is also not supported on all platforms.
 Pipeline("docker",
          "Runs a benchmark against the official OpenSearch Docker container and publishes results", docker, stable=False)
+
+
+# ---------------------------------------------------------------------------
+# Solr-specific pipelines
+# ---------------------------------------------------------------------------
+
+def solr_from_distribution(cfg):
+    """
+    Download and provision a local Solr instance, run benchmark, then tear down.
+
+    Config keys read:
+      - distribution.version  — Solr version to download (e.g. "9.7.0")
+      - solr.port             — port for the Solr instance (default: 8983)
+      - solr.mode             — "cloud" or "user-managed" or None (auto-detect)
+      - solr.install_dir      — directory for Solr installation (default: ~/.solr-benchmark/installs)
+      - solr.cache_dir        — directory for cached tarballs (default: ~/.solr-benchmark/cache)
+    """
+    logger = logging.getLogger(__name__)
+    version_str = cfg.opts("distribution", "version")
+    port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
+    mode = cfg.opts("solr", "mode", mandatory=False, default_value=None)
+    base_dir = os.path.expanduser("~/.solr-benchmark")
+    install_dir = cfg.opts("solr", "install_dir", mandatory=False,
+                           default_value=os.path.join(base_dir, "installs", version_str))
+    cache_dir = cfg.opts("solr", "cache_dir", mandatory=False,
+                         default_value=os.path.join(base_dir, "cache"))
+
+    provisioner = SolrProvisioner(cache_dir=cache_dir, port=port)
+    tarball = provisioner.download(version_str)
+    solr_root = provisioner.install(version_str, install_dir)
+
+    try:
+        provisioner.start(solr_root, mode=mode)
+        set_default_hosts(cfg, host="127.0.0.1", port=port)
+        cfg.add(config.Scope.benchmark, "builder", "cluster_config.names", ["external"])
+        run_test(cfg, external=True)
+    finally:
+        try:
+            provisioner.stop(solr_root)
+        except Exception as exc:
+            logger.warning("Solr stop failed during teardown: %s", exc)
+        try:
+            provisioner.clean(install_dir)
+        except Exception as exc:
+            logger.warning("Solr clean failed during teardown: %s", exc)
+
+
+def solr_docker(cfg):
+    """
+    Start Solr via Docker, run benchmark, then stop the container.
+
+    Config keys read:
+      - distribution.version  — Docker image tag (e.g. "9", "9.7.0", "10")
+      - solr.port             — port mapping (default: 8983)
+      - solr.mode             — "cloud" or "user-managed" (None = auto-detect)
+    """
+    version_tag = cfg.opts("distribution", "version", mandatory=False, default_value="9")
+    port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
+    mode = cfg.opts("solr", "mode", mandatory=False, default_value=None)
+
+    launcher = SolrDockerLauncher(port=port)
+    try:
+        launcher.start(version_tag=version_tag, mode=mode)
+        set_default_hosts(cfg, host="127.0.0.1", port=port)
+        cfg.add(config.Scope.benchmark, "builder", "cluster_config.names", ["external"])
+        run_test(cfg, external=True)
+    finally:
+        try:
+            launcher.stop()
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Solr Docker teardown failed: %s", exc)
+
+
+Pipeline("solr-from-distribution",
+         "Downloads a Solr distribution, provisions it locally, runs a benchmark, and tears down.", solr_from_distribution)
+
+Pipeline("solr-docker",
+         "Starts Solr via Docker, runs a benchmark, and removes the container on teardown.", solr_docker)
 
 
 def available_pipelines():

@@ -1479,6 +1479,8 @@ class WorkloadSpecificationReader:
                    for idx in self._r(workload_specification, "indices", mandatory=False, default_value=[])]
         data_streams = [self._create_data_stream(idx)
                         for idx in self._r(workload_specification, "data-streams", mandatory=False, default_value=[])]
+        collections = [self._create_collection(col)
+                       for col in self._r(workload_specification, "collections", mandatory=False, default_value=[])]
         if len(indices) > 0 and len(data_streams) > 0:
             # we guard against this early and support either or
             raise WorkloadSyntaxError("indices and data-streams cannot both be specified")
@@ -1536,6 +1538,21 @@ class WorkloadSpecificationReader:
 
     def _create_data_stream(self, data_stream_spec):
         return workload.DataStream(name=self._r(data_stream_spec, "name"))
+
+    def _create_collection(self, col_spec):
+        """Create a Solr Collection from a workload spec dict."""
+        name = self._r(col_spec, "name")
+        configset = self._r(col_spec, "configset", mandatory=False, default_value=name)
+        configset_path = self._r(col_spec, "configset-path", mandatory=False, default_value=None)
+        num_shards = int(self._r(col_spec, "num-shards", mandatory=False, default_value=1))
+        replication_factor = int(self._r(col_spec, "replication-factor", mandatory=False, default_value=1))
+        return workload.Collection(
+            name=name,
+            configset=configset,
+            configset_path=configset_path,
+            num_shards=num_shards,
+            replication_factor=replication_factor,
+        )
 
     def _create_component_template(self, tpl_spec, mapping_dir):
         name = self._r(tpl_spec, "name")

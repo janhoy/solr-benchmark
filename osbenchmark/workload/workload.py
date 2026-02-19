@@ -78,6 +78,53 @@ class Index:
         return self.name == other.name
 
 
+class Collection:
+    """
+    Defines a Solr collection (Solr-native equivalent of Index).
+
+    Attributes:
+        name:           Collection name.
+        configset:      Configset name registered on the cluster.
+        configset_path: Local path to the configset directory (containing conf/).
+        num_shards:     Number of shards (default: 1).
+        replication_factor: Replication factor (default: 1).
+    """
+
+    def __init__(self, name: str, configset: str = None,
+                 configset_path: str = None,
+                 num_shards: int = 1, replication_factor: int = 1):
+        self.name = name
+        self.configset = configset or name
+        self.configset_path = configset_path
+        self.num_shards = num_shards
+        self.replication_factor = replication_factor
+
+    def matches(self, pattern):
+        if pattern is None:
+            return True
+        elif pattern in ["_all", "*"]:
+            return True
+        elif self.name == pattern:
+            return True
+        else:
+            return False
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        r = []
+        for prop, value in vars(self).items():
+            r.append("%s = [%s]" % (prop, repr(value)))
+        return ", ".join(r)
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return self.name == other.name
+
+
 class DataStream:
     """
     Defines a data stream in OpenSearch.

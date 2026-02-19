@@ -33,6 +33,7 @@ import tabulate
 
 from osbenchmark import metrics, time, exceptions
 from osbenchmark.metrics import MetaInfoScope
+from osbenchmark.solr import telemetry as solr_telemetry
 from osbenchmark.utils import io, sysstats, console, opts, process
 from osbenchmark.utils.versions import components
 
@@ -45,6 +46,7 @@ def list_telemetry():
                                                                                SegmentReplicationStats, ShardStats]]
     console.println(tabulate.tabulate(devices, ["Command", "Name", "Description"]))
     console.println("\nKeep in mind that each telemetry device may incur a runtime overhead which can skew results.")
+    console.println("\nSolr telemetry devices: SolrJvmStats, SolrNodeStats, SolrCollectionStats (see osbenchmark/solr/telemetry.py)")
 
 
 class Telemetry:
