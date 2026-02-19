@@ -43,7 +43,9 @@ import logging
 import re
 import threading
 import time
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+
+from osbenchmark.telemetry import TelemetryDevice
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +54,27 @@ logger = logging.getLogger(__name__)
 # Base class
 # ---------------------------------------------------------------------------
 
-class SolrTelemetryDevice(ABC):
+class SolrTelemetryDevice(TelemetryDevice):
     """
     Abstract base for Solr telemetry polling devices.
+
+    Extends TelemetryDevice so that Solr devices integrate seamlessly with
+    the existing osbenchmark.telemetry.Telemetry wrapper.  Setting
+    ``internal = True`` means the device is always enabled (not filtered by
+    the ``--telemetry`` flag).
 
     Subclasses implement `_collect()` which is called periodically on a
     background thread between `on_benchmark_start()` and `on_benchmark_stop()`.
     """
 
+    # Always enabled — not selectable/deselectable via --telemetry flag.
+    internal = True
+    command = None
+    human_name = "Solr Telemetry"
+    help = "Solr-specific background polling telemetry device."
+
     def __init__(self, admin_client, metrics_store, sample_interval_s: float = 5.0):
+        super().__init__()
         self._client = admin_client
         self._metrics_store = metrics_store
         self._sample_interval = sample_interval_s

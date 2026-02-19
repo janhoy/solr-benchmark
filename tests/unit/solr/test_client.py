@@ -44,32 +44,42 @@ def _make_response(status_code=200, json_data=None, text="", headers=None):
 
 
 class TestSolrAdminClientGetVersion(unittest.TestCase):
-    def test_get_version_success(self):
+    def _make_client_with_mock_session(self):
         client = SolrAdminClient("localhost")
+        client._session = MagicMock()
+        return client
+
+    def test_get_version_success(self):
+        client = self._make_client_with_mock_session()
         resp = _make_response(json_data={"lucene": {"solr-spec-version": "9.7.0"}})
-        client._session.get = MagicMock(return_value=resp)
+        client._session.get.return_value = resp
         self.assertEqual("9.7.0", client.get_version())
 
     def test_get_version_missing_key_raises(self):
-        client = SolrAdminClient("localhost")
+        client = self._make_client_with_mock_session()
         resp = _make_response(json_data={"lucene": {}})
-        client._session.get = MagicMock(return_value=resp)
+        client._session.get.return_value = resp
         with self.assertRaises(SolrClientError):
             client.get_version()
 
     def test_get_major_version(self):
-        client = SolrAdminClient("localhost")
+        client = self._make_client_with_mock_session()
         resp = _make_response(json_data={"lucene": {"solr-spec-version": "10.0.1"}})
-        client._session.get = MagicMock(return_value=resp)
+        client._session.get.return_value = resp
         self.assertEqual(10, client.get_major_version())
 
 
 class TestSolrAdminClientUploadConfigset(unittest.TestCase):
+    def _make_client_with_mock_session(self):
+        client = SolrAdminClient("localhost")
+        client._session = MagicMock()
+        return client
+
     def test_upload_configset_success(self):
         import tempfile, os
-        client = SolrAdminClient("localhost")
+        client = self._make_client_with_mock_session()
         resp = _make_response(status_code=200)
-        client._session.put = MagicMock(return_value=resp)
+        client._session.put.return_value = resp
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a minimal configset directory structure
@@ -86,9 +96,9 @@ class TestSolrAdminClientUploadConfigset(unittest.TestCase):
 
     def test_upload_configset_failure_raises(self):
         import tempfile, os
-        client = SolrAdminClient("localhost")
+        client = self._make_client_with_mock_session()
         resp = _make_response(status_code=500, text="Server Error")
-        client._session.put = MagicMock(return_value=resp)
+        client._session.put.return_value = resp
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with self.assertRaises(SolrClientError):
@@ -96,55 +106,70 @@ class TestSolrAdminClientUploadConfigset(unittest.TestCase):
 
 
 class TestSolrAdminClientCreateCollection(unittest.TestCase):
-    def test_create_collection_success(self):
+    def _make_client_with_mock_session(self):
         client = SolrAdminClient("localhost")
+        client._session = MagicMock()
+        return client
+
+    def test_create_collection_success(self):
+        client = self._make_client_with_mock_session()
         resp = _make_response(status_code=200, json_data={"responseHeader": {"status": 0}})
-        client._session.post = MagicMock(return_value=resp)
+        client._session.post.return_value = resp
         client.create_collection("my-coll", "my-config")
         client._session.post.assert_called_once()
 
     def test_create_collection_already_exists(self):
-        client = SolrAdminClient("localhost")
+        client = self._make_client_with_mock_session()
         resp = _make_response(status_code=400, json_data={"error": {"msg": "already exists"}})
-        client._session.post = MagicMock(return_value=resp)
+        client._session.post.return_value = resp
         with self.assertRaises(CollectionAlreadyExistsError):
             client.create_collection("my-coll", "my-config")
 
 
 class TestSolrAdminClientDeleteCollection(unittest.TestCase):
-    def test_delete_collection_success(self):
+    def _make_client_with_mock_session(self):
         client = SolrAdminClient("localhost")
+        client._session = MagicMock()
+        return client
+
+    def test_delete_collection_success(self):
+        client = self._make_client_with_mock_session()
         resp = _make_response(status_code=200)
-        client._session.delete = MagicMock(return_value=resp)
+        client._session.delete.return_value = resp
         client.delete_collection("my-coll")
 
     def test_delete_collection_not_found(self):
-        client = SolrAdminClient("localhost")
+        client = self._make_client_with_mock_session()
         resp = _make_response(status_code=404)
-        client._session.delete = MagicMock(return_value=resp)
+        client._session.delete.return_value = resp
         with self.assertRaises(CollectionNotFoundError):
             client.delete_collection("my-coll")
 
 
 class TestSolrAdminClientGetNodeMetrics(unittest.TestCase):
-    def test_json_format(self):
+    def _make_client_with_mock_session(self):
         client = SolrAdminClient("localhost")
+        client._session = MagicMock()
+        return client
+
+    def test_json_format(self):
+        client = self._make_client_with_mock_session()
         data = {"metrics": {"solr.jvm": {}}}
         resp = _make_response(json_data=data, headers={"Content-Type": "application/json"})
-        client._session.get = MagicMock(return_value=resp)
+        client._session.get.return_value = resp
         result = client.get_node_metrics()
         self.assertIsInstance(result, dict)
         self.assertIn("metrics", result)
 
     def test_prometheus_format(self):
-        client = SolrAdminClient("localhost")
+        client = self._make_client_with_mock_session()
         prometheus_text = "# HELP jvm_heap\njvm_heap_used 1234\n"
         resp = MagicMock()
         resp.ok = True
         resp.status_code = 200
         resp.headers = {"Content-Type": "text/plain"}
         resp.text = prometheus_text
-        client._session.get = MagicMock(return_value=resp)
+        client._session.get.return_value = resp
         result = client.get_node_metrics()
         self.assertIsInstance(result, str)
         self.assertIn("jvm_heap_used", result)

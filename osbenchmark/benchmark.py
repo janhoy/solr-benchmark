@@ -32,6 +32,14 @@ import time
 import uuid
 import shutil
 
+# macOS fork-safety: Python programs that use multiprocessing (Thespian) can trigger
+# an Objective-C runtime crash when forking after any thread has started (e.g. from
+# background telemetry polling).  Setting this env-var before any fork suppresses
+# the crash.  This must be done before the actor system (and its admin process) is
+# bootstrapped.  See: https://bugs.python.org/issue33725
+if sys.platform == "darwin":
+    os.environ.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
+
 import thespian.actors
 
 from osbenchmark import PROGRAM_NAME, BANNER, FORUM_LINK, SKULL, check_python_version, doc_link, telemetry

@@ -122,7 +122,14 @@ def _solr_client(params):
     if username and password:
         auth = requests.auth.HTTPBasicAuth(username, password)
 
-    return pysolr.Solr(url, auth=auth, timeout=timeout, always_commit=False)
+    # Disable automatic proxy detection (trust_env=False) to avoid hanging on macOS
+    # after fork() — CFNetwork proxy detection is not fork-safe.
+    session = requests.Session()
+    session.trust_env = False
+    if auth:
+        session.auth = auth
+
+    return pysolr.Solr(url, timeout=timeout, always_commit=False, session=session)
 
 
 def _admin_client(params):
@@ -139,7 +146,7 @@ def _admin_client(params):
 
 async def _run_in_executor(func, *args, **kwargs):
     """Run a blocking call in the default thread-pool executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
 
@@ -496,7 +503,6 @@ class SolrDeleteCollection(SolrRunner):
         delete_configset = params.get("delete-configset", True)
 
         start = time.perf_counter()
-
         try:
             await _run_in_executor(admin.delete_collection, collection)
         except CollectionNotFoundError:

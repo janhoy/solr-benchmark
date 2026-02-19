@@ -59,87 +59,23 @@ from osbenchmark.context import RequestContextHolder
 from osbenchmark.utils import console, convert
 from osbenchmark.cloud_provider import CloudProviderFactory
 
-class _AsyncNullResult:
-    """Awaitable stub and async context manager stub.
+class SolrClientShim(RequestContextHolder):
+    """
+    Minimal client shim used in Solr-only benchmarks (opensearchpy absent).
 
-    * ``await result`` → ``{}``
-    * ``async with result as x`` → ``x`` is ``{}``
+    Provides exactly what the OSB worker-coordinator framework needs:
+      - new_request_context() — inherited from RequestContextHolder, supplies
+        proper timing context for the async executor
+      - transport — object with an async no-op close() for cleanup
+    Everything else is deliberately absent; Solr runners do not use the client.
     """
 
-    def __await__(self):
-        if False:
-            yield  # pragma: no cover
-        return {}
+    class _NoOpTransport:
+        """Stub transport whose close() is a no-op awaitable."""
+        async def close(self):
+            pass
 
-    async def __aenter__(self):
-        return {}
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        return False
-
-
-class _NullAttr:
-    """
-    Helper for NullOpenSearchClient — handles chained attribute access and calls.
-
-    Accessing any attribute returns another _NullAttr.  Calling it returns an
-    _AsyncNullResult so that ``await client.transport.close()`` (and similar
-    teardown calls in the worker coordinator) works without TypeError.
-    The _AsyncNullResult also supports dict-like usage for non-await call sites.
-    """
-
-    def __init__(self, name=""):
-        self._name = name
-
-    def __getattr__(self, name):
-        # Special leaf attributes that must have specific types
-        if name == "hosts":
-            return [{"host": "localhost", "port": 8983}]
-        return _NullAttr(name)
-
-    def __call__(self, *args, **kwargs):
-        return _AsyncNullResult()
-
-    def __len__(self):
-        return 1
-
-    def __iter__(self):
-        return iter([])
-
-    def __bool__(self):
-        return True
-
-
-class NullOpenSearchClient(RequestContextHolder):
-    """
-    No-op OpenSearch client returned when opensearchpy is not installed.
-
-    Used for Solr-only benchmarks where the OSB worker-coordinator framework
-    still expects *some* client object but Solr runners ignore it entirely.
-    Inherits RequestContextHolder so new_request_context() returns a proper
-    RequestContextManager with timing properties.
-    All other attribute accesses return _NullAttr objects so framework code
-    such as telemetry devices and REST-layer checks degrade gracefully.
-    """
-
-    def __getattr__(self, name):
-        if name == "info":
-            def _info(*args, **kwargs):
-                return {
-                    "version": {
-                        "number": "unknown",
-                        "build_hash": "unknown",
-                        "build_flavor": "oss",
-                        "distribution": "solr",
-                    },
-                    "name": "solr-node",
-                    "cluster_name": "solr-benchmark",
-                }
-            return _info
-        return _NullAttr(name)
-
-    def __bool__(self):
-        return True
+    transport = _NoOpTransport()
 
 
 class OsClientFactory:
@@ -271,10 +207,10 @@ class OsClientFactory:
     def create(self):
         if not _OPENSEARCH_CLIENT_AVAILABLE:
             self.logger.debug(
-                "opensearchpy is not installed — returning NullOpenSearchClient "
+                "opensearchpy is not installed — returning SolrClientShim "
                 "(Solr benchmarks do not use the OpenSearch client)."
             )
-            return NullOpenSearchClient()
+            return SolrClientShim()
 
         if self.provider:
             self.logger.info("Creating OpenSearch client with provider %s", self.provider)
@@ -286,10 +222,10 @@ class OsClientFactory:
     def create_async(self):
         if not _OPENSEARCH_CLIENT_AVAILABLE:
             self.logger.debug(
-                "opensearchpy is not installed — returning NullOpenSearchClient for async context "
+                "opensearchpy is not installed — returning SolrClientShim for async context "
                 "(Solr benchmarks do not use the OpenSearch async client)."
             )
-            return NullOpenSearchClient()
+            return SolrClientShim()
 
         # pylint: disable=import-outside-toplevel
         import io
@@ -342,6 +278,9 @@ def wait_for_rest_layer(opensearch, max_attempts=40):
     :param max_attempts: The maximum number of attempts to check whether the REST API is available.
     :return: True iff OpenSearch's REST API is available.
     """
+    # Solr mode: no OpenSearch REST layer; assume the cluster is up.
+    if isinstance(opensearch, SolrClientShim):
+        return True
     # assume that at least the hosts that we expect to contact should be available. Note that this is not 100%
     # bullet-proof as a cluster could have e.g. dedicated masters which are not contained in our list of target hosts
     # but this is still better than just checking for any random node's REST API being reachable.

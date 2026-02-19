@@ -38,7 +38,6 @@ import tabulate
 
 from osbenchmark import metrics, time, exceptions
 from osbenchmark.metrics import MetaInfoScope
-from osbenchmark.solr import telemetry as solr_telemetry
 from osbenchmark.utils import io, sysstats, console, opts, process
 from osbenchmark.utils.versions import components
 

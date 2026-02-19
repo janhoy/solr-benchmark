@@ -55,10 +55,21 @@ class SolrAdminClient:
         self.base_url = f"{scheme}://{host}:{port}"
         self.api_url = f"{self.base_url}/api"
         self.timeout = timeout
-        self._session = requests.Session()
-        if username and password:
-            self._session.auth = (username, password)
-        self._session.headers.update({"Accept": "application/json"})
+        self._username = username
+        self._password = password
+        self._session = None  # created lazily on first use
+
+    def _get_session(self) -> requests.Session:
+        """Return the shared session, creating it on first call (lazy init)."""
+        if self._session is None:
+            self._session = requests.Session()
+            # Disable automatic proxy detection (trust_env=False) to avoid hanging
+            # on macOS after fork() — CFNetwork proxy detection is not fork-safe.
+            self._session.trust_env = False
+            if self._username and self._password:
+                self._session.auth = (self._username, self._password)
+            self._session.headers.update({"Accept": "application/json"})
+        return self._session
 
     # ------------------------------------------------------------------
     # Version detection
@@ -101,7 +112,7 @@ class SolrAdminClient:
         """
         zip_bytes = self._build_configset_zip(configset_dir)
         url = f"{self.api_url}/cluster/configs/{name}"
-        resp = self._session.put(
+        resp = self._get_session().put(
             url,
             data=zip_bytes,
             headers={"Content-Type": "application/zip"},
@@ -112,7 +123,7 @@ class SolrAdminClient:
 
     def delete_configset(self, name: str) -> None:
         """Delete a configset via DELETE /api/cluster/configs/{name}."""
-        resp = self._session.delete(
+        resp = self._get_session().delete(
             f"{self.api_url}/cluster/configs/{name}",
             timeout=self.timeout,
         )
@@ -138,7 +149,7 @@ class SolrAdminClient:
             "replicationFactor": replication_factor,
             "waitForFinalState": True,
         }
-        resp = self._session.post(
+        resp = self._get_session().post(
             f"{self.api_url}/collections",
             json=payload,
             timeout=self.timeout,
@@ -154,7 +165,7 @@ class SolrAdminClient:
 
     def delete_collection(self, name: str) -> None:
         """Delete a Solr collection via DELETE /api/collections/{name}."""
-        resp = self._session.delete(
+        resp = self._get_session().delete(
             f"{self.api_url}/collections/{name}",
             timeout=self.timeout,
         )
@@ -184,7 +195,9 @@ class SolrAdminClient:
 
     def get_node_metrics(self):
         """
-        Retrieve node metrics via GET /api/node/metrics.
+        Retrieve node metrics via GET /solr/admin/metrics.
+
+        Falls back to /api/node/metrics for Solr 10.x (Prometheus text format).
 
         Detects response format by Content-Type:
           - application/json  → Solr 9.x custom JSON → returns parsed dict
@@ -192,6 +205,18 @@ class SolrAdminClient:
 
         The telemetry device is responsible for parsing the format-specific response.
         """
+        # Solr 9.x uses the legacy /solr/admin/metrics endpoint (JSON format).
+        # Solr 10.x exposes /api/node/metrics (Prometheus text format).
+        # Try the legacy endpoint first; fall back to V2 API on 404.
+        try:
+            resp = self._get_session().get(f"{self.base_url}/solr/admin/metrics", timeout=self.timeout)
+            if resp.ok:
+                content_type = resp.headers.get("Content-Type", "")
+                if "text/plain" in content_type:
+                    return resp.text
+                return resp.json()
+        except Exception:
+            pass
         resp = self._get("/api/node/metrics")
         content_type = resp.headers.get("Content-Type", "")
         if "text/plain" in content_type:
@@ -220,7 +245,7 @@ class SolrAdminClient:
             kwargs["json"] = body
         elif isinstance(body, str):
             kwargs["data"] = body
-        resp = self._session.request(method.upper(), url, **kwargs)
+        resp = self._get_session().request(method.upper(), url, **kwargs)
         return resp
 
     # ------------------------------------------------------------------
@@ -228,7 +253,7 @@ class SolrAdminClient:
     # ------------------------------------------------------------------
 
     def _get(self, path: str) -> requests.Response:
-        resp = self._session.get(f"{self.base_url}{path}", timeout=self.timeout)
+        resp = self._get_session().get(f"{self.base_url}{path}", timeout=self.timeout)
         self._raise_for_solr_error(resp, f"GET {path}")
         return resp
 
