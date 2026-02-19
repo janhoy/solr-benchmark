@@ -99,8 +99,8 @@ def create_arg_parser():
         preserve_install = False
 
     parser = argparse.ArgumentParser(prog=PROGRAM_NAME,
-                                     description=BANNER + "\n\n A benchmarking tool for OpenSearch",
-                                     epilog="Find out more about OSB at {}".format(console.format.link(doc_link())),
+                                     description=BANNER + "\n\n A macrobenchmarking tool for Apache Solr",
+                                     epilog="Find out more at {}".format(console.format.link(doc_link())),
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-v', '--version', action='version', version="%(prog)s " + version.version())
 
@@ -119,10 +119,10 @@ def create_arg_parser():
     list_parser.add_argument(
         "configuration",
         metavar="configuration",
-        help="The configuration for which OSB should show the available options. "
-             "Possible values are: telemetry, workloads, pipelines, test-runs, cluster-configs, opensearch-plugins",
+        help="The configuration for which the tool should show the available options. "
+             "Possible values are: telemetry, workloads, pipelines, test-runs, cluster-configs",
         choices=["telemetry", "workloads", "pipelines", "test-runs", "aggregated-results",
-                 "cluster-configs", "opensearch-plugins"])
+                 "cluster-configs"])
     list_parser.add_argument(
         "--limit",
         help="Limit the number of search results for recent test-runs (default: 10).",
@@ -160,13 +160,13 @@ def create_arg_parser():
 
     synthetic_data_generator_parser = subparsers.add_parser("generate-data",
                                                             help="Generate synthetic data based on existing index mappings or custom module." +
-                                                            "This data can be ported into OSB workloads or ingested into OpenSearch." )
+                                                            "This data can be ported into Solr Benchmark workloads." )
 
     exclusive_file_inputs = synthetic_data_generator_parser.add_mutually_exclusive_group(required=True)
     exclusive_file_inputs.add_argument(
         "--index-mappings",
         "-i",
-        help="OpenSearch index mappings to generate data from."
+        help="Index mappings (JSON) to generate synthetic data from."
     )
     exclusive_file_inputs.add_argument(
         "--custom-module",
@@ -345,7 +345,7 @@ def create_arg_parser():
         default="")
     download_parser.add_argument(
         "--distribution-repository",
-        help="Define the repository from where the OpenSearch distribution should be downloaded (default: release).",
+        help="Define the repository from where the distribution should be downloaded (default: release).",
         default="release")
     download_parser.add_argument(
         "--cluster-config",
@@ -399,7 +399,7 @@ def create_arg_parser():
         default=None)
     install_parser.add_argument(
         "--distribution-repository",
-        help="Define the repository from where the OpenSearch distribution should be downloaded (default: release).",
+        help="Define the repository from where the distribution should be downloaded (default: release).",
         default="release")
     install_parser.add_argument(
         "--distribution-version",
@@ -503,8 +503,7 @@ def create_arg_parser():
         p.add_argument(
             "--distribution-version",
             type=supported_os_version,
-            help="Define the version of the OpenSearch distribution to download. "
-                 "Check https://opensearch.org/docs/version-history/ for released versions.",
+            help="Define the version of the distribution to download.",
             default="")
         p.add_argument(
             "--cluster-config-path",
@@ -614,7 +613,7 @@ def create_arg_parser():
     )
     test_run_parser.add_argument(
         "--distribution-repository",
-        help="Define the repository from where the OpenSearch distribution should be downloaded (default: release).",
+        help="Define the repository from where the distribution should be downloaded (default: release).",
         default="release")
 
     task_filter_group = test_run_parser.add_mutually_exclusive_group()
@@ -848,8 +847,6 @@ def dispatch_list(cfg):
         metrics.list_aggregated_results(cfg)
     elif what == "cluster-configs":
         cluster_config.list_cluster_configs(cfg)
-    elif what == "opensearch-plugins":
-        cluster_config.list_plugins(cfg)
     else:
         raise exceptions.SystemSetupError("Cannot list unknown configuration option [%s]" % what)
 
@@ -888,7 +885,7 @@ def print_help_on_errors():
     console.println(f"* Check the log files in {paths.logs()} for errors.")
     console.println(f"* Read the documentation at {console.format.link(doc_link())}.")
     console.println(f"* Ask a question on the forum at {console.format.link(FORUM_LINK)}.")
-    console.println(f"* Raise an issue at {console.format.link('https://github.com/opensearch-project/OpenSearch-Benchmark/issues')} "
+    console.println(f"* Raise an issue in the project issue tracker "
                     f"and include the log files in {paths.logs()}.")
 
 
@@ -1305,8 +1302,8 @@ def handle_command_suggestions():
     DEPRECATED_SUBCOMMANDS = ["execute-test", "execute"]
     if len(sys.argv) > 1 and sys.argv[1] in DEPRECATED_SUBCOMMANDS:
         console.info("Did you mean 'run'?")
-        console.info("Example: opensearch-benchmark run --workload=geonames --test-mode")
-        console.info("For more information, run: opensearch-benchmark run --help")
+        console.info(f"Example: {PROGRAM_NAME} run --workload=geonames --test-mode")
+        console.info(f"For more information, run: {PROGRAM_NAME} run --help")
         return True
     return False
 

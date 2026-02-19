@@ -33,17 +33,18 @@ __version__ = get_version("opensearch-benchmark")
 # Allow an alternative program name be set in case OSB is invoked a wrapper script
 PROGRAM_NAME = os.getenv("BENCHMARK_ALTERNATIVE_BINARY_NAME", os.path.basename(sys.argv[0]))
 
-DOC_LINK = "https://opensearch.org/docs"
+DOC_LINK = "https://solr.apache.org/guide/"
 
-FORUM_LINK = "https://forum.opensearch.org/"
+FORUM_LINK = "https://lists.apache.org/list.html?users@solr.apache.org"
 
 BANNER = r"""
-   ____                  _____                      __       ____                  __                         __
-  / __ \____  ___  ____ / ___/___  ____ ___________/ /_     / __ )___  ____  _____/ /_  ____ ___  ____ ______/ /__
- / / / / __ \/ _ \/ __ \\__ \/ _ \/ __ `/ ___/ ___/ __ \   / __  / _ \/ __ \/ ___/ __ \/ __ `__ \/ __ `/ ___/ //_/
-/ /_/ / /_/ /  __/ / / /__/ /  __/ /_/ / /  / /__/ / / /  / /_/ /  __/ / / / /__/ / / / / / / / / /_/ / /  / ,<
-\____/ .___/\___/_/ /_/____/\___/\__,_/_/   \___/_/ /_/  /_____/\___/_/ /_/\___/_/ /_/_/ /_/ /_/\__,_/_/  /_/|_|
-    /_/
+   _____      __      ____                  __                         __
+  / ___/___  / /___  / __ )___  ____  _____/ /_  ____ ___  ____ ______/ /__
+  \__ \/ _ \/ / __ \/ __  / _ \/ __ \/ ___/ __ \/ __ `__ \/ __ `/ ___/ //_/
+ ___/ /  __/ / /_/ / /_/ /  __/ / / / /__/ / / / / / / / / /_/ / /  / ,<
+/____/\___/_/\____/_____/\___/_/ /_/\___/_/ /_/_/ /_/ /_/\__,_/_/  /_/|_|
+
+  Apache Solr Benchmark
 """
 
 
