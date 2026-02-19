@@ -406,33 +406,43 @@ class SolrOptimize(SolrRunner):
 
 class SolrCreateCollection(SolrRunner):
     """
-    Two-step collection creation:
+    Collection creation — optionally with configset upload.
+
+    Two-step mode (default when ``configset-path`` is provided):
       1. Upload configset ZIP to /api/cluster/configs/{configset-name}
       2. Create collection referencing that configset
+
+    Single-step mode (when ``configset`` names an existing server-side configset
+    such as ``_default``, and ``configset-path`` is omitted):
+      - Only creates the collection; no upload step.
 
     Params:
       - ``host``, ``port``, ``username``, ``password``, ``tls``, ``timeout``
       - ``collection``         — collection name to create
-      - ``configset``          — configset name to register (defaults to collection name)
-      - ``configset-path``     — local directory containing conf/schema.xml etc.
+      - ``configset``          — configset name (default: collection name).
+                                 If a built-in configset like ``_default`` is
+                                 specified, omit ``configset-path`` to skip upload.
+      - ``configset-path``     — local directory with conf/schema.xml etc.
+                                 Omit to use an already-existing server configset.
       - ``num-shards``         — int (default: 1)
       - ``replication-factor`` — int (default: 1)
-      - ``delete-configset-on-error`` — bool (default: True)
+      - ``delete-configset-on-error`` — bool (default: True, ignored when no upload)
     """
 
     async def __call__(self, solr_not_used, params):
         admin = _admin_client(params)
         collection = params["collection"]
         configset = params.get("configset", collection)
-        configset_path = params["configset-path"]
+        configset_path = params.get("configset-path")
         num_shards = params.get("num-shards", 1)
         replication_factor = params.get("replication-factor", 1)
 
         start = time.perf_counter()
 
-        # Step 1: upload configset
-        await _run_in_executor(admin.upload_configset, configset, configset_path)
-        logger.info("Uploaded configset '%s' from '%s'", configset, configset_path)
+        # Step 1: upload configset (only if a local path is supplied)
+        if configset_path:
+            await _run_in_executor(admin.upload_configset, configset, configset_path)
+            logger.info("Uploaded configset '%s' from '%s'", configset, configset_path)
 
         # Step 2: create collection
         try:
@@ -446,7 +456,7 @@ class SolrCreateCollection(SolrRunner):
         except CollectionAlreadyExistsError:
             logger.warning("Collection '%s' already exists, skipping creation.", collection)
         except Exception:
-            if params.get("delete-configset-on-error", True):
+            if configset_path and params.get("delete-configset-on-error", True):
                 try:
                     await _run_in_executor(admin.delete_configset, configset)
                 except Exception as cleanup_exc:
@@ -466,13 +476,16 @@ class SolrCreateCollection(SolrRunner):
 
 class SolrDeleteCollection(SolrRunner):
     """
-    Delete a Solr collection and its associated configset.
+    Delete a Solr collection, optionally deleting its configset too.
 
     Params:
       - ``host``, ``port``, ``username``, ``password``, ``tls``, ``timeout``
-      - ``collection``  — collection name
-      - ``configset``   — configset name to delete (defaults to collection name)
-      - ``ignore-missing`` — bool; if True, do not raise on 404 (default: True)
+      - ``collection``       — collection name
+      - ``configset``        — configset name to delete (defaults to collection name)
+      - ``delete-configset`` — bool; delete the configset after the collection
+                               (default: True). Set to False when using a shared
+                               or built-in configset such as ``_default``.
+      - ``ignore-missing``   — bool; if True, do not raise on 404 (default: True)
     """
 
     async def __call__(self, solr_not_used, params):
@@ -480,6 +493,7 @@ class SolrDeleteCollection(SolrRunner):
         collection = params["collection"]
         configset = params.get("configset", collection)
         ignore_missing = params.get("ignore-missing", True)
+        delete_configset = params.get("delete-configset", True)
 
         start = time.perf_counter()
 
@@ -490,10 +504,11 @@ class SolrDeleteCollection(SolrRunner):
                 raise
             logger.info("Collection '%s' not found, skipping delete.", collection)
 
-        try:
-            await _run_in_executor(admin.delete_configset, configset)
-        except Exception as exc:
-            logger.warning("Could not delete configset '%s': %s", configset, exc)
+        if delete_configset:
+            try:
+                await _run_in_executor(admin.delete_configset, configset)
+            except Exception as exc:
+                logger.warning("Could not delete configset '%s': %s", configset, exc)
 
         elapsed = time.perf_counter() - start
         return {"weight": 1, "unit": "ops", "took": elapsed}

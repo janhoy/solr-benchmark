@@ -59,6 +59,89 @@ from osbenchmark.context import RequestContextHolder
 from osbenchmark.utils import console, convert
 from osbenchmark.cloud_provider import CloudProviderFactory
 
+class _AsyncNullResult:
+    """Awaitable stub and async context manager stub.
+
+    * ``await result`` → ``{}``
+    * ``async with result as x`` → ``x`` is ``{}``
+    """
+
+    def __await__(self):
+        if False:
+            yield  # pragma: no cover
+        return {}
+
+    async def __aenter__(self):
+        return {}
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
+class _NullAttr:
+    """
+    Helper for NullOpenSearchClient — handles chained attribute access and calls.
+
+    Accessing any attribute returns another _NullAttr.  Calling it returns an
+    _AsyncNullResult so that ``await client.transport.close()`` (and similar
+    teardown calls in the worker coordinator) works without TypeError.
+    The _AsyncNullResult also supports dict-like usage for non-await call sites.
+    """
+
+    def __init__(self, name=""):
+        self._name = name
+
+    def __getattr__(self, name):
+        # Special leaf attributes that must have specific types
+        if name == "hosts":
+            return [{"host": "localhost", "port": 8983}]
+        return _NullAttr(name)
+
+    def __call__(self, *args, **kwargs):
+        return _AsyncNullResult()
+
+    def __len__(self):
+        return 1
+
+    def __iter__(self):
+        return iter([])
+
+    def __bool__(self):
+        return True
+
+
+class NullOpenSearchClient(RequestContextHolder):
+    """
+    No-op OpenSearch client returned when opensearchpy is not installed.
+
+    Used for Solr-only benchmarks where the OSB worker-coordinator framework
+    still expects *some* client object but Solr runners ignore it entirely.
+    Inherits RequestContextHolder so new_request_context() returns a proper
+    RequestContextManager with timing properties.
+    All other attribute accesses return _NullAttr objects so framework code
+    such as telemetry devices and REST-layer checks degrade gracefully.
+    """
+
+    def __getattr__(self, name):
+        if name == "info":
+            def _info(*args, **kwargs):
+                return {
+                    "version": {
+                        "number": "unknown",
+                        "build_hash": "unknown",
+                        "build_flavor": "oss",
+                        "distribution": "solr",
+                    },
+                    "name": "solr-node",
+                    "cluster_name": "solr-benchmark",
+                }
+            return _info
+        return _NullAttr(name)
+
+    def __bool__(self):
+        return True
+
+
 class OsClientFactory:
     """
     Abstracts how the OpenSearch client is created. Intended for testing.
@@ -186,6 +269,13 @@ class OsClientFactory:
             return False
 
     def create(self):
+        if not _OPENSEARCH_CLIENT_AVAILABLE:
+            self.logger.debug(
+                "opensearchpy is not installed — returning NullOpenSearchClient "
+                "(Solr benchmarks do not use the OpenSearch client)."
+            )
+            return NullOpenSearchClient()
+
         if self.provider:
             self.logger.info("Creating OpenSearch client with provider %s", self.provider)
             return self.provider.create_client(self.hosts, self.client_options)
@@ -194,6 +284,13 @@ class OsClientFactory:
             return opensearchpy.OpenSearch(hosts=self.hosts, ssl_context=self.ssl_context, **self.client_options)
 
     def create_async(self):
+        if not _OPENSEARCH_CLIENT_AVAILABLE:
+            self.logger.debug(
+                "opensearchpy is not installed — returning NullOpenSearchClient for async context "
+                "(Solr benchmarks do not use the OpenSearch async client)."
+            )
+            return NullOpenSearchClient()
+
         # pylint: disable=import-outside-toplevel
         import io
         import aiohttp
@@ -383,13 +480,17 @@ class UnifiedClient:
 
     def __del__(self):
         """Close all gRPC channels."""
-        for cluster_stubs in self._grpc_stubs.values():
-            if '_channel' in cluster_stubs:
-                try:
-                    cluster_stubs['_channel'].close()
-                except Exception as e:
-                    self._logger.warning("Error closing gRPC channel: %s", e)
-        self._opensearch.close()
+        if self._grpc_stubs:
+            for cluster_stubs in self._grpc_stubs.values():
+                if '_channel' in cluster_stubs:
+                    try:
+                        cluster_stubs['_channel'].close()
+                    except Exception as e:
+                        self._logger.warning("Error closing gRPC channel: %s", e)
+        try:
+            self._opensearch.close()
+        except Exception:
+            pass
 
     @property
     def opensearch(self):
@@ -415,7 +516,7 @@ class UnifiedClientFactory:
         opensearch_client = self.rest_client_factory.create_async()
         grpc_stubs = None
 
-        if self.grpc_hosts:
+        if self.grpc_hosts and _GRPC_AVAILABLE:
             grpc_factory = GrpcClientFactory(self.grpc_hosts)
             grpc_stubs = grpc_factory.create_grpc_stubs()
 

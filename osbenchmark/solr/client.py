@@ -160,6 +160,12 @@ class SolrAdminClient:
         )
         if resp.status_code == 404:
             raise CollectionNotFoundError(f"Collection '{name}' not found")
+        # Solr 9.x may return 400 with "Could not find collection" instead of 404
+        if resp.status_code == 400:
+            body = self._try_parse_json(resp)
+            msg = body.get("error", {}).get("msg", "") if isinstance(body, dict) else ""
+            if "could not find collection" in msg.lower():
+                raise CollectionNotFoundError(f"Collection '{name}' not found")
         self._raise_for_solr_error(resp, f"delete collection '{name}'")
         logger.info("Deleted collection '%s'", name)
 

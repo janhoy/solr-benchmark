@@ -184,8 +184,13 @@ def _parse_host_string(arg):
     ``port`` and ``scheme`` keys — the same shape that opensearchpy's
     ``_normalize_hosts`` produced, so existing callers are unaffected.
     """
+    # arg may be a list (from csv_to_list) or a plain string
+    if isinstance(arg, (list, tuple)):
+        items = arg
+    else:
+        items = str(arg).split(",")
     results = []
-    for item in str(arg).split(","):
+    for item in items:
         item = item.strip()
         if not item:
             continue

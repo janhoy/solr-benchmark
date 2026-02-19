@@ -1033,9 +1033,17 @@ class WorkerCoordinator:
 
         os_clients = self.create_os_clients()
 
+        # Detect Solr / no-opensearchpy mode: NullOpenSearchClient is used when opensearchpy is absent
+        using_null_client = isinstance(os_clients.get("default"), client.NullOpenSearchClient)
+
         skip_rest_api_check = self.config.opts("builder", "skip.rest.api.check")
         uses_static_responses = self.config.opts("client", "options").uses_static_responses
-        if skip_rest_api_check:
+        if using_null_client:
+            self.logger.info(
+                "Running in Solr-only mode (opensearchpy not available). "
+                "Skipping REST API check and OpenSearch telemetry."
+            )
+        elif skip_rest_api_check:
             self.logger.info("Skipping REST API check as requested explicitly.")
         elif uses_static_responses:
             self.logger.info("Skipping REST API check as static responses are used.")
@@ -1045,7 +1053,7 @@ class WorkerCoordinator:
 
         # Redline testing: Check if cpu feedback is enabled. Enable the node-stats telemetry device if we need to
         cpu_max = self.config.opts("workload", "redline.max_cpu_usage", default_value=None, mandatory=False)
-        if cpu_max:
+        if cpu_max and not using_null_client:
             devices = self.config.opts("telemetry", "devices", default_value=[])
             if "node-stats" not in devices:
                 # if node stats aren't enabled but cpu feedback is, add the node-stats telemetry device
@@ -1056,7 +1064,8 @@ class WorkerCoordinator:
 
         # Avoid issuing any requests to the target cluster when static responses are enabled. The results
         # are not useful and attempts to connect to a non-existing cluster just lead to exception traces in logs.
-        self.prepare_telemetry(os_clients, enable=not uses_static_responses)
+        # Also disable OpenSearch telemetry when running in Solr-only mode (opensearchpy not available).
+        self.prepare_telemetry(os_clients, enable=not uses_static_responses and not using_null_client)
 
         for host in self.config.opts("worker_coordinator", "worker_ips"):
             host_config = {
