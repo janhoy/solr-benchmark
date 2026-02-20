@@ -135,7 +135,7 @@ class DataStreamingError(BenchmarkError):
 
 
 class MappingsError(BenchmarkError):
-    """Exception raised for errors in index mappings provided.
+    """Exception raised for errors in index mappings / schema provided.
 
     Attributes:
         message -- explanation of the error

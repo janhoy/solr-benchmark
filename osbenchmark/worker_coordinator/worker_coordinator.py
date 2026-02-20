@@ -47,7 +47,6 @@ import thespian.actors
 
 from osbenchmark.utils import opts
 from osbenchmark import actor, config, exceptions, metrics, workload, client, paths, PROGRAM_NAME, telemetry
-
 from osbenchmark.worker_coordinator import runner, scheduler
 from osbenchmark.workload import WorkloadProcessorRegistry, load_workload, load_workload_plugins, ingestion_manager
 from osbenchmark.utils import convert, console, net
@@ -968,6 +967,7 @@ class WorkerCoordinator:
         return opensearch
 
     def prepare_telemetry(self, opensearch, enable):
+        """TODO: Remove opensearch telemetry and implement custom Solr ones""""
         enabled_devices = self.config.opts("telemetry", "devices")
         telemetry_params = self.config.opts("telemetry", "params")
         log_root = paths.test_run_root(self.config)

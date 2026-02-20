@@ -348,8 +348,8 @@ def create_arg_parser():
     download_parser.add_argument(
         "--distribution-version",
         type=supported_os_version,
-        help="Define the version of the OpenSearch distribution to download. "
-             "Check https://opensearch.org/docs/version-history/ for released versions.",
+        help="Define the version of the distribution to download. "
+             "Check https://projects.apache.org/project.html?solr for released versions.",
         default="")
     download_parser.add_argument(
         "--distribution-repository",
@@ -375,7 +375,7 @@ def create_arg_parser():
         help="The name of the CPU architecture for which an artifact should be downloaded (default: current architecture)",
     )
 
-    install_parser = subparsers.add_parser("install", help="Installs an OpenSearch node locally")
+    install_parser = subparsers.add_parser("install", help="Installs a Solr node locally")
     install_parser.add_argument(
         "--revision",
         help="Define the source code revision for building the benchmark candidate. 'current' uses the source tree as is,"
@@ -412,8 +412,8 @@ def create_arg_parser():
     install_parser.add_argument(
         "--distribution-version",
         type=supported_os_version,
-        help="Define the version of the OpenSearch distribution to download. "
-             "Check https://opensearch.org/docs/version-history/ for released versions.",
+        help="Define the version of the distribution to download. "
+             "Check https://archive.apache.org/dist/solr/solr/ for released versions.",
         default="")
     install_parser.add_argument(
         "--cluster-config",
@@ -426,10 +426,11 @@ def create_arg_parser():
         help="Define a comma-separated list of key:value pairs that are injected verbatim as variables for the cluster-config.",
         default=""
     )
-    install_parser.add_argument(
-        "--opensearch-plugins",
-        help="Define the OpenSearch plugins to install. (default: install no plugins).",
-        default="")
+# TODO: Define an argument for modules?
+#     install_parser.add_argument(
+#         "--opensearch-plugins",
+#         help="Define the OpenSearch plugins to install. (default: install no plugins).",
+#         default="")
     install_parser.add_argument(
         "--plugin-params",
         help="Define a comma-separated list of key:value pairs that are injected verbatim to all plugins as variables.",
@@ -447,7 +448,7 @@ def create_arg_parser():
     )
     install_parser.add_argument(
         "--node-name",
-        help="The name of this OpenSearch node",
+        help="The name of this Solr node",
         default="benchmark-node-0"
     )
     install_parser.add_argument(
@@ -461,7 +462,7 @@ def create_arg_parser():
         default=""
     )
 
-    start_parser = subparsers.add_parser("start", help="Starts an OpenSearch node locally")
+    start_parser = subparsers.add_parser("start", help="Starts a Solr node locally")
     start_parser.add_argument(
         "--installation-id",
         required=True,
@@ -492,7 +493,7 @@ def create_arg_parser():
         default=""
     )
 
-    stop_parser = subparsers.add_parser("stop", help="Stops an OpenSearch node locally")
+    stop_parser = subparsers.add_parser("stop", help="Stops a Solr node locally")
     stop_parser.add_argument(
         "--installation-id",
         required=True,
@@ -575,10 +576,11 @@ def create_arg_parser():
         type=runtime_jdk,
         help="The major version of the runtime JDK to use.",
         default=None)
-    test_run_parser.add_argument(
-        "--opensearch-plugins",
-        help="Define the OpenSearch plugins to install. (default: install no plugins).",
-        default="")
+# Use this for solr modules?
+#     test_run_parser.add_argument(
+#         "--opensearch-plugins",
+#         help="Define the OpenSearch plugins to install. (default: install no plugins).",
+#         default="")
     test_run_parser.add_argument(
         "--plugin-params",
         help="Define a comma-separated list of key:value pairs that are injected verbatim to all plugins as variables.",
@@ -1152,9 +1154,9 @@ def configure_test(arg_parser, args, cfg):
     configure_builder_params(args, cfg)
     cfg.add(config.Scope.applicationOverride, "builder", "runtime.jdk", args.runtime_jdk)
     cfg.add(config.Scope.applicationOverride, "builder", "source.revision", args.revision)
-    cfg.add(config.Scope.applicationOverride, "builder",
-    "cluster_config_instance.plugins", opts.csv_to_list(
-        args.opensearch_plugins))
+#     cfg.add(config.Scope.applicationOverride, "builder",
+#     "cluster_config_instance.plugins", opts.csv_to_list(
+#         args.opensearch_plugins))
     cfg.add(config.Scope.applicationOverride, "builder", "plugin.params", opts.to_dict(args.plugin_params))
     cfg.add(config.Scope.applicationOverride, "builder", "preserve.install", convert.to_bool(args.preserve_install))
     cfg.add(config.Scope.applicationOverride, "builder", "skip.rest.api.check", convert.to_bool(args.skip_rest_api_check))
@@ -1200,9 +1202,9 @@ def dispatch_sub_command(arg_parser, args, cfg):
             cfg.add(config.Scope.applicationOverride, "builder", "node.name", args.node_name)
             cfg.add(config.Scope.applicationOverride, "builder", "master.nodes", opts.csv_to_list(args.master_nodes))
             cfg.add(config.Scope.applicationOverride, "builder", "seed.hosts", opts.csv_to_list(args.seed_hosts))
-            cfg.add(config.Scope.applicationOverride, "builder",
-            "cluster_config.plugins", opts.csv_to_list(
-                args.opensearch_plugins))
+#             cfg.add(config.Scope.applicationOverride, "builder",
+#             "cluster_config.plugins", opts.csv_to_list(
+#                 args.opensearch_plugins))
             cfg.add(config.Scope.applicationOverride, "builder", "plugin.params", opts.to_dict(args.plugin_params))
             configure_builder_params(args, cfg)
             builder.install(cfg)

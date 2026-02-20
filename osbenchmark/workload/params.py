@@ -40,13 +40,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import numpy as np
-else:
-    try:
-        import numpy as np
-    except ImportError:
-        np = None
+import numpy as np
 
 from osbenchmark import exceptions
 from osbenchmark.utils import io
