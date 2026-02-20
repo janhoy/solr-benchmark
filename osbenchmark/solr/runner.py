@@ -561,6 +561,175 @@ class SolrRawRequest(SolrRunner):
 
 
 # ---------------------------------------------------------------------------
+# Bridge runners: map standard OSB operation types to Solr equivalents
+#
+# These are registered in register_solr_runners() to override the default
+# OpenSearch-specific runners, allowing standard OSB workloads (e.g. nyc_taxis)
+# to run against Solr without modification.
+# ---------------------------------------------------------------------------
+
+def _normalize_bulk_body(body):
+    """Convert bulk body items (string or dict) to JSON strings."""
+    lines = []
+    for item in body:
+        if isinstance(item, dict):
+            lines.append(json.dumps(item))
+        elif item:
+            lines.append(str(item))
+    return lines
+
+
+class SolrDeleteIndexBridge(SolrRunner):
+    """
+    Bridge: maps OSB 'delete-index' to Solr collection deletion.
+
+    Accepts the same params as the standard delete-index operation:
+      - ``indices`` — list of index/collection names to delete
+      - ``only-if-exists`` — bool (default: False); errors are always silenced
+    Plus Solr connection params (``host``, ``port``, ...) defaulting to localhost:8983.
+    """
+
+    async def __call__(self, solr_not_used, params):
+        admin = _admin_client(params)
+        indices = params.get("indices", [])
+
+        ops = 0
+        for name in indices:
+            try:
+                await _run_in_executor(admin.delete_collection, name)
+                ops += 1
+            except CollectionNotFoundError:
+                pass  # silently skip missing collections (mirrors ES behaviour)
+
+        return {"weight": ops, "unit": "ops", "success": True}
+
+    def __str__(self):
+        return "delete-index"
+
+
+class SolrCreateIndexBridge(SolrRunner):
+    """
+    Bridge: maps OSB 'create-index' to Solr collection creation.
+
+    The standard create-index body (OpenSearch mappings/settings) is ignored.
+    Collections are created with the ``_default`` configset unless ``configset``
+    is specified in the operation params.
+
+    Params:
+      - ``indices``           — list of (name, body) tuples from the workload
+      - ``configset``         — Solr configset name (default: ``_default``)
+      - ``num-shards``        — int (default: 1)
+      - ``replication-factor``— int (default: 1)
+    Plus Solr connection params (``host``, ``port``, ...) defaulting to localhost:8983.
+    """
+
+    async def __call__(self, solr_not_used, params):
+        admin = _admin_client(params)
+        indices = params.get("indices", [])
+        configset = params.get("configset", "_default")
+        num_shards = params.get("num-shards", 1)
+        replication_factor = params.get("replication-factor", 1)
+
+        ops = 0
+        for entry in indices:
+            # indices is a list of (name, body) tuples
+            name = entry[0] if isinstance(entry, (list, tuple)) else entry
+            try:
+                await _run_in_executor(
+                    admin.create_collection, name, configset, num_shards, replication_factor
+                )
+                ops += 1
+            except CollectionAlreadyExistsError:
+                logger.warning("Collection '%s' already exists, skipping creation.", name)
+                ops += 1
+
+        return {"weight": ops, "unit": "ops", "success": True}
+
+    def __str__(self):
+        return "create-index"
+
+
+class SolrBulkBridge(SolrRunner):
+    """
+    Bridge: maps OSB 'bulk' to Solr document indexing.
+
+    Translates the NDJSON ``body`` from the standard bulk operation into Solr
+    documents and indexes them. The target collection is derived from:
+      1. ``params["collection"]`` if explicitly set
+      2. ``params["index"]`` (standard OSB bulk param)
+      3. The ``_index`` field in the first action-metadata line
+
+    Params mirror the standard OSB bulk operation (``body``, ``index``,
+    ``bulk-size``, ``unit``, ``action-metadata-present``) plus Solr connection
+    params (``host``, ``port``, ...) defaulting to localhost:8983.
+    """
+
+    async def __call__(self, solr_not_used, params):
+        body = params.get("body", [])
+        index = params.get("index", "")
+        bulk_size = params.get("bulk-size", 0)
+        unit = params.get("unit", "docs")
+        batch_size = 500
+
+        if not body:
+            return {"weight": 0, "unit": unit, "success": True, "error-count": 0}
+
+        # Build Solr client params — inject collection from index if not set
+        solr_params = dict(params)
+        if not solr_params.get("collection"):
+            solr_params["collection"] = index or "default"
+
+        client = _solr_client(solr_params)
+        lines = _normalize_bulk_body(body)
+        docs = _translate_ndjson_batch(lines)
+        total_docs = len(docs)
+        errors = 0
+
+        start = time.perf_counter()
+        for i in range(0, max(total_docs, 1), batch_size):
+            batch = docs[i: i + batch_size]
+            if not batch:
+                break
+            try:
+                await _run_in_executor(client.add, batch, commit=False)
+            except pysolr.SolrError as exc:
+                logger.error("Bulk bridge error on batch starting at %d: %s", i, exc)
+                errors += len(batch)
+
+        elapsed = time.perf_counter() - start
+        weight = total_docs - errors
+
+        return {
+            "weight": weight,
+            "unit": unit,
+            "bulk-size": bulk_size or total_docs,
+            "success": errors == 0,
+            "error-count": errors,
+            "took": elapsed,
+        }
+
+    def __str__(self):
+        return "bulk"
+
+
+class SolrNoOpBridge(SolrRunner):
+    """
+    Silently skips OpenSearch-specific operations that have no Solr equivalent
+    (e.g. cluster-health, refresh, force-merge, put-pipeline).
+    """
+
+    def __init__(self, op_name):
+        self._op_name = op_name
+
+    async def __call__(self, solr_not_used, params):
+        logger.debug("Skipping OpenSearch-specific operation '%s' in Solr mode.", self._op_name)
+        return {"weight": 0, "unit": "ops", "success": True}
+
+    def __str__(self):
+        return self._op_name
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -581,3 +750,17 @@ def register_solr_runners(register_runner):
     register_runner("create-collection", SolrCreateCollection(), async_runner=True)
     register_runner("delete-collection", SolrDeleteCollection(), async_runner=True)
     register_runner("raw-request", SolrRawRequest(), async_runner=True)
+
+    # Bridge runners: override OSB's default OpenSearch runners so that standard
+    # workloads (e.g. nyc_taxis) work against Solr without modification.
+    register_runner("delete-index", SolrDeleteIndexBridge(), async_runner=True)
+    register_runner("create-index", SolrCreateIndexBridge(), async_runner=True)
+    register_runner("bulk", SolrBulkBridge(), async_runner=True)
+
+    # No-op bridges for OpenSearch-specific admin operations
+    for _op in ("cluster-health", "refresh", "force-merge", "index-stats", "node-stats",
+                "put-pipeline", "delete-pipeline", "create-index-template",
+                "delete-index-template", "create-composable-template",
+                "delete-composable-template", "create-component-template",
+                "delete-component-template"):
+        register_runner(_op, SolrNoOpBridge(_op), async_runner=True)

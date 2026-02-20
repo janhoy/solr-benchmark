@@ -5,6 +5,8 @@ Apache Solr Benchmark is a macrobenchmarking framework for [Apache Solr](https:/
 It is a fork of [OpenSearch Benchmark](https://github.com/opensearch-project/opensearch-benchmark),
 itself derived from [Elastic Rally](https://github.com/elastic/rally).
 
+**DISCLAIMER**: Work in progress
+
 ## What is Apache Solr Benchmark?
 
 If you are looking to performance test Apache Solr, this tool can help you with:
@@ -22,6 +24,8 @@ If you are looking to performance test Apache Solr, this tool can help you with:
 ```bash
 pip install -e .
 ```
+
+**NOTE**: We do not offer the tool as a python package yet 
 
 ### Run a benchmark against an already-running Solr instance
 
