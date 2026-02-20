@@ -130,16 +130,12 @@ class SolrProvisioner:
 
         Args:
             solr_root: Path to the extracted Solr root directory.
-            mode:      One of "cloud", "user-managed", or None (auto-detect from version).
-                       For Solr 9.x, defaults to "cloud" for SolrCloud mode.
-                       For Solr 10.x, defaults to "user-managed" (standalone).
+            mode:      "cloud" (default), "user-managed", or None (defaults to "cloud").
         """
-        bin_solr = self._bin_solr(solr_root)
-        version = self._detect_version(solr_root)
-        major = int(version.split(".")[0]) if version else 9
-
         if mode is None:
-            mode = "cloud" if major <= 9 else "user-managed"
+            mode = "cloud"
+
+        bin_solr = self._bin_solr(solr_root)
 
         cmd = [bin_solr, "start", "-p", str(self.port)]
         if mode == "cloud":
@@ -244,27 +240,30 @@ class SolrDockerLauncher:
         self.startup_timeout = startup_timeout
         self.container_name = container_name or self.DEFAULT_CONTAINER_NAME
 
-    def start(self, version_tag: str = "9", mode: str = "cloud") -> None:
+    def start(self, version_tag: str = "9", mode: str = None) -> None:
         """
         Start a Solr container.
 
         Args:
             version_tag: Docker image tag, e.g. "9", "10", "9.7.0".
-            mode:        "cloud" (default) or "user-managed".
+            mode:        "cloud" (default), "user-managed", or None (defaults to "cloud").
         """
+        if mode is None:
+            mode = "cloud"
 
         image = f"solr:{version_tag}"
-        env_args = []
-        if mode == "cloud":
-            env_args = ["-e", "SOLR_CLOUD_MODE=yes"]
 
+        # Build the command — pass '-c' after the image to start in cloud mode
         cmd = [
             "docker", "run",
             "--rm",
             "--name", self.container_name,
             "-p", f"{self.port}:8983",
             "-d",
-        ] + env_args + [image]
+            image,
+        ]
+        if mode == "cloud":
+            cmd.append("-c")  # SolrCloud mode
 
         logger.info("Starting Solr Docker container: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)
