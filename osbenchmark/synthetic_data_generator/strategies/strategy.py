@@ -9,10 +9,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Callable
 
-try:
-    from dask.distributed import Client
-except ImportError:
-    Client = None
+from dask.distributed import Client
 
 class DataGenerationStrategy(ABC):
 

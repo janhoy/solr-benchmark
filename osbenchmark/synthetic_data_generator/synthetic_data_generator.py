@@ -12,12 +12,7 @@ import time
 import hashlib
 from typing import Generator
 
-try:
-    from dask.distributed import Client, get_client, as_completed
-except ImportError:
-    Client = None
-    get_client = None
-    as_completed = None
+from dask.distributed import Client, get_client, as_completed
 from tqdm import tqdm
 
 from osbenchmark.utils import console
