@@ -630,18 +630,14 @@ class SolrBulkIndex(SolrRunner):
     """
 
     async def __call__(self, solr_not_used, params):
-        logger.info("🔵 SolrBulkIndex.__call__() ENTRY")
         corpus_lines = params.get("corpus", [])
         batch_size = params.get("bulk-size", 500)
         do_commit = params.get("commit", False)
-
-        logger.info(f"🔵 corpus_lines type: {type(corpus_lines)}, batch_size: {batch_size}")
 
         client = _solr_client(params)
 
         # Use streaming translation to avoid loading all documents into memory
         doc_stream = _translate_ndjson_stream(corpus_lines)
-        logger.info("🔵 Created doc_stream generator")
         total_docs = 0
         errors = 0
 
@@ -649,43 +645,32 @@ class SolrBulkIndex(SolrRunner):
 
         # Collect documents in batches and send to Solr
         batch = []
-        doc_count = 0
         for doc in doc_stream:
             batch.append(doc)
-            doc_count += 1
-            if doc_count == 1:
-                logger.info(f"🔵 First document received: {doc}")
             if len(batch) >= batch_size:
-                logger.info(f"🔵 Sending batch of {len(batch)} documents to Solr")
                 try:
                     # Use commitWithin=1000ms to make docs visible quickly without explicit commits
                     await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
                     total_docs += len(batch)
-                    logger.info(f"🔵 Batch indexed successfully, total so far: {total_docs}")
                 except pysolr.SolrError as exc:
                     logger.error("Bulk index error on batch: %s", exc)
                     errors += len(batch)
                 batch = []
 
         # Send remaining documents
-        logger.info(f"🔵 Doc stream exhausted. doc_count={doc_count}, remaining batch size: {len(batch)}")
         if batch:
-            logger.info(f"🔵 Sending final batch of {len(batch)} documents")
             try:
                 await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
                 total_docs += len(batch)
-                logger.info(f"🔵 Final batch indexed successfully")
             except pysolr.SolrError as exc:
                 logger.error("Bulk index error on final batch: %s", exc)
                 errors += len(batch)
 
         if do_commit:
-            logger.info("🔵 Performing explicit commit")
             await _run_in_executor(client.commit)
 
         elapsed = time.perf_counter() - start
         weight = total_docs - errors
-        logger.info(f"🔵 SolrBulkIndex COMPLETE: total_docs={total_docs}, errors={errors}, weight={weight}, elapsed={elapsed:.2f}s")
 
         return {
             "weight": weight,
