@@ -38,7 +38,10 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import List, Dict, Any, Optional, Tuple
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from osbenchmark import exceptions
 from osbenchmark.utils import io
