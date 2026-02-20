@@ -42,11 +42,8 @@ from typing import Any, Dict, List, Optional
 
 import ijson
 
-try:
-    from opensearchpy import ConnectionTimeout, NotFoundError
-except ImportError:
-    from osbenchmark.exceptions import BenchmarkConnectionTimeout as ConnectionTimeout
-    from osbenchmark.exceptions import BenchmarkNotFoundError as NotFoundError
+from osbenchmark.exceptions import BenchmarkConnectionTimeout as ConnectionTimeout
+from osbenchmark.exceptions import BenchmarkNotFoundError as NotFoundError
 
 from osbenchmark import exceptions, workload
 from osbenchmark.utils import convert
@@ -2774,11 +2771,6 @@ class Retry(Runner, Delegator):
     async def __call__(self, client, params):
         # pylint: disable=import-outside-toplevel
         import socket
-        try:
-            import opensearchpy as _opensearchpy
-        except ImportError:
-            _opensearchpy = None
-
         retry_until_success = params.get("retry-until-success", self.retry_until_success)
         if retry_until_success:
             max_attempts = sys.maxsize
@@ -2807,13 +2799,6 @@ class Retry(Runner, Delegator):
                 else:
                     return return_value
             except Exception as e:
-                # Translate opensearchpy exceptions to our backend-agnostic hierarchy.
-                if _opensearchpy and isinstance(e, _opensearchpy.exceptions.ConnectionError):
-                    e = exceptions.BenchmarkConnectionError(str(e))
-                elif _opensearchpy and isinstance(e, _opensearchpy.exceptions.TransportError):
-                    status_code = e.status_code if isinstance(e.status_code, int) else None
-                    e = exceptions.BenchmarkTransportError(str(e), status_code=status_code)
-
                 if isinstance(e, (socket.timeout, exceptions.BenchmarkConnectionError)):
                     if last_attempt or not retry_on_timeout:
                         raise e

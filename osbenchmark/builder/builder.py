@@ -32,10 +32,7 @@ import traceback
 from collections import defaultdict
 
 import thespian.actors
-try:
-    from opensearchpy.exceptions import NotFoundError
-except ImportError:
-    class NotFoundError(Exception): pass
+class NotFoundError(Exception): pass
 
 from osbenchmark import (PROGRAM_NAME, actor, client, config, exceptions,
                          metrics, paths)
@@ -272,13 +269,12 @@ def cluster_distribution_version(cfg, client_factory=client.OsClientFactory):
     provisioned clusters).
 
     :param cfg: The current config object.
-    :param client_factory: Factory class that creates the OpenSearch client.
+    :param client_factory: Factory class that creates the client.
     :return: The distribution version.
     """
     hosts = cfg.opts("client", "hosts").default
     client_options = cfg.opts("client", "options").default
     opensearch = client_factory(hosts, client_options).create()
-    # Solr mode: opensearchpy not installed, return a synthetic version.
     if isinstance(opensearch, client.SolrClientShim):
         return "2.11.0"
     # unconditionally wait for the REST layer - if it's not up by then, we'll intentionally raise the original error

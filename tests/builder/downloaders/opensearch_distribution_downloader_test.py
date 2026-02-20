@@ -1,12 +1,12 @@
 from unittest import TestCase, mock
 from unittest.mock import Mock
 
-from osbenchmark.builder.downloaders.opensearch_distribution_downloader import OpenSearchDistributionDownloader
+from osbenchmark.builder.downloaders.opensearch_distribution_downloader import DistributionDownloader
 from osbenchmark.builder.cluster_config import ClusterConfigInstance
 from osbenchmark.exceptions import ExecutorError
 
 
-class OpenSearchDistributionDownloaderTest(TestCase):
+class DistributionDownloaderTest(TestCase):
     def setUp(self):
         self.host = None
 
@@ -24,7 +24,7 @@ class OpenSearchDistributionDownloaderTest(TestCase):
 
         self.path_manager = Mock()
         self.distribution_repository_provider = Mock()
-        self.os_distro_downloader = OpenSearchDistributionDownloader(self.cluster_config, self.executor, self.path_manager,
+        self.os_distro_downloader = DistributionDownloader(self.cluster_config, self.executor, self.path_manager,
                                                                      self.distribution_repository_provider)
 
 

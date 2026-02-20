@@ -45,8 +45,7 @@ def _translate_solr_error(e):
     """Translate a pysolr or requests exception to a BenchmarkTransportError.
 
     This ensures that worker_coordinator's generic error handler can record
-    proper error metadata (http-status, error-description) for Solr runs
-    without needing opensearchpy to be installed.
+    proper error metadata (http-status, error-description) for Solr runs.
     """
     if isinstance(e, requests.exceptions.ConnectionError):
         return benchmark_exceptions.BenchmarkConnectionError(str(e), cause=e)

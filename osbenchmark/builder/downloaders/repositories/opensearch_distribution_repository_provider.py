@@ -3,7 +3,7 @@ import logging
 from osbenchmark.utils import convert
 
 
-class OpenSearchDistributionRepositoryProvider:
+class DistributionRepositoryProvider:
     def __init__(self, cluster_config, repository_url_provider):
         self.logger = logging.getLogger(__name__)
         self.cluster_config = cluster_config

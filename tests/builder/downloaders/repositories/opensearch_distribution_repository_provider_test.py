@@ -2,11 +2,11 @@ from unittest import TestCase, mock
 from unittest.mock import Mock
 
 from osbenchmark.builder.downloaders.repositories.opensearch_distribution_repository_provider import \
-    OpenSearchDistributionRepositoryProvider
+    DistributionRepositoryProvider
 from osbenchmark.builder.cluster_config import ClusterConfigInstance
 
 
-class OpenSearchDistributionRepositoryProviderTest(TestCase):
+class DistributionRepositoryProviderTest(TestCase):
     def setUp(self):
         self.host = None
         self.cluster_config = ClusterConfigInstance(names=None, config_paths=None, root_path=None, variables={
@@ -25,7 +25,7 @@ class OpenSearchDistributionRepositoryProviderTest(TestCase):
             }
         })
         self.repository_url_provider = Mock()
-        self.os_distro_repo_provider = OpenSearchDistributionRepositoryProvider(self.cluster_config,
+        self.os_distro_repo_provider = DistributionRepositoryProvider(self.cluster_config,
                                                                                 self.repository_url_provider)
 
 

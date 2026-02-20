@@ -181,8 +181,8 @@ def _parse_host_string(arg):
         localhost:8983   (Solr default port)
 
     Returns a list of dicts with at least a ``host`` key plus optional
-    ``port`` and ``scheme`` keys — the same shape that opensearchpy's
-    ``_normalize_hosts`` produced, so existing callers are unaffected.
+    ``port`` and ``scheme`` keys — the same shape produced by
+    ``_normalize_hosts``, so existing callers are unaffected.
     """
     # arg may be a list (from csv_to_list) or a plain string
     if isinstance(arg, (list, tuple)):

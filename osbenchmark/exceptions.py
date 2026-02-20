@@ -135,7 +135,7 @@ class DataStreamingError(BenchmarkError):
 
 
 class MappingsError(BenchmarkError):
-    """Exception raised for errors in OpenSearch mappings provided.
+    """Exception raised for errors in index mappings provided.
 
     Attributes:
         message -- explanation of the error
@@ -145,10 +145,8 @@ class MappingsError(BenchmarkError):
 # ---------------------------------------------------------------------------
 # Abstract network / transport exceptions
 #
-# These are backend-agnostic counterparts of opensearchpy's TransportError
-# hierarchy.  All benchmark runners (Solr, OpenSearch, …) should raise these
-# so that worker_coordinator can record uniform error metadata without needing
-# opensearchpy to be installed.
+# Backend-agnostic transport error hierarchy. All benchmark runners should
+# raise these so that worker_coordinator can record uniform error metadata.
 # ---------------------------------------------------------------------------
 
 class BenchmarkTransportError(BenchmarkError):

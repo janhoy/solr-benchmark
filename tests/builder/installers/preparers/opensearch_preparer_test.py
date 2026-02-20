@@ -2,14 +2,14 @@ import os
 from unittest import TestCase, mock
 from unittest.mock import Mock
 
-from osbenchmark.builder.installers.preparers.opensearch_preparer import OpenSearchPreparer
+from osbenchmark.builder.installers.preparers.opensearch_preparer import NodePreparer
 from osbenchmark.builder.models.host import Host
 from osbenchmark.builder.models.node import Node
 from osbenchmark.builder.cluster_config import ClusterConfigInstance
 from osbenchmark.builder.utils.binary_keys import BinaryKeys
 
 
-class OpenSearchPreparerTests(TestCase):
+class NodePreparerTests(TestCase):
     def setUp(self):
         self.node_id = "abdefg"
         self.node = Node(binary_path="/fake_binary_path", data_paths=["/fake1", "/fake2"],
@@ -37,7 +37,7 @@ class OpenSearchPreparerTests(TestCase):
                 }
             }
         )
-        self.preparer = OpenSearchPreparer(self.cluster_config, self.executor, self.hook_handler_class)
+        self.preparer = NodePreparer(self.cluster_config, self.executor, self.hook_handler_class)
         self.preparer.path_manager = Mock()
 
     @mock.patch("uuid.uuid4")

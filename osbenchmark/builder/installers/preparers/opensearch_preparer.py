@@ -9,7 +9,7 @@ from osbenchmark.builder.utils.host_cleaner import HostCleaner
 from osbenchmark.builder.utils.path_manager import PathManager
 
 
-class OpenSearchPreparer(Preparer):
+class NodePreparer(Preparer):
     def __init__(self, cluster_config, executor, hook_handler_class):
         super().__init__(executor)
         self.logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class OpenSearchPreparer(Preparer):
 
     def _prepare_node(self, host, node, binary):
         self._prepare_directories(host, node)
-        self._extract_opensearch(host, node, binary)
+        self._extract_node(host, node, binary)
         self._update_node_binary_path(node)
         self._set_node_data_paths(node)
         # we need to immediately delete the prebundled config files as plugins may copy their configuration during installation.
@@ -57,7 +57,7 @@ class OpenSearchPreparer(Preparer):
         for directory_to_create in directories_to_create:
             self.path_manager.create_path(host, directory_to_create)
 
-    def _extract_opensearch(self, host, node, binary):
+    def _extract_node(self, host, node, binary):
         self.logger.info("Unzipping %s to %s", binary, node.binary_path)
         self.executor.execute(host, f"tar -xzvf {binary} --directory {node.binary_path}")
 
@@ -69,7 +69,7 @@ class OpenSearchPreparer(Preparer):
 
     def _delete_prebundled_config_files(self, host, node):
         config_path = os.path.join(node.binary_path, "config")
-        self.logger.info("Deleting pre-bundled OpenSearch configuration at [%s]", config_path)
+        self.logger.info("Deleting pre-bundled configuration at [%s]", config_path)
         self.path_manager.delete_path(host, config_path)
 
     def get_config_vars(self, host, node, all_node_ips):

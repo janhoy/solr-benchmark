@@ -94,7 +94,7 @@ def create(cfg, sources, distribution, cluster_config, plugins=None):
     if os_supplier_type == "source":
         os_src_dir = os.path.join(_src_dir(cfg), _config_value(src_config, "opensearch.src.subdir"))
 
-        source_supplier = OpenSearchSourceSupplier(os_version,
+        source_supplier = SourceSupplier(os_version,
                                                       os_src_dir,
                                                       remote_url=cfg.opts("source", "remote.repo.url"),
                                                       cluster_config=cluster_config,
@@ -102,7 +102,7 @@ def create(cfg, sources, distribution, cluster_config, plugins=None):
                                                       template_renderer=template_renderer)
 
         if caching_enabled:
-            os_file_resolver = OpenSearchFileNameResolver(dist_cfg, template_renderer)
+            os_file_resolver = FileNameResolver(dist_cfg, template_renderer)
             source_supplier = CachedSourceSupplier(source_distributions_root,
                                                    source_supplier,
                                                    os_file_resolver)
@@ -114,7 +114,7 @@ def create(cfg, sources, distribution, cluster_config, plugins=None):
         repo = DistributionRepository(name=cfg.opts("builder", "distribution.repository"),
                                       distribution_config=dist_cfg,
                                       template_renderer=template_renderer)
-        suppliers.append(OpenSearchDistributionSupplier(repo, os_version, distributions_root))
+        suppliers.append(DistributionSupplier(repo, os_version, distributions_root))
 
     for plugin in plugins:
         supplier_type, plugin_version, _ = supply_requirements[plugin.name]
@@ -296,7 +296,7 @@ class CompositeSupplier:
         return binaries
 
 
-class OpenSearchFileNameResolver:
+class FileNameResolver:
     def __init__(self, distribution_config, template_renderer):
         self.cfg = distribution_config
         self.runtime_jdk_bundled = convert.to_bool(self.cfg.get("runtime.jdk.bundled", False))
@@ -386,7 +386,7 @@ class CachedSourceSupplier:
                 self.logger.info("Not caching [%s] (no revision info).", original_path)
 
 
-class OpenSearchSourceSupplier:
+class SourceSupplier:
     def __init__(self, revision, os_src_dir, remote_url, cluster_config, builder, template_renderer):
         self.revision = revision
         self.src_dir = os_src_dir
@@ -518,7 +518,7 @@ class CorePluginSourceSupplier:
                                    self.plugin.name)
 
 
-class OpenSearchDistributionSupplier:
+class DistributionSupplier:
     def __init__(self, repo, version, distributions_root):
         self.repo = repo
         self.version = version

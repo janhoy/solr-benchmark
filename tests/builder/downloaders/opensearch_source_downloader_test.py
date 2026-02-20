@@ -1,12 +1,12 @@
 from unittest import TestCase, mock
 from unittest.mock import Mock
 
-from osbenchmark.builder.downloaders.opensearch_source_downloader import OpenSearchSourceDownloader
+from osbenchmark.builder.downloaders.opensearch_source_downloader import SourceDownloader
 from osbenchmark.builder.cluster_config import ClusterConfigInstance
 from osbenchmark.builder.utils.binary_keys import BinaryKeys
 
 
-class OpenSearchSourceDownloaderTest(TestCase):
+class SourceDownloaderTest(TestCase):
     def setUp(self):
         self.host = None
 
@@ -40,7 +40,7 @@ class OpenSearchSourceDownloaderTest(TestCase):
             }
         })
 
-        self.opensearch_source_downloader = OpenSearchSourceDownloader(self.cluster_config, self.executor,
+        self.opensearch_source_downloader = SourceDownloader(self.cluster_config, self.executor,
                                                                        self.source_repository_provider, self.binary_builder,
                                                                        self.template_renderer, self.artifact_variables_provider)
 

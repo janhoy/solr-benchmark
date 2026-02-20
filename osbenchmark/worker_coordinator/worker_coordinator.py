@@ -48,10 +48,6 @@ import thespian.actors
 from osbenchmark.utils import opts
 from osbenchmark import actor, config, exceptions, metrics, workload, client, paths, PROGRAM_NAME, telemetry
 
-try:
-    import opensearchpy as _opensearchpy
-except ImportError:
-    _opensearchpy = None
 from osbenchmark.worker_coordinator import runner, scheduler
 from osbenchmark.workload import WorkloadProcessorRegistry, load_workload, load_workload_plugins, ingestion_manager
 from osbenchmark.utils import convert, console, net
@@ -1029,7 +1025,7 @@ class WorkerCoordinator:
             self.logger.info("REST API is available.")
         else:
             self.logger.error("REST API layer is not yet available. Stopping benchmark.")
-            raise exceptions.SystemSetupError("OpenSearch REST API layer is not available.")
+            raise exceptions.SystemSetupError("REST API layer is not available.")
 
     def retrieve_cluster_info(self, opensearch):
         try:
@@ -1057,15 +1053,14 @@ class WorkerCoordinator:
 
         os_clients = self.create_os_clients()
 
-        # Detect Solr mode: SolrClientShim is returned by OsClientFactory when opensearchpy is absent.
         solr_mode = isinstance(os_clients.get("default"), client.SolrClientShim)
 
         skip_rest_api_check = self.config.opts("builder", "skip.rest.api.check")
         uses_static_responses = self.config.opts("client", "options").uses_static_responses
         if solr_mode:
             self.logger.info(
-                "Running in Solr-only mode (opensearchpy not available). "
-                "Skipping REST API check and OpenSearch telemetry."
+                "Running in Solr-only mode. "
+                "Skipping REST API check and standard telemetry."
             )
         elif skip_rest_api_check:
             self.logger.info("Skipping REST API check as requested explicitly.")
@@ -2596,23 +2591,6 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
                 total_ops_unit = "ops"
                 request_meta_data = {"success": True}
         except Exception as e:
-            # Translate opensearchpy exceptions to our backend-agnostic hierarchy
-            # so that this handler works whether or not opensearchpy is installed.
-            if _opensearchpy and isinstance(e, _opensearchpy.TransportError):
-                status_code = e.status_code if isinstance(e.status_code, int) else None
-                err_attr = e.error
-                info_attr = getattr(e, "info", None)
-                # pylint: disable=unidiomatic-typecheck
-                if type(e) is _opensearchpy.ConnectionError:
-                    e = exceptions.BenchmarkConnectionError(str(e), status_code=status_code,
-                                                            error=err_attr, info=info_attr)
-                elif isinstance(e, _opensearchpy.ConnectionTimeout):
-                    e = exceptions.BenchmarkConnectionTimeout(str(e), status_code=status_code,
-                                                              error=err_attr, info=info_attr)
-                else:
-                    e = exceptions.BenchmarkTransportError(str(e), status_code=status_code,
-                                                           error=err_attr, info=info_attr)
-
             if not isinstance(e, exceptions.BenchmarkTransportError):
                 raise
 

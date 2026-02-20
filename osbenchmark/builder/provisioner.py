@@ -46,7 +46,7 @@ def local(cfg, cluster_config, plugins, ip, http_port, all_node_ips, all_node_na
     runtime_jdk = cluster_config.mandatory_var("runtime.jdk")
     _, java_home = java_resolver.java_home(runtime_jdk, cfg.opts("builder", "runtime.jdk"), runtime_jdk_bundled)
 
-    os_installer = OpenSearchInstaller(
+    os_installer = NodeInstaller(
         cluster_config, java_home, node_name,
         node_root_dir, all_node_ips, all_node_names, ip, http_port)
     plugin_installers = [PluginInstaller(plugin, java_home) for plugin in plugins]
@@ -240,7 +240,7 @@ class BareProvisioner:
         return provisioner_vars
 
 
-class OpenSearchInstaller:
+class NodeInstaller:
     def __init__(self, cluster_config, java_home, node_name, node_root_dir, all_node_ips, all_node_names, ip, http_port,
                  hook_handler_class=cluster_config.BootstrapHookHandler):
         self.cluster_config = cluster_config
@@ -274,7 +274,7 @@ class OpenSearchInstaller:
 
     def delete_pre_bundled_configuration(self):
         config_path = os.path.join(self.os_home_path, "config")
-        self.logger.info("Deleting pre-bundled OpenSearch configuration at [%s]", config_path)
+        self.logger.info("Deleting pre-bundled configuration at [%s]", config_path)
         shutil.rmtree(config_path)
 
     def invoke_install_hook(self, phase, variables):
