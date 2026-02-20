@@ -221,17 +221,15 @@ class SolrProvisioner:
 
 class SolrDockerLauncher:
     """
-    Launch an official Solr Docker container for benchmarking.
+    Launch an official Solr Docker container for benchmarking in SolrCloud mode.
 
     Uses the ``docker`` CLI; Docker must be installed and available in PATH.
-
-    Supported modes:
-      - "cloud"        → runs Solr in SolrCloud mode (SOLR_CLOUD_MODE=yes)
-      - "user-managed" → runs Solr in standalone mode (default for Solr 10+)
+    Solr is always started with ``-c`` (``--cloud``) so that the ZooKeeper-backed
+    SolrCloud API is available for collection management.
 
     Example:
         launcher = SolrDockerLauncher(port=8983)
-        launcher.start("9")   # pulls solr:9 if needed
+        launcher.start("9.7.0")   # pulls solr:9.7.0 if needed
         # ... run benchmark ...
         launcher.stop()
     """
@@ -244,32 +242,28 @@ class SolrDockerLauncher:
         self.startup_timeout = startup_timeout
         self.container_name = container_name or self.DEFAULT_CONTAINER_NAME
 
-    def start(self, version_tag: str = "9", mode: str = None) -> None:
+    def start(self, version_tag: str = "9") -> None:
         """
-        Start a Solr container.
+        Start a Solr container in SolrCloud mode.
 
         Args:
-            version_tag: Docker image tag, e.g. "9", "10", "9.7.0".
-            mode:        "cloud" or "user-managed" (None = auto-detect from tag).
+            version_tag: Docker image tag, e.g. "9", "9.7.0", "latest".
         """
-        major = int(str(version_tag).split(".")[0])
-        if mode is None:
-            mode = "cloud" if major <= 9 else "user-managed"
-
         image = f"solr:{version_tag}"
-        env_args = []
-        if mode == "cloud":
-            env_args = ["-e", "SOLR_CLOUD_MODE=yes"]
 
+        # Pass '-c' after the image name so the Solr Docker entrypoint starts
+        # Solr with the --cloud flag (SolrCloud mode).
         cmd = [
             "docker", "run",
             "--rm",
             "--name", self.container_name,
             "-p", f"{self.port}:8983",
             "-d",
-        ] + env_args + [image]
+            image,
+            "-c",  # SolrCloud mode
+        ]
 
-        logger.info("Starting Solr Docker container: %s", " ".join(cmd))
+        logger.info("Starting Solr Docker container in cloud mode: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise SolrProvisionerError(
@@ -277,7 +271,8 @@ class SolrDockerLauncher:
             )
 
         self._wait_for_ready()
-        logger.info("Solr Docker container '%s' ready on port %d", self.container_name, self.port)
+        logger.info("Solr Docker container '%s' ready on port %d (SolrCloud mode)",
+                    self.container_name, self.port)
 
     def stop(self) -> None:
         """Stop and remove the Solr container."""
