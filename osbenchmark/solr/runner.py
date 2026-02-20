@@ -203,6 +203,156 @@ def _translate_ndjson_batch(lines):
 
 
 # ---------------------------------------------------------------------------
+# OpenSearch → Solr query translation helpers
+#
+# Best-effort translation of common OpenSearch query DSL patterns to Solr
+# query syntax.  Complex or unknown query structures fall back to q=*:*.
+# ---------------------------------------------------------------------------
+
+def _solr_escape(value):
+    """Escape special Lucene/Solr query characters in a field value."""
+    special = r'+-&&||!(){}[]^"~*?:\/'
+    result = []
+    for char in str(value):
+        if char in special:
+            result.append('\\' + char)
+        else:
+            result.append(char)
+    return ''.join(result)
+
+
+def _os_query_to_solr_q(body):
+    """
+    Translate an OpenSearch query DSL dict to a Solr ``q`` string.
+
+    Supported patterns:
+      - ``match_all``             → ``*:*``
+      - ``term``                  → ``field:value``
+      - ``terms``                 → ``field:(v1 v2 v3)``
+      - ``match`` / ``match_phrase`` → ``field:value``
+      - ``range``                 → ``field:[lo TO hi]``
+      - ``exists``                → ``field:[* TO *]``
+      - ``bool`` (must/filter/should/must_not) → recursive translation
+      - ``ids``                   → ``id:(id1 id2 ...)``
+
+    Falls back to ``*:*`` for unrecognised patterns (logs at DEBUG level).
+    """
+    if not body or not isinstance(body, dict):
+        return "*:*"
+    query = body.get("query", {})
+    return _translate_query_node(query)
+
+
+def _translate_query_node(node):
+    """Recursively translate a single OpenSearch query node."""
+    if not node or not isinstance(node, dict):
+        return "*:*"
+
+    if "match_all" in node:
+        return "*:*"
+
+    if "match_none" in node:
+        return "-*:*"
+
+    if "term" in node:
+        for field, value in node["term"].items():
+            v = value.get("value", value) if isinstance(value, dict) else value
+            return f"{field}:{_solr_escape(v)}"
+
+    if "terms" in node:
+        for field, values in node["terms"].items():
+            if field.startswith("_"):
+                continue
+            escaped = " ".join(_solr_escape(v) for v in values)
+            return f"{field}:({escaped})"
+
+    if "match" in node or "match_phrase" in node:
+        sub = node.get("match") or node.get("match_phrase")
+        for field, value in sub.items():
+            v = value.get("query", value) if isinstance(value, dict) else value
+            return f"{field}:{_solr_escape(v)}"
+
+    if "range" in node:
+        for field, bounds in node["range"].items():
+            lo = bounds.get("gte", bounds.get("gt", "*"))
+            hi = bounds.get("lte", bounds.get("lt", "*"))
+            return f"{field}:[{lo} TO {hi}]"
+
+    if "exists" in node:
+        field = node["exists"].get("field", "*")
+        return f"{field}:[* TO *]"
+
+    if "ids" in node:
+        values = node["ids"].get("values", [])
+        if values:
+            escaped = " ".join(_solr_escape(v) for v in values)
+            return f"id:({escaped})"
+        return "*:*"
+
+    if "bool" in node:
+        bool_q = node["bool"]
+        parts = []
+
+        def _add(clauses, prefix):
+            if not clauses:
+                return
+            if isinstance(clauses, dict):
+                clauses = [clauses]
+            for clause in clauses:
+                sub = _translate_query_node(clause)
+                if sub and sub != "*:*":
+                    parts.append(f"{prefix}({sub})")
+
+        _add(bool_q.get("must"), "+")
+        _add(bool_q.get("filter"), "+")
+        _add(bool_q.get("must_not"), "-")
+
+        shoulds = bool_q.get("should", [])
+        if isinstance(shoulds, dict):
+            shoulds = [shoulds]
+        should_parts = [_translate_query_node(s) for s in shoulds]
+        should_parts = [s for s in should_parts if s and s != "*:*"]
+        if should_parts:
+            parts.append("(" + " ".join(should_parts) + ")")
+
+        return " ".join(parts) if parts else "*:*"
+
+    # Unknown / untranslatable query node
+    logger.warning(
+        "Cannot translate OpenSearch query type '%s' to Solr syntax. "
+        "Falling back to q=*:* (results may not match workload intent). "
+        "Consider rewriting this operation as a native Solr workload task.",
+        list(node.keys()),
+    )
+    return "*:*"
+
+
+def _extract_sort_param(body):
+    """Extract a Solr sort string from an OpenSearch sort clause."""
+    if not isinstance(body, dict) or "sort" not in body:
+        return None
+    sort_clauses = body["sort"]
+    if isinstance(sort_clauses, dict):
+        sort_clauses = [sort_clauses]
+    solr_sorts = []
+    for clause in sort_clauses:
+        if isinstance(clause, str):
+            solr_sorts.append(clause)
+        elif isinstance(clause, dict):
+            for field, order_info in clause.items():
+                if field == "_score":
+                    continue
+                if isinstance(order_info, dict):
+                    order = order_info.get("order", "asc")
+                elif isinstance(order_info, str):
+                    order = order_info
+                else:
+                    order = "asc"
+                solr_sorts.append(f"{field} {order}")
+    return ", ".join(solr_sorts) if solr_sorts else None
+
+
+# ---------------------------------------------------------------------------
 # Base runner with automatic error translation
 # ---------------------------------------------------------------------------
 
@@ -284,54 +434,94 @@ class SolrSearch(SolrRunner):
     """
     Execute a Solr search query.
 
-    Mode 1 — Classic params (default): uses pysolr.Solr.search()
+    Handles three input formats so that both Solr-native workloads and standard
+    OSB workloads (which provide OpenSearch query DSL) work transparently:
+
+    Mode 1 — Classic Solr params (default): uses pysolr.Solr.search()
       Params: ``q``, ``fl``, ``rows``, ``fq``, ``sort``, ``request-params``
 
-    Mode 2 — JSON Query DSL: triggered by presence of ``body`` key
-      Sends ``body`` dict as JSON to ``/query`` endpoint via requests.post()
+    Mode 2 — Solr JSON Query DSL: triggered when ``body`` is present and
+      ``body["query"]`` is a **string** (native Solr JSON DSL).
+      POSTs ``body`` as JSON to ``/solr/{collection}/query``.
+
+    Mode 3 — OpenSearch query DSL: triggered when ``body`` is present and
+      ``body["query"]`` is a **dict** (standard OSB workload format).
+      Translates the OpenSearch DSL to a Solr ``q`` string and uses
+      pysolr.Solr.search().  Aggregations are silently ignored.
+      The ``index`` param is accepted as an alias for ``collection``.
 
     Common params:
-      - ``host``, ``port``, ``collection``, ``username``, ``password``, ``tls``, ``timeout``
-      - ``cache`` — include in cache (ignored for Solr, kept for API compat)
+      - ``host``, ``port``, ``collection`` (or ``index``), ``username``,
+        ``password``, ``tls``, ``timeout``
+      - ``cache`` — kept for API compat, ignored in Solr
     """
 
     async def __call__(self, solr_not_used, params):
         host = params.get("host", "localhost")
         port = params.get("port", 8983)
-        collection = params["collection"]
+        # Accept 'index' as alias for 'collection' (standard OSB workload format)
+        collection = params.get("collection") or params.get("index", "default")
         tls = params.get("tls", False)
         timeout = params.get("timeout", 30)
         scheme = "https" if tls else "http"
 
         start = time.perf_counter()
 
-        if "body" in params:
-            # Mode 2: JSON Query DSL → POST /solr/{collection}/query
-            url = f"{scheme}://{host}:{port}/solr/{collection}/query"
-            req_headers = {"Content-Type": "application/json"}
-            username = params.get("username")
-            password = params.get("password")
-            auth = (username, password) if username and password else None
+        body = params.get("body")
+        if body is not None:
+            query_val = body.get("query") if isinstance(body, dict) else None
 
-            def _do_json_search():
-                resp = requests.post(url, json=params["body"],
-                                     headers=req_headers, auth=auth,
-                                     timeout=timeout)
-                resp.raise_for_status()
-                return resp.json()
+            if isinstance(query_val, dict):
+                # Mode 3: OpenSearch query DSL → translate to Solr classic params
+                if "aggs" in body or "aggregations" in body:
+                    logger.warning(
+                        "OpenSearch aggregations are not supported in Solr mode and will be "
+                        "ignored (collection=%s). Consider rewriting as a native Solr facet query.",
+                        collection,
+                    )
+                q = _os_query_to_solr_q(body)
+                rows = body.get("size", 10) if isinstance(body, dict) else 10
+                sort_param = _extract_sort_param(body)
 
-            result = await _run_in_executor(_do_json_search)
-            num_hits = result.get("response", {}).get("numFound", 0)
+                solr_params = dict(params)
+                solr_params["collection"] = collection
+                client = _solr_client(solr_params)
+                kwargs = {"rows": rows}
+                if sort_param:
+                    kwargs["sort"] = sort_param
+                # OSB uses "request_params" (underscore), Solr workloads use "request-params" (hyphen)
+                kwargs.update(params.get("request_params", params.get("request-params", {})))
+
+                results = await _run_in_executor(client.search, q, **kwargs)
+                num_hits = results.hits
+            else:
+                # Mode 2: Solr JSON Query DSL → POST /solr/{collection}/query
+                url = f"{scheme}://{host}:{port}/solr/{collection}/query"
+                req_headers = {"Content-Type": "application/json"}
+                username = params.get("username")
+                password = params.get("password")
+                auth = (username, password) if username and password else None
+
+                def _do_json_search():
+                    resp = requests.post(url, json=body,
+                                         headers=req_headers, auth=auth,
+                                         timeout=timeout)
+                    resp.raise_for_status()
+                    return resp.json()
+
+                result = await _run_in_executor(_do_json_search)
+                num_hits = result.get("response", {}).get("numFound", 0)
         else:
-            # Mode 1: Classic params → pysolr.Solr.search()
-            client = _solr_client(params)
+            # Mode 1: Classic Solr params → pysolr.Solr.search()
+            solr_params = dict(params)
+            solr_params["collection"] = collection
+            client = _solr_client(solr_params)
             q = params.get("q", "*:*")
             kwargs = {}
             for key in ("fl", "rows", "fq", "sort"):
                 if key in params:
                     kwargs[key] = params[key]
-            extra = params.get("request-params", {})
-            kwargs.update(extra)
+            kwargs.update(params.get("request-params", {}))
 
             results = await _run_in_executor(client.search, q, **kwargs)
             num_hits = results.hits
@@ -342,6 +532,7 @@ class SolrSearch(SolrRunner):
             "weight": 1,
             "unit": "ops",
             "hits": num_hits,
+            "hits-total": num_hits,
             "took": elapsed,
         }
 
@@ -753,14 +944,77 @@ def register_solr_runners(register_runner):
 
     # Bridge runners: override OSB's default OpenSearch runners so that standard
     # workloads (e.g. nyc_taxis) work against Solr without modification.
+    # create-index == create-collection, delete-index == delete-collection, etc.
     register_runner("delete-index", SolrDeleteIndexBridge(), async_runner=True)
     register_runner("create-index", SolrCreateIndexBridge(), async_runner=True)
     register_runner("bulk", SolrBulkBridge(), async_runner=True)
 
-    # No-op bridges for OpenSearch-specific admin operations
-    for _op in ("cluster-health", "refresh", "force-merge", "index-stats", "node-stats",
-                "put-pipeline", "delete-pipeline", "create-index-template",
-                "delete-index-template", "create-composable-template",
-                "delete-composable-template", "create-component-template",
-                "delete-component-template"):
+    # paginated-search and scroll-search → same runner as search
+    _search_runner = SolrSearch()
+    register_runner("paginated-search", _search_runner, async_runner=True)
+    register_runner("scroll-search", _search_runner, async_runner=True)
+
+    # No-op bridges for OpenSearch-specific operations that have no Solr equivalent.
+    # Covering every OperationType from workload.py so that any standard OSB
+    # workload can be run against Solr without raising "unknown operation" errors.
+    for _op in (
+        # Index/shard admin — no direct Solr equivalent
+        "cluster-health",
+        "refresh",
+        "force-merge",
+        "index-stats",
+        "node-stats",
+        "put-settings",
+        "shrink-index",
+        "wait-for-recovery",
+        # Ingest pipelines (Solr has no concept of ingest pipelines)
+        "put-pipeline",
+        "delete-pipeline",
+        # Index/data-stream templates
+        "create-index-template",
+        "delete-index-template",
+        "create-composable-template",
+        "delete-composable-template",
+        "create-component-template",
+        "delete-component-template",
+        "create-data-stream",
+        "delete-data-stream",
+        # Snapshot / restore
+        "create-snapshot-repository",
+        "delete-snapshot-repository",
+        "create-snapshot",
+        "restore-snapshot",
+        "wait-for-snapshot-create",
+        # Transforms
+        "create-transform",
+        "start-transform",
+        "wait-for-transform",
+        "delete-transform",
+        # Async search (Solr has no async search API)
+        "submit-async-search",
+        "get-async-search",
+        "delete-async-search",
+        # Point-in-time (Solr has no PIT concept)
+        "create-point-in-time",
+        "delete-point-in-time",
+        "list-all-point-in-time",
+        # Search pipeline (OpenSearch-specific)
+        "create-search-pipeline",
+        # Vector / KNN (Solr has its own dense-vector support but separate ops)
+        "vector-search",
+        "bulk-vector-data-set",
+        "train-knn-model",
+        "delete-knn-model",
+        # ML model operations (OpenSearch ML Commons — no Solr equivalent)
+        "register-ml-model",
+        "deploy-ml-model",
+        "delete-ml-model",
+        "create-ml-connector",
+        "register-remote-ml-model",
+        "delete-ml-connector",
+        # Streaming ingestion (Kafka-based, not applicable to Solr)
+        "produce-stream-message",
+        # Concurrent segment search settings
+        "update-concurrent-segment-search-settings",
+    ):
         register_runner(_op, SolrNoOpBridge(_op), async_runner=True)

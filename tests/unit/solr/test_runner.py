@@ -171,17 +171,55 @@ class TestSolrSearch(unittest.TestCase):
 
     @patch("osbenchmark.solr.runner.requests.post")
     def test_json_dsl_mode(self, mock_post):
+        """Mode 2: body with a Solr-style string query → POST to /query endpoint."""
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {"response": {"numFound": 7}}
         mock_post.return_value = mock_resp
 
-        params = {**self._base_params(), "body": {"query": {"match_all": {}}}}
+        # Solr JSON DSL uses a string for the 'query' key, not a dict
+        params = {**self._base_params(), "body": {"query": "*:*", "limit": 5}}
         runner = SolrSearch()
         result = _run(runner(None, params))
 
         self.assertEqual(7, result["hits"])
         mock_post.assert_called_once()
+
+    @patch("osbenchmark.solr.runner.pysolr.Solr")
+    def test_os_dsl_mode_match_all(self, mock_solr_cls):
+        """Mode 3: body with OpenSearch match_all → translated to Solr q=*:*."""
+        mock_results = MagicMock()
+        mock_results.hits = 99
+        mock_solr = MagicMock()
+        mock_solr.search.return_value = mock_results
+        mock_solr_cls.return_value = mock_solr
+
+        params = {**self._base_params(), "body": {"query": {"match_all": {}}, "size": 20}}
+        runner = SolrSearch()
+        result = _run(runner(None, params))
+
+        self.assertEqual(99, result["hits"])
+        mock_solr.search.assert_called_once_with("*:*", rows=20)
+
+    @patch("osbenchmark.solr.runner.pysolr.Solr")
+    def test_os_dsl_mode_index_alias(self, mock_solr_cls):
+        """Mode 3: 'index' param accepted as alias for 'collection'."""
+        mock_results = MagicMock()
+        mock_results.hits = 5
+        mock_solr = MagicMock()
+        mock_solr.search.return_value = mock_results
+        mock_solr_cls.return_value = mock_solr
+
+        params = {
+            "host": "localhost", "port": 8983,
+            "index": "nyc_taxis",
+            "body": {"query": {"term": {"vendor_id": "1"}}},
+        }
+        runner = SolrSearch()
+        result = _run(runner(None, params))
+
+        self.assertEqual(5, result["hits"])
+        mock_solr.search.assert_called_once_with("vendor_id:1", rows=10)
 
 
 class TestSolrCreateCollection(unittest.TestCase):
