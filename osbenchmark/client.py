@@ -32,7 +32,7 @@ from osbenchmark import exceptions, doc_link
 from osbenchmark.context import RequestContextHolder
 from osbenchmark.utils import console
 
-class SolrClientShim(RequestContextHolder):
+class SolrClient(RequestContextHolder):
     """
     Minimal client shim used in Solr benchmarks.
 
@@ -53,17 +53,17 @@ class SolrClientShim(RequestContextHolder):
 
 class OsClientFactory:
     """
-    Client factory — always returns a SolrClientShim for this Solr benchmark fork.
+    Client factory — always returns a SolrClient for this Solr benchmark fork.
     The host/client_options parameters are accepted for API compatibility but ignored.
     """
     def __init__(self, hosts, client_options):
         self.logger = logging.getLogger(__name__)
 
     def create(self):
-        return SolrClientShim()
+        return SolrClient()
 
     def create_async(self):
-        return SolrClientShim()
+        return SolrClient()
 
 
 def wait_for_rest_layer(client, max_attempts=40):

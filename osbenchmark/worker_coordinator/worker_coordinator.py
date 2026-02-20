@@ -974,7 +974,7 @@ class WorkerCoordinator:
 
         os_default = opensearch.get("default") if opensearch else None
 
-        if isinstance(os_default, client.SolrClientShim):
+        if isinstance(os_default, client.SolrClient):
             # Solr mode — use Solr telemetry devices instead of OpenSearch ones.
             self.telemetry = telemetry.Telemetry(enabled_devices, devices=self._create_solr_telemetry_devices())
             return
@@ -1053,7 +1053,7 @@ class WorkerCoordinator:
 
         os_clients = self.create_os_clients()
 
-        solr_mode = isinstance(os_clients.get("default"), client.SolrClientShim)
+        solr_mode = isinstance(os_clients.get("default"), client.SolrClient)
 
         skip_rest_api_check = self.config.opts("builder", "skip.rest.api.check")
         uses_static_responses = self.config.opts("client", "options").uses_static_responses
@@ -1081,7 +1081,7 @@ class WorkerCoordinator:
                 devices.append("node-stats")
                 self.config.add(config.Scope.application, "telemetry", "devices", devices)
 
-        # In Solr mode, prepare_telemetry detects SolrClientShim and wires Solr devices.
+        # In Solr mode, prepare_telemetry detects SolrClient and wires Solr devices.
         # In static-response mode, telemetry is disabled to avoid connecting to the cluster.
         self.prepare_telemetry(os_clients, enable=not uses_static_responses)
 

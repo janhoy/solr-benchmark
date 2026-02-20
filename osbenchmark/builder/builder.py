@@ -275,7 +275,7 @@ def cluster_distribution_version(cfg, client_factory=client.OsClientFactory):
     hosts = cfg.opts("client", "hosts").default
     client_options = cfg.opts("client", "options").default
     opensearch = client_factory(hosts, client_options).create()
-    if isinstance(opensearch, client.SolrClientShim):
+    if isinstance(opensearch, client.SolrClient):
         return "2.11.0"
     # unconditionally wait for the REST layer - if it's not up by then, we'll intentionally raise the original error
     client.wait_for_rest_layer(opensearch)
