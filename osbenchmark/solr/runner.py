@@ -1016,13 +1016,15 @@ def register_solr_runners(register_runner):
     register_runner("paginated-search", _search_runner, async_runner=True)
     register_runner("scroll-search", _search_runner, async_runner=True)
 
+    # refresh → commit (reuse SolrCommit runner)
+    register_runner("refresh", SolrCommit(), async_runner=True)
+
     # No-op bridges for OpenSearch-specific operations that have no Solr equivalent.
     # Covering every OperationType from workload.py so that any standard OSB
     # workload can be run against Solr without raising "unknown operation" errors.
     for _op in (
         # Index/shard admin — no direct Solr equivalent
         "cluster-health",
-        "refresh",
         "force-merge",
         "index-stats",
         "node-stats",
