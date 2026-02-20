@@ -965,38 +965,6 @@ class SolrBulkBridge(SolrRunner):
         return "bulk"
 
 
-class SolrRefreshBridge(SolrRunner):
-    """
-    Bridge: maps OSB 'refresh' to Solr hard commit.
-
-    In OpenSearch, refresh makes recent changes visible for search. In Solr,
-    this is accomplished via commit. Issues a hard commit to the collection
-    specified in params["index"] or params["collection"].
-
-    Params:
-      - ``index`` or ``collection`` — collection name
-      - Solr connection params (``host``, ``port``, ...) defaulting to localhost:8983
-    """
-
-    async def __call__(self, solr_not_used, params):
-        # Derive collection from index or collection param
-        collection = params.get("collection") or params.get("index", "default")
-
-        solr_params = dict(params)
-        solr_params["collection"] = collection
-        client = _solr_client(solr_params)
-
-        start = time.perf_counter()
-        await _run_in_executor(client.commit)
-        elapsed = time.perf_counter() - start
-
-        logger.info("Committed collection '%s' (took %.3fs)", collection, elapsed)
-        return {"weight": 1, "unit": "ops", "success": True, "took": elapsed}
-
-    def __str__(self):
-        return "refresh"
-
-
 class SolrNoOpBridge(SolrRunner):
     """
     Silently skips OpenSearch-specific operations that have no Solr equivalent
@@ -1048,15 +1016,13 @@ def register_solr_runners(register_runner):
     register_runner("paginated-search", _search_runner, async_runner=True)
     register_runner("scroll-search", _search_runner, async_runner=True)
 
-    # refresh → commit (makes indexed documents visible)
-    register_runner("refresh", SolrRefreshBridge(), async_runner=True)
-
     # No-op bridges for OpenSearch-specific operations that have no Solr equivalent.
     # Covering every OperationType from workload.py so that any standard OSB
     # workload can be run against Solr without raising "unknown operation" errors.
     for _op in (
         # Index/shard admin — no direct Solr equivalent
         "cluster-health",
+        "refresh",
         "force-merge",
         "index-stats",
         "node-stats",
