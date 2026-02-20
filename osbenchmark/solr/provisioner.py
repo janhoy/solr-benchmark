@@ -226,8 +226,8 @@ class SolrDockerLauncher:
     Uses the ``docker`` CLI; Docker must be installed and available in PATH.
 
     Supported modes:
-      - "cloud"        → runs Solr in SolrCloud mode (SOLR_CLOUD_MODE=yes)
-      - "user-managed" → runs Solr in standalone mode (default for Solr 10+)
+      - "cloud" (default) → runs Solr in SolrCloud mode (SOLR_CLOUD_MODE=yes)
+      - "user-managed"    → runs Solr in standalone mode
 
     Example:
         launcher = SolrDockerLauncher(port=8983)
@@ -244,17 +244,14 @@ class SolrDockerLauncher:
         self.startup_timeout = startup_timeout
         self.container_name = container_name or self.DEFAULT_CONTAINER_NAME
 
-    def start(self, version_tag: str = "9", mode: str = None) -> None:
+    def start(self, version_tag: str = "9", mode: str = "cloud") -> None:
         """
         Start a Solr container.
 
         Args:
             version_tag: Docker image tag, e.g. "9", "10", "9.7.0".
-            mode:        "cloud" or "user-managed" (None = auto-detect from tag).
+            mode:        "cloud" (default) or "user-managed".
         """
-        major = int(str(version_tag).split(".")[0])
-        if mode is None:
-            mode = "cloud" if major <= 9 else "user-managed"
 
         image = f"solr:{version_tag}"
         env_args = []
