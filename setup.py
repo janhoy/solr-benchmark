@@ -104,6 +104,9 @@ install_requires = [
     "boto3>=1.28.62",
     # Licence: BSD-3-Clause
     "zstandard>=0.22.0",
+    # License: BSD
+    # Required for knnvector workload
+    "numpy>=1.24.2,<=1.26.4",
     # License: MIT
     "tqdm",
     # License: MIT
@@ -116,8 +119,6 @@ install_requires = [
     "pydantic_core>=2.27.2",
     # License: MIT
     "PyYAML>=5.4",
-    # License: BSD
-    "numpy>=1.20.0",
 ]
 
 tests_require = [

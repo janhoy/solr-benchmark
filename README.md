@@ -15,7 +15,8 @@ If you are looking to performance test Apache Solr, this tool can help you with:
 * Setting up and tearing down Solr clusters for benchmarking (local distribution or Docker)
 * Managing benchmark workloads (collections, configsets, search operations)
 * Collecting JVM, node, and collection metrics via telemetry devices
-* Migrating existing OSB/Rally workloads to Solr format
+* Track performance regressions over time
+* Run some existing OSB/Rally workloads on Solr through auto conversion
 
 ## Quick Start
 
@@ -27,14 +28,14 @@ pip install -e .
 
 **NOTE**: We do not offer the tool as a python package yet 
 
-### Run a benchmark against an already-running Solr instance
+### Run a benchmark against a solr version in Docker
 
 ```bash
 solr-benchmark execute-test \
-  --pipeline=benchmark-only \
+  --pipeline=solr-docker \
+  --distribution-version=9.10.1 \
   --workload=<your-workload> \
-  --challenge=<challenge-name> \
-  --target-host=localhost:8983
+  --challenge=<challenge-name>
 ```
 
 ### Provision Solr locally, then benchmark
