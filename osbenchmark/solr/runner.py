@@ -151,43 +151,95 @@ async def _run_in_executor(func, *args, **kwargs):
 
 def _translate_ndjson_batch(lines):
     """
-    Translate NDJSON action/document pairs to a list of Solr document dicts.
+    Translate NDJSON to a list of Solr document dicts.
 
-    For each pair:
-      - Action line ``{"index": {"_id": "<id>", "_index": "<coll>", ...}}``
-      - Document line ``{field: value, ...}``
+    Supports two formats:
 
-    Translation rules:
-      - ``_id`` from action line  → ``"id"`` field in document
-      - ``_index`` from action line → available for routing/logging (not stored in doc)
-      - ``_type`` from action line → dropped
-      - All document fields are preserved as-is.
+    1. OpenSearch bulk format (action/document pairs):
+       {"index": {"_id": "1", "_index": "coll"}}
+       {"field": "value"}
+       → Extracts _id from action line and sets it as "id" field in document
+
+    2. Simple NDJSON (one document per line):
+       {"field": "value"}
+       {"field2": "value2"}
+       → Each line is a document; no stable IDs unless "id" field is present
+
+    Auto-detects format by checking if lines contain bulk action keys
+    (index, create, update, delete).
     """
     docs = []
     it = iter(lines)
-    for action_line in it:
-        action_line = action_line.strip()
-        if not action_line:
-            continue
-        doc_line = next(it, None)
+
+    # Peek at first line to detect format
+    first_line = None
+    for line in it:
+        line = line.strip()
+        if line:
+            first_line = line
+            break
+
+    if not first_line:
+        return docs
+
+    try:
+        first_obj = json.loads(first_line)
+    except json.JSONDecodeError:
+        logger.warning("Skipping malformed first line: %s", first_line)
+        return docs
+
+    # Detect format: if first object has bulk action keys, it's action/doc pairs
+    has_action_keys = isinstance(first_obj, dict) and any(
+        k in first_obj for k in ("index", "create", "update", "delete")
+    )
+
+    if has_action_keys:
+        # OpenSearch bulk format: action/doc pairs
+        docs = _parse_bulk_pairs(first_line, it)
+    else:
+        # Simple NDJSON format: each line is a document
+        if isinstance(first_obj, dict):
+            docs.append(first_obj)
+        for line in it:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    docs.append(obj)
+            except json.JSONDecodeError as exc:
+                logger.warning("Skipping malformed NDJSON line: %s", exc)
+
+    return docs
+
+
+def _parse_bulk_pairs(first_action_line, lines_iter):
+    """Parse OpenSearch bulk format (alternating action/doc pairs)."""
+    docs = []
+    action_line = first_action_line
+
+    while action_line:
+        doc_line = next(lines_iter, None)
         if doc_line is None:
             break
         doc_line = doc_line.strip()
         if not doc_line:
+            # Try next action
+            action_line = next(lines_iter, "").strip()
             continue
+
         try:
             action = json.loads(action_line)
             doc = json.loads(doc_line)
         except json.JSONDecodeError as exc:
             logger.warning("Skipping malformed NDJSON pair: %s", exc)
+            action_line = next(lines_iter, "").strip()
             continue
 
-        # Validate that action and doc are dicts
-        if not isinstance(action, dict):
-            logger.warning("Skipping NDJSON pair: action line is not a dict: %s", action_line)
-            continue
-        if not isinstance(doc, dict):
-            logger.warning("Skipping NDJSON pair: document line is not a dict: %s", doc_line)
+        if not isinstance(action, dict) or not isinstance(doc, dict):
+            logger.warning("Skipping non-dict action/doc pair")
+            action_line = next(lines_iter, "").strip()
             continue
 
         # Extract action metadata (typically under "index" or "create" key)
@@ -207,6 +259,8 @@ def _translate_ndjson_batch(lines):
             logger.debug("NDJSON _index='%s' (routing only, not stored)", routing_collection)
 
         docs.append(doc)
+        action_line = next(lines_iter, "").strip()
+
     return docs
 
 

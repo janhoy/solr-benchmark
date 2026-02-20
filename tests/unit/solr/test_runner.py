@@ -145,6 +145,29 @@ class TestSolrBulkIndex(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertGreater(result["error-count"], 0)
 
+    @patch("osbenchmark.solr.runner.pysolr.Solr")
+    def test_simple_ndjson_format(self, mock_solr_cls):
+        """Test simple NDJSON (one doc per line, no action lines)."""
+        mock_solr = MagicMock()
+        mock_solr.add = MagicMock(return_value=None)
+        mock_solr_cls.return_value = mock_solr
+
+        # Simple NDJSON: just document lines, no action lines
+        lines = [
+            '{"vendor_id": "1", "trip_distance": 1.2}',
+            '{"vendor_id": "2", "trip_distance": 3.5}',
+            '{"vendor_id": "1", "trip_distance": 0.8}',
+        ]
+        runner = SolrBulkIndex()
+        result = _run(runner(None, self._params(lines)))
+
+        self.assertEqual(3, result["weight"])
+        self.assertTrue(result["success"])
+        # Verify add was called with 3 docs
+        self.assertEqual(1, mock_solr.add.call_count)
+        added_docs = mock_solr.add.call_args[0][0]
+        self.assertEqual(3, len(added_docs))
+
 
 class TestSolrSearch(unittest.TestCase):
     def _base_params(self):
