@@ -101,7 +101,9 @@ class SolrAdminClient:
 
     def upload_configset(self, name: str, configset_dir: str) -> None:
         """
-        Zip the configset directory and upload it via PUT /api/cluster/configs/{name}.
+        Zip the configset directory and upload it via the Solr V1 API.
+
+        Uses: POST /solr/admin/configs?action=UPLOAD&name={name}
 
         The directory must contain a conf/ sub-directory with at minimum
         schema.xml (or managed-schema) and solrconfig.xml.
@@ -111,9 +113,12 @@ class SolrAdminClient:
             configset_dir:  Local path to the directory containing conf/.
         """
         zip_bytes = self._build_configset_zip(configset_dir)
-        url = f"{self.api_url}/cluster/configs/{name}"
-        resp = self._get_session().put(
+        # Use V1 API for configsets (V2 API not available in Solr 9.x)
+        url = f"{self.base_url}/solr/admin/configs"
+        params = {"action": "UPLOAD", "name": name}
+        resp = self._get_session().post(
             url,
+            params=params,
             data=zip_bytes,
             headers={"Content-Type": "application/zip"},
             timeout=self.timeout,
@@ -122,9 +127,17 @@ class SolrAdminClient:
         logger.info("Uploaded configset '%s' from '%s'", name, configset_dir)
 
     def delete_configset(self, name: str) -> None:
-        """Delete a configset via DELETE /api/cluster/configs/{name}."""
-        resp = self._get_session().delete(
-            f"{self.api_url}/cluster/configs/{name}",
+        """
+        Delete a configset via the Solr V1 API.
+
+        Uses: POST /solr/admin/configs?action=DELETE&name={name}
+        """
+        # Use V1 API for configsets (V2 API not available in Solr 9.x)
+        url = f"{self.base_url}/solr/admin/configs"
+        params = {"action": "DELETE", "name": name}
+        resp = self._get_session().post(
+            url,
+            params=params,
             timeout=self.timeout,
         )
         self._raise_for_solr_error(resp, f"delete configset '{name}'")

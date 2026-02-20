@@ -114,6 +114,10 @@ install_requires = [
     "pydantic>=2.10.6",
     # License: MIT
     "pydantic_core>=2.27.2",
+    # License: MIT
+    "PyYAML>=5.4",
+    # License: BSD
+    "numpy>=1.20.0",
 ]
 
 tests_require = [

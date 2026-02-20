@@ -120,13 +120,36 @@ class MmapSource:
         return self.mm.readline()
 
     def readlines(self, num_lines):
+        """
+        Read num_lines from the memory-mapped file.
+        Optimized buffer-based approach: read in chunks, maintain buffer,
+        extract complete lines. Much faster than calling readline() in a loop.
+        """
         lines = []
         mm = self.mm
-        for _ in range(num_lines):
-            line = mm.readline()
-            if line == b"":
+        chunk_size = 1024 * 1024  # 1MB chunks
+        buffer = b''
+
+        while len(lines) < num_lines:
+            chunk = mm.read(chunk_size)
+            if not chunk:
+                # EOF - add any remaining buffer as last line
+                if buffer:
+                    lines.append(buffer)
                 break
-            lines.append(line)
+
+            buffer += chunk
+
+            # Extract complete lines from buffer
+            while b'\n' in buffer and len(lines) < num_lines:
+                newline_pos = buffer.index(b'\n')
+                lines.append(buffer[:newline_pos + 1])
+                buffer = buffer[newline_pos + 1:]
+
+        # Seek back for any unconsumed data in buffer
+        if buffer and len(lines) >= num_lines:
+            mm.seek(mm.tell() - len(buffer))
+
         return lines
 
     def close(self):
@@ -652,10 +675,51 @@ def skip_lines(data_file_path, data_file, number_of_lines_to_skip):
 
     # fast forward to the last known file offset
     data_file.seek(offset)
-    # forward the last remaining lines if needed
+
+    # Optimized skipping for remaining lines: read in chunks and count newlines
+    # instead of calling readline() thousands of times (which is slow on mmap)
     if remaining_lines > 0:
-        for _ in range(remaining_lines):
-            data_file.readline()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("skip_lines: need to skip %d remaining lines using optimized chunk reading", remaining_lines)
+        lines_skipped = 0
+        chunk_size = 1024 * 1024  # 1MB chunks for faster scanning
+
+        # Access underlying mmap object directly (MmapSource.mm) since MmapSource.read()
+        # doesn't accept a size argument
+        mm = getattr(data_file, 'mm', None)
+        if mm is None:
+            # Fallback to slow readline() if not an MmapSource
+            for _ in range(remaining_lines):
+                data_file.readline()
+        else:
+            while lines_skipped < remaining_lines:
+                chunk = mm.read(chunk_size)
+                if not chunk:
+                    break  # EOF reached
+
+                # Count newlines in this chunk
+                newlines_in_chunk = chunk.count(b'\n')
+
+                if lines_skipped + newlines_in_chunk <= remaining_lines:
+                    # This whole chunk is part of the skip
+                    lines_skipped += newlines_in_chunk
+                else:
+                    # We'll overshoot - need to find exact position
+                    lines_needed = remaining_lines - lines_skipped
+                    pos = 0
+                    for _ in range(lines_needed):
+                        # Find next newline
+                        newline_pos = chunk.find(b'\n', pos)
+                        if newline_pos == -1:
+                            break
+                        pos = newline_pos + 1
+
+                    # Seek back to just after the final newline we need to skip
+                    current_pos = mm.tell()
+                    mm.seek(current_pos - len(chunk) + pos)
+                    lines_skipped = remaining_lines
+                    break
 
 
 def get_size(start_path="."):

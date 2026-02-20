@@ -24,6 +24,7 @@ offloaded to a thread-pool executor so they do not block the event loop.
 """
 
 import asyncio
+from datetime import datetime
 import json
 import logging
 import time
@@ -214,6 +215,125 @@ def _translate_ndjson_batch(lines):
     return docs
 
 
+def _translate_ndjson_stream(lines):
+    """
+    Stream-translate NDJSON to Solr documents (generator version).
+
+    Yields documents one at a time instead of loading all into memory.
+    Supports both OpenSearch bulk format and simple NDJSON.
+    """
+    it = iter(lines)
+
+    # Peek at first line to detect format
+    first_line = None
+    for line in it:
+        line = line.strip()
+        if line:
+            first_line = line
+            break
+
+    if not first_line:
+        return
+
+    try:
+        first_obj = json.loads(first_line)
+    except json.JSONDecodeError:
+        logger.warning("Skipping malformed first line: %s", first_line)
+        return
+
+    # Detect format
+    has_action_keys = isinstance(first_obj, dict) and any(
+        k in first_obj for k in ("index", "create", "update", "delete")
+    )
+
+    if has_action_keys:
+        # OpenSearch bulk format: action/doc pairs
+        yield from _stream_bulk_pairs(first_line, it)
+    else:
+        # Simple NDJSON: each line is a document
+        if isinstance(first_obj, dict):
+            # Generate ID for first doc if missing
+            if "id" not in first_obj:
+                first_obj["id"] = str(hash(json.dumps(first_obj, sort_keys=True)))
+            yield first_obj
+        for line in it:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    # Generate ID if missing
+                    if "id" not in obj:
+                        obj["id"] = str(hash(json.dumps(obj, sort_keys=True)))
+
+                    # Convert geo_point arrays to Solr format
+                    for key, value in list(obj.items()):
+                        if isinstance(value, list) and len(value) == 2:
+                            if all(isinstance(v, (int, float)) for v in value):
+                                obj[key] = f"{value[1]},{value[0]}"
+
+                    yield obj
+            except json.JSONDecodeError as exc:
+                logger.warning("Skipping malformed NDJSON line: %s", exc)
+
+
+def _stream_bulk_pairs(first_action_line, lines_iter):
+    """Stream-parse OpenSearch bulk format (generator version)."""
+    action_line = first_action_line
+
+    while action_line:
+        doc_line = next(lines_iter, None)
+        if doc_line is None:
+            break
+        doc_line = doc_line.strip()
+        if not doc_line:
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        try:
+            action = json.loads(action_line)
+            doc = json.loads(doc_line)
+        except json.JSONDecodeError as exc:
+            logger.warning("Skipping malformed NDJSON pair: %s", exc)
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        if not isinstance(action, dict) or not isinstance(doc, dict):
+            logger.warning("Skipping non-dict action/doc pair")
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        # Extract _id from action metadata and set as "id" field
+        id_found = False
+        for key in ("index", "create", "update", "delete"):
+            if key in action:
+                meta = action[key]
+                if isinstance(meta, dict) and "_id" in meta:
+                    doc["id"] = meta["_id"]
+                    id_found = True
+                break
+
+        if not id_found:
+            # Generate ID if not found in action metadata
+            doc["id"] = str(abs(hash(json.dumps(doc, sort_keys=True))))
+
+        # Convert geo_point arrays and date formats for Solr compatibility
+        for key, value in list(doc.items()):
+            # Geo-point: [lon, lat] → "lat,lon" string
+            if isinstance(value, list) and len(value) == 2:
+                if all(isinstance(v, (int, float)) for v in value):
+                    doc[key] = f"{value[1]},{value[0]}"
+            # Date: "YYYY-MM-DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SSZ" (ISO 8601)
+            elif isinstance(value, str) and len(value) == 19 and value[10] == ' ':
+                # Check if it looks like a date: YYYY-MM-DD HH:MM:SS
+                if value[4] == '-' and value[7] == '-' and value[13] == ':' and value[16] == ':':
+                    doc[key] = value.replace(' ', 'T') + 'Z'
+
+        yield doc
+        action_line = next(lines_iter, "").strip()
+
+
 def _parse_bulk_pairs(first_action_line, lines_iter):
     """Parse OpenSearch bulk format (alternating action/doc pairs)."""
     docs = []
@@ -283,6 +403,64 @@ def _solr_escape(value):
     return ''.join(result)
 
 
+def _convert_os_date_to_solr(date_str, os_format=None):
+    """
+    Convert an OpenSearch date string to Solr ISO 8601 format.
+
+    Args:
+        date_str: Date string from OpenSearch query (e.g., "01/01/2015")
+        os_format: OpenSearch format string (e.g., "dd/MM/yyyy") or None
+
+    Returns:
+        ISO 8601 date string for Solr (e.g., "2015-01-01T00:00:00Z")
+
+    If the date is already in ISO format or conversion fails, returns the
+    original string unchanged.
+    """
+    if not isinstance(date_str, str) or date_str in ("*", "now"):
+        return date_str
+
+    # Map OpenSearch date format patterns to Python strptime format
+    OS_TO_PYTHON_FORMAT = {
+        "dd/MM/yyyy": "%d/%m/%Y",
+        "MM/dd/yyyy": "%m/%d/%Y",
+        "yyyy-MM-dd": "%Y-%m-%d",
+        "yyyy/MM/dd": "%Y/%m/%d",
+        "dd-MM-yyyy": "%d-%m-%Y",
+        "MM-dd-yyyy": "%m-%d-%Y",
+        # Add more as needed
+    }
+
+    # If format is provided, use it to parse the date
+    if os_format:
+        python_fmt = OS_TO_PYTHON_FORMAT.get(os_format)
+        if python_fmt:
+            try:
+                dt = datetime.strptime(date_str, python_fmt)
+                return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                logger.warning(f"Failed to parse date '{date_str}' with format '{os_format}'")
+                return date_str
+        else:
+            logger.warning(f"Unknown OpenSearch date format: '{os_format}'")
+
+    # Try common patterns if no format specified
+    for python_fmt in OS_TO_PYTHON_FORMAT.values():
+        try:
+            dt = datetime.strptime(date_str, python_fmt)
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            continue
+
+    # If it's already in ISO-like format, return as-is
+    # (handles cases like "2015-01-01T00:00:00Z" or partial ISO)
+    if "T" in date_str or len(date_str) == 10:  # YYYY-MM-DD
+        return date_str
+
+    logger.warning(f"Could not parse date '{date_str}', using as-is")
+    return date_str
+
+
 def _os_query_to_solr_q(body):
     """
     Translate an OpenSearch query DSL dict to a Solr ``q`` string.
@@ -338,6 +516,10 @@ def _translate_query_node(node):
         for field, bounds in node["range"].items():
             lo = bounds.get("gte", bounds.get("gt", "*"))
             hi = bounds.get("lte", bounds.get("lt", "*"))
+            # Convert dates if format is specified (common for date fields)
+            os_format = bounds.get("format")
+            lo = _convert_os_date_to_solr(lo, os_format)
+            hi = _convert_os_date_to_solr(hi, os_format)
             return f"{field}:[{lo} TO {hi}]"
 
     if "exists" in node:
@@ -448,32 +630,62 @@ class SolrBulkIndex(SolrRunner):
     """
 
     async def __call__(self, solr_not_used, params):
+        logger.info("🔵 SolrBulkIndex.__call__() ENTRY")
         corpus_lines = params.get("corpus", [])
         batch_size = params.get("bulk-size", 500)
         do_commit = params.get("commit", False)
 
+        logger.info(f"🔵 corpus_lines type: {type(corpus_lines)}, batch_size: {batch_size}")
+
         client = _solr_client(params)
 
-        docs = _translate_ndjson_batch(corpus_lines)
-        total_docs = len(docs)
+        # Use streaming translation to avoid loading all documents into memory
+        doc_stream = _translate_ndjson_stream(corpus_lines)
+        logger.info("🔵 Created doc_stream generator")
+        total_docs = 0
         errors = 0
 
         start = time.perf_counter()
-        for i in range(0, max(total_docs, 1), batch_size):
-            batch = docs[i: i + batch_size]
-            if not batch:
-                break
+
+        # Collect documents in batches and send to Solr
+        batch = []
+        doc_count = 0
+        for doc in doc_stream:
+            batch.append(doc)
+            doc_count += 1
+            if doc_count == 1:
+                logger.info(f"🔵 First document received: {doc}")
+            if len(batch) >= batch_size:
+                logger.info(f"🔵 Sending batch of {len(batch)} documents to Solr")
+                try:
+                    # Use commitWithin=1000ms to make docs visible quickly without explicit commits
+                    await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
+                    total_docs += len(batch)
+                    logger.info(f"🔵 Batch indexed successfully, total so far: {total_docs}")
+                except pysolr.SolrError as exc:
+                    logger.error("Bulk index error on batch: %s", exc)
+                    errors += len(batch)
+                batch = []
+
+        # Send remaining documents
+        logger.info(f"🔵 Doc stream exhausted. doc_count={doc_count}, remaining batch size: {len(batch)}")
+        if batch:
+            logger.info(f"🔵 Sending final batch of {len(batch)} documents")
             try:
-                await _run_in_executor(client.add, batch, commit=False)
+                await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
+                total_docs += len(batch)
+                logger.info(f"🔵 Final batch indexed successfully")
             except pysolr.SolrError as exc:
-                logger.error("Bulk index error on batch starting at %d: %s", i, exc)
+                logger.error("Bulk index error on final batch: %s", exc)
                 errors += len(batch)
 
         if do_commit:
+            logger.info("🔵 Performing explicit commit")
             await _run_in_executor(client.commit)
 
         elapsed = time.perf_counter() - start
         weight = total_docs - errors
+        logger.info(f"🔵 SolrBulkIndex COMPLETE: total_docs={total_docs}, errors={errors}, weight={weight}, elapsed={elapsed:.2f}s")
 
         return {
             "weight": weight,
@@ -659,6 +871,44 @@ class SolrOptimize(SolrRunner):
         return "solr-optimize"
 
 
+class SolrRefreshBridge(SolrRunner):
+    """
+    Bridge: maps OSB 'refresh' operation to Solr commit.
+
+    Translates the `index` parameter from OSB to `collection` for Solr.
+    If no index is specified, commits are skipped (returns success).
+    """
+
+    async def __call__(self, solr_not_used, params):
+        # Map index to collection if not already set
+        index = params.get("index")
+        collection = params.get("collection")
+
+        # If neither index nor collection is specified, skip the commit
+        if not index and not collection:
+            logger.info("Refresh operation has no index/collection specified - skipping commit")
+            return {"weight": 0, "unit": "ops", "took": 0}
+
+        solr_params = dict(params)
+        if not collection:
+            solr_params["collection"] = index
+
+        client = _solr_client(solr_params)
+        soft = params.get("soft-commit", False)
+
+        start = time.perf_counter()
+        if soft:
+            await _run_in_executor(client.commit, softCommit=True)
+        else:
+            await _run_in_executor(client.commit)
+        elapsed = time.perf_counter() - start
+
+        return {"weight": 1, "unit": "ops", "took": elapsed}
+
+    def __str__(self):
+        return "refresh"
+
+
 # ---------------------------------------------------------------------------
 # Runner: create-collection (two-step: upload configset, then create)
 # ---------------------------------------------------------------------------
@@ -696,6 +946,47 @@ class SolrCreateCollection(SolrRunner):
         num_shards = params.get("num-shards", 1)
         replication_factor = params.get("replication-factor", 1)
 
+        # Auto-generate schema from OpenSearch mappings (fallback convenience)
+        auto_generated_configset = None
+        mappings = params.get("mappings")
+
+        if mappings and not configset_path:
+            logger.info(
+                "Auto-generating Solr schema from OpenSearch mappings "
+                "(convenience fallback - native Solr workloads are recommended)"
+            )
+            try:
+                from osbenchmark.solr.schema_generator import (
+                    translate_opensearch_mapping,
+                    generate_schema_xml,
+                    create_configset_from_schema,
+                )
+
+                # Extract field definitions from mappings
+                properties = mappings.get("properties", {})
+                if properties:
+                    # Translate OpenSearch types to Solr types
+                    field_defs = translate_opensearch_mapping(properties)
+
+                    # Generate schema.xml
+                    schema_xml = generate_schema_xml(field_defs, unique_key="id")
+
+                    # Create temporary configset directory
+                    auto_generated_configset = create_configset_from_schema(
+                        schema_xml, configset_name=collection
+                    )
+                    configset_path = auto_generated_configset
+                    logger.info("Generated temporary configset at: %s", configset_path)
+                else:
+                    logger.warning("Mappings present but no properties found, using default configset")
+
+            except Exception as e:
+                logger.warning(
+                    "Failed to auto-generate schema from mappings: %s. "
+                    "Falling back to _default configset.", e
+                )
+                configset = "_default"
+
         start = time.perf_counter()
 
         # Step 1: upload configset (only if a local path is supplied)
@@ -721,6 +1012,11 @@ class SolrCreateCollection(SolrRunner):
                 except Exception as cleanup_exc:
                     logger.warning("Failed to clean up configset '%s': %s", configset, cleanup_exc)
             raise
+        finally:
+            # Clean up auto-generated configset
+            if auto_generated_configset:
+                from osbenchmark.solr.schema_generator import cleanup_configset
+                cleanup_configset(auto_generated_configset)
 
         elapsed = time.perf_counter() - start
         return {"weight": 1, "unit": "ops", "took": elapsed}
@@ -822,14 +1118,14 @@ class SolrRawRequest(SolrRunner):
 # ---------------------------------------------------------------------------
 
 def _normalize_bulk_body(body):
-    """Convert bulk body items (string or dict) to JSON strings."""
-    lines = []
+    """Convert bulk body items (string or dict) to JSON strings (generator)."""
     for item in body:
         if isinstance(item, dict):
-            lines.append(json.dumps(item))
+            yield json.dumps(item)
+        elif isinstance(item, bytes):
+            yield item.decode('utf-8')  # Decode bytes to string
         elif item:
-            lines.append(str(item))
-    return lines
+            yield str(item)
 
 
 class SolrDeleteIndexBridge(SolrRunner):
@@ -864,33 +1160,64 @@ class SolrCreateIndexBridge(SolrRunner):
     """
     Bridge: maps OSB 'create-index' to Solr collection creation.
 
-    The standard create-index body (OpenSearch mappings/settings) is ignored.
-    Collections are created with the ``_default`` configset unless ``configset``
-    is specified in the operation params.
+    For convenience, automatically generates Solr schema.xml from OpenSearch
+    mappings when present in the index body. This is a fallback mechanism;
+    native Solr workloads with explicit configset-path are recommended.
 
     Params:
       - ``indices``           — list of (name, body) tuples from the workload
-      - ``configset``         — Solr configset name (default: ``_default``)
+      - ``configset``         — Solr configset name (default: auto-generated from mappings
+                                or ``_default`` if no mappings)
       - ``num-shards``        — int (default: 1)
       - ``replication-factor``— int (default: 1)
     Plus Solr connection params (``host``, ``port``, ...) defaulting to localhost:8983.
     """
 
     async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
         indices = params.get("indices", [])
-        configset = params.get("configset", "_default")
+        base_configset = params.get("configset", "_default")
         num_shards = params.get("num-shards", 1)
         replication_factor = params.get("replication-factor", 1)
 
         ops = 0
         for entry in indices:
             # indices is a list of (name, body) tuples
-            name = entry[0] if isinstance(entry, (list, tuple)) else entry
+            if isinstance(entry, (list, tuple)):
+                name = entry[0]
+                body = entry[1] if len(entry) > 1 else None
+            else:
+                name = entry
+                body = None
+
+            # Extract mappings from body (if present)
+            mappings = None
+            if body and isinstance(body, dict):
+                mappings = body.get("mappings")
+
+            # If we have mappings and will auto-generate schema, use a unique configset name
+            # (not _default, which is a built-in and can't be uploaded)
+            if mappings and mappings.get("properties"):
+                configset_for_collection = name  # Use collection name as configset name
+            else:
+                configset_for_collection = base_configset
+
+            # Delegate to SolrCreateCollection with mappings
+            collection_params = {
+                "collection": name,
+                "configset": configset_for_collection,
+                "num-shards": num_shards,
+                "replication-factor": replication_factor,
+                "mappings": mappings,  # Pass mappings for auto-schema generation
+            }
+            # Preserve connection params
+            for key in ("host", "port", "username", "password", "tls", "timeout"):
+                if key in params:
+                    collection_params[key] = params[key]
+
+            # Call SolrCreateCollection
+            create_runner = SolrCreateCollection()
             try:
-                await _run_in_executor(
-                    admin.create_collection, name, configset, num_shards, replication_factor
-                )
+                await create_runner(solr_not_used, collection_params)
                 ops += 1
             except CollectionAlreadyExistsError:
                 logger.warning("Collection '%s' already exists, skipping creation.", name)
@@ -924,7 +1251,22 @@ class SolrBulkBridge(SolrRunner):
         unit = params.get("unit", "docs")
         batch_size = 500
 
-        if not body:
+        # Handle different body formats:
+        # - bytes/str: NDJSON data as single blob (split into lines)
+        # - list/iterator: already split lines
+        if isinstance(body, bytes):
+            # Split bytes NDJSON into lines
+            lines = body.split(b'\n')
+            lines = [line for line in lines if line.strip()]  # Remove empty lines
+        elif isinstance(body, str):
+            # Split string NDJSON into lines
+            lines = body.split('\n')
+            lines = [line for line in lines if line.strip()]
+        else:
+            # Assume it's already an iterable of lines
+            lines = body
+
+        if not lines:
             return {"weight": 0, "unit": unit, "success": True, "error-count": 0}
 
         # Build Solr client params — inject collection from index if not set
@@ -933,20 +1275,43 @@ class SolrBulkBridge(SolrRunner):
             solr_params["collection"] = index or "default"
 
         client = _solr_client(solr_params)
-        lines = _normalize_bulk_body(body)
-        docs = _translate_ndjson_batch(lines)
-        total_docs = len(docs)
-        errors = 0
 
+        # lines is already prepared above (split from bytes/str or passed as iterable)
+        # Now normalize each line (convert dicts to JSON strings, etc.)
+        normalized_lines = _normalize_bulk_body(lines)
+
+        # Stream-process documents in batches to avoid loading all into memory
+        total_docs = 0
+        errors = 0
         start = time.perf_counter()
-        for i in range(0, max(total_docs, 1), batch_size):
-            batch = docs[i: i + batch_size]
-            if not batch:
-                break
+
+        logger.info("SolrBulkBridge starting - processing %d lines, bulk_size=%d", len(lines) if hasattr(lines, '__len__') else -1, bulk_size)
+
+        batch = []
+        doc_count = 0
+
+        for doc in _translate_ndjson_stream(normalized_lines):
+            batch.append(doc)
+            doc_count += 1
+            if len(batch) >= batch_size:
+                try:
+                    # Use commitWithin=1000ms to make docs visible quickly without explicit commits
+                    await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
+                    total_docs += len(batch)
+                    if total_docs % 5000 == 0:
+                        logger.info("SolrBulkBridge: indexed %d docs so far", total_docs)
+                except pysolr.SolrError as exc:
+                    logger.error("Bulk bridge error on batch: %s", exc)
+                    errors += len(batch)
+                batch = []
+
+        # Index remaining documents in partial batch
+        if batch:
             try:
-                await _run_in_executor(client.add, batch, commit=False)
+                await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
+                total_docs += len(batch)
             except pysolr.SolrError as exc:
-                logger.error("Bulk bridge error on batch starting at %d: %s", i, exc)
+                logger.error("Bulk bridge error on final batch: %s", exc)
                 errors += len(batch)
 
         elapsed = time.perf_counter() - start
@@ -1017,7 +1382,7 @@ def register_solr_runners(register_runner):
     register_runner("scroll-search", _search_runner, async_runner=True)
 
     # refresh → commit (reuse SolrCommit runner)
-    register_runner("refresh", SolrCommit(), async_runner=True)
+    register_runner("refresh", SolrRefreshBridge(), async_runner=True)
 
     # No-op bridges for OpenSearch-specific operations that have no Solr equivalent.
     # Covering every OperationType from workload.py so that any standard OSB

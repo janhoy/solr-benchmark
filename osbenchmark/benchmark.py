@@ -949,7 +949,7 @@ def with_actor_system(runnable, cfg):
     except thespian.actors.InvalidActorAddress:
         logger.info("Falling back to offline actor system.")
         actor.use_offline_actor_system()
-        actors = actor.bootstrap_actor_system(try_join=True)
+        actors = actor.bootstrap_actor_system(try_join=False, prefer_local_only=True)
     except Exception as e:
         logger.exception("Could not bootstrap actor system.")
         if str(e) == "Unable to determine valid external socket address.":
@@ -957,7 +957,7 @@ def with_actor_system(runnable, cfg):
                          logger=logger)
             logger.info("Falling back to offline actor system.")
             actor.use_offline_actor_system()
-            actors = actor.bootstrap_actor_system(try_join=True)
+            actors = actor.bootstrap_actor_system(try_join=False, prefer_local_only=True)
         else:
             raise
     try:

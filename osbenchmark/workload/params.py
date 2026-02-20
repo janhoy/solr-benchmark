@@ -22,6 +22,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from __future__ import annotations
+
 import os
 import collections
 import copy
@@ -36,12 +38,15 @@ import time
 import multiprocessing
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 
-try:
+if TYPE_CHECKING:
     import numpy as np
-except ImportError:
-    np = None
+else:
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
 
 from osbenchmark import exceptions
 from osbenchmark.utils import io
