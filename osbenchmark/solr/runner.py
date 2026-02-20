@@ -182,6 +182,14 @@ def _translate_ndjson_batch(lines):
             logger.warning("Skipping malformed NDJSON pair: %s", exc)
             continue
 
+        # Validate that action and doc are dicts
+        if not isinstance(action, dict):
+            logger.warning("Skipping NDJSON pair: action line is not a dict: %s", action_line)
+            continue
+        if not isinstance(doc, dict):
+            logger.warning("Skipping NDJSON pair: document line is not a dict: %s", doc_line)
+            continue
+
         # Extract action metadata (typically under "index" or "create" key)
         meta = {}
         for key in ("index", "create", "update", "delete"):
