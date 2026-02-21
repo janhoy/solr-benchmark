@@ -89,18 +89,26 @@ class TestSolrAdminClientUploadConfigset(unittest.TestCase):
                 f.write("<schema/>")
 
             client.upload_configset("test-config", tmpdir)
-            client._session.put.assert_called_once()
-            args, kwargs = client._session.put.call_args
-            self.assertIn("test-config", args[0])
+            client._session.post.assert_called_once()
+            args, kwargs = client._session.post.call_args
+            self.assertIn("admin/configs", args[0])
+            self.assertEqual("test-config", kwargs["params"]["name"])
+            self.assertEqual("UPLOAD", kwargs["params"]["action"])
             self.assertEqual("application/zip", kwargs["headers"]["Content-Type"])
 
     def test_upload_configset_failure_raises(self):
         import tempfile, os
         client = self._make_client_with_mock_session()
         resp = _make_response(status_code=500, text="Server Error")
-        client._session.put.return_value = resp
+        client._session.post.return_value = resp
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a minimal configset directory structure
+            conf_dir = os.path.join(tmpdir, "conf")
+            os.makedirs(conf_dir)
+            with open(os.path.join(conf_dir, "schema.xml"), "w") as f:
+                f.write("<schema/>")
+
             with self.assertRaises(SolrClientError):
                 client.upload_configset("bad-config", tmpdir)
 
