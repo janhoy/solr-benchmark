@@ -299,7 +299,6 @@ class CompositeSupplier:
 class FileNameResolver:
     def __init__(self, distribution_config, template_renderer):
         self.cfg = distribution_config
-        self.runtime_jdk_bundled = convert.to_bool(self.cfg.get("runtime.jdk.bundled", False))
         self.template_renderer = template_renderer
 
     @property
@@ -312,16 +311,14 @@ class FileNameResolver:
 
     @property
     def file_name(self):
-        if self.runtime_jdk_bundled:
-            url_key = "jdk.bundled.release_url"
-        else:
-            url_key = "jdk.unbundled.release_url"
+        # Solr distributions never include a JDK, so we always use release_url
+        url_key = "release_url"
         url = self.template_renderer.render(self.cfg[url_key])
         return url[url.rfind("/") + 1:]
 
     @property
     def artifact_key(self):
-        return "opensearch"
+        return "solr"
 
     def to_artifact_path(self, file_system_path):
         return file_system_path
@@ -396,7 +393,7 @@ class SourceSupplier:
         self.template_renderer = template_renderer
 
     def fetch(self):
-        return SourceRepository("OpenSearch", self.remote_url, self.src_dir).fetch(self.revision)
+        return SourceRepository("Solr", self.remote_url, self.src_dir).fetch(self.revision)
 
     def prepare(self):
         if self.builder:
@@ -406,7 +403,7 @@ class SourceSupplier:
             ])
 
     def add(self, binaries):
-        binaries["opensearch"] = self.resolve_binary()
+        binaries["solr"] = self.resolve_binary()
 
     def resolve_binary(self):
         try:
@@ -534,14 +531,14 @@ class DistributionSupplier:
         self.logger.info("Resolved download URL [%s] for version [%s]", download_url, self.version)
         if not os.path.isfile(distribution_path) or not self.repo.cache:
             try:
-                self.logger.info("Starting download of OpenSearch [%s]", self.version)
-                progress = net.Progress("[INFO] Downloading OpenSearch %s" % self.version)
+                self.logger.info("Starting download of Solr [%s]", self.version)
+                progress = net.Progress("[INFO] Downloading Solr %s" % self.version)
                 net.download(download_url, distribution_path, progress_indicator=progress)
                 progress.finish()
-                self.logger.info("Successfully downloaded OpenSearch [%s].", self.version)
+                self.logger.info("Successfully downloaded Solr [%s].", self.version)
             except urllib.error.HTTPError:
-                self.logger.exception("Cannot download OpenSearch distribution for version [%s] from [%s].", self.version, download_url)
-                raise exceptions.SystemSetupError("Cannot download OpenSearch distribution from [%s]. Please check that the specified "
+                self.logger.exception("Cannot download Solr distribution for version [%s] from [%s].", self.version, download_url)
+                raise exceptions.SystemSetupError("Cannot download Solr distribution from [%s]. Please check that the specified "
                                                   "version [%s] is correct." % (download_url, self.version))
         else:
             self.logger.info("Skipping download for version [%s]. Found an existing binary at [%s].", self.version, distribution_path)
@@ -552,7 +549,7 @@ class DistributionSupplier:
         pass
 
     def add(self, binaries):
-        binaries["opensearch"] = self.distribution_path
+        binaries["solr"] = self.distribution_path
 
 
 class PluginDistributionSupplier:
@@ -721,18 +718,13 @@ class DistributionRepository:
     def __init__(self, name, distribution_config, template_renderer):
         self.name = name
         self.cfg = distribution_config
-        self.runtime_jdk_bundled = convert.to_bool(self.cfg.get("runtime.jdk.bundled", False))
         self.template_renderer = template_renderer
         self.logger = logging.getLogger(__name__)
 
     @property
     def download_url(self):
-        # cluster_config repo
-        self.logger.info("runtime_jdk_bundled? [%s]", self.runtime_jdk_bundled)
-        if self.runtime_jdk_bundled:
-            default_key = "jdk.bundled.{}_url".format(self.name)
-        else:
-            default_key = "jdk.unbundled.{}_url".format(self.name)
+        # Solr distributions never include a JDK, so we always use simple key names
+        default_key = "{}_url".format(self.name)
         # benchmark.ini
         override_key = "{}.url".format(self.name)
         self.logger.info("keys: [%s] and [%s]", override_key, default_key)

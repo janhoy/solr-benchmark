@@ -266,3 +266,84 @@ Retain existing `osbenchmark/` package structure. Rename only the package entryp
 - `osbenchmark/kafka_client.py` — Kafka streaming out of scope for fork
 - `osbenchmark/data_streaming/` — out of scope
 - All gRPC proto files and stubs
+
+---
+
+## 6. Lessons Learned: The Dual-Mode Mistake
+
+### What Happened
+
+After completing all 39 implementation tasks (T001-T039), a fundamental architectural misunderstanding was discovered: **the implementation created a dual-mode tool instead of a pure Solr tool**.
+
+### The Mistake
+
+**What was implemented**:
+- `mode` parameter in configuration and client initialization
+- Shim classes (`SolrClientShim`) bridging OpenSearch-style interfaces to Solr operations
+- Conditional logic (`if mode == "solr"`) in provisioners, builders, runners
+- Both OpenSearch and Solr code paths existing side-by-side
+- OpenSearch client connections still available alongside Solr
+- Pipelines named `solr-from-distribution` (instead of just `from-distribution`)
+
+**What should have been implemented**:
+- Pure Solr tool with single code path
+- No mode parameter anywhere
+- OpenSearch code removed except for workload import/conversion utilities
+- Direct replacement: `client.py` becomes pure Solr client
+- Pipelines named generically (`from-distribution`)
+- Only OpenSearch compatibility: workload file parsing and corpus format translation
+
+### Why It Happened
+
+**Specification ambiguity**:
+- "The tool will no longer support or benchmark OpenSearch clusters" could be read as "disable OpenSearch mode" rather than "remove OpenSearch code"
+- The 75% code retention goal was misinterpreted as "keep all OpenSearch code and add Solr alongside it" rather than "retain the generic framework, replace the OpenSearch-specific parts"
+- The migration utility's existence suggested runtime OSB compatibility, not just conversion-time
+
+**Implementer assumptions**:
+- "Fork" was interpreted as "make compatible with both systems" rather than "replace one system with another"
+- The shim pattern seemed like a low-risk way to preserve OpenSearch code while adding Solr
+- Mode-based conditional logic felt safer than deleting OpenSearch code paths
+
+### How to Avoid This in Future
+
+**Specification clarity**:
+1. **Be explicit about what gets removed**: List modules/classes/functions to delete, not just "replace X with Y"
+2. **Distinguish reuse from compatibility**: "Retain the actor framework (code reuse)" vs "Support both engines (runtime compatibility)"
+3. **Use architecture diagrams**: A single diagram showing "pure Solr" vs "dual-mode" would have prevented this
+4. **Specify what OpenSearch references are acceptable**: "Only in `tools/migrate_workload.py` and corpus format parsing" is clearer than "workload compatibility only"
+
+**Task definition improvements**:
+1. **Add explicit deletion tasks**: "T004: Delete OpenSearch client (`client.py`, `async_connection.py`)" not just "Delete OpenSearch-only modules"
+2. **Add verification tasks earlier**: "T015: Verify no `mode` parameter exists in configuration" catches mistakes before they compound
+3. **Include negative requirements**: "MUST NOT: Add mode parameter, create shim classes, use conditional logic"
+
+**Review checkpoints**:
+1. **Architectural review after Phase 2**: Before starting user stories, verify no dual-mode patterns exist
+2. **Cross-reference with spec**: Each phase completion should confirm alignment with "pure Solr tool" intent
+3. **Grep-based sanity checks**: "If I search for 'mode ==', 'opensearch.*client', or 'OsClient', what should I find?"
+
+### The Silver Lining
+
+**What worked correctly despite the architectural mistake**:
+- All Solr operations execute successfully (indexing, search, commit, optimize, collection management)
+- Telemetry collects Solr metrics correctly
+- Workload migration utility converts OSB workloads correctly
+- Schema auto-generation from OpenSearch mappings works
+- All bug fixes (NDJSON translation, date formats, geo-points, file I/O) are solid
+- Test coverage is comprehensive
+- The Solr-specific implementations are correct and production-ready
+
+**Why the correction is straightforward**:
+- The Solr code is correct — we just need to remove the OpenSearch scaffolding
+- The dual-mode architecture is localized (client initialization, builder factory, provisioner selection)
+- Systematic removal (Phase 8 tasks T040-T053) can fix this without rewriting working code
+
+### Key Insight
+
+**Architectural clarity must be stronger than implementation convenience.** When a fork specification says "replace X with Y," that should always mean:
+1. Remove X's code paths (except utilities that convert X's data to Y's format)
+2. Install Y's code as the direct replacement (not via shims or conditionals)
+3. No runtime mode selection between X and Y
+
+If both X and Y are meant to be supported at runtime, that's not a fork — it's a multi-backend tool, and the specification should say so explicitly with different architecture, design patterns, and task breakdown.

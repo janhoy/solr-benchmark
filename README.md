@@ -7,6 +7,8 @@ itself derived from [Elastic Rally](https://github.com/elastic/rally).
 
 **DISCLAIMER**: Work in progress
 
+**NOTE**: This is a pure Solr benchmarking tool. It does NOT support benchmarking OpenSearch or Elasticsearch clusters. OpenSearch compatibility is limited to workload import — you can convert existing OpenSearch Benchmark workloads to Solr format using the included migration utility.
+
 ## What is Apache Solr Benchmark?
 
 If you are looking to performance test Apache Solr, this tool can help you with:
@@ -28,24 +30,28 @@ pip install -e .
 
 **NOTE**: We do not offer the tool as a python package yet 
 
-### Run a benchmark against a solr version in Docker
+### Run a benchmark against a Solr version in Docker
 
 ```bash
 solr-benchmark execute-test \
-  --pipeline=solr-docker \
+  --pipeline=docker \
   --distribution-version=9.10.1 \
   --workload=<your-workload> \
   --challenge=<challenge-name>
 ```
 
+**Note**: Defaults to cloud mode (SolrCloud with embedded ZooKeeper).
+
 ### Provision Solr locally, then benchmark
 
 ```bash
 solr-benchmark execute-test \
-  --pipeline=solr-from-distribution \
+  --pipeline=from-distribution \
   --distribution-version=9.7.0 \
   --workload=<your-workload>
 ```
+
+**Note**: Defaults to cloud mode (SolrCloud with embedded ZooKeeper).
 
 ### Provision Solr via Docker, then benchmark
 

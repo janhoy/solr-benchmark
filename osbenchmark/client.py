@@ -51,7 +51,7 @@ class SolrClient(RequestContextHolder):
     transport = _NoOpTransport()
 
 
-class OsClientFactory:
+class ClientFactory:
     """
     Client factory — always returns a SolrClient for this Solr benchmark fork.
     The host/client_options parameters are accepted for API compatibility but ignored.
@@ -64,6 +64,10 @@ class OsClientFactory:
 
     def create_async(self):
         return SolrClient()
+
+
+# Backward compatibility alias
+OsClientFactory = ClientFactory
 
 
 def wait_for_rest_layer(client, max_attempts=40):

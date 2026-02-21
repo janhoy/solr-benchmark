@@ -160,6 +160,74 @@ LICENSE                         ← UPDATED: reflect Solr PMC identity
 4. Write integration test for full cycle: create-collection → bulk-index → search → delete-collection (SC-007).
 5. Update `README.md`, `DEVELOPER_GUIDE.md`, and `CONTRIBUTING.md` for Solr context.
 
+## Post-Implementation Review: The Dual-Mode Mistake
+
+### What Was Implemented (Incorrectly)
+
+After completing all 39 tasks in the original plan, a fundamental architectural misunderstanding was discovered:
+
+**The implementation created a dual-mode tool** with:
+- `mode` parameter throughout configuration and client initialization
+- Shim classes (`SolrClientShim`) to bridge between OpenSearch-style interfaces and Solr operations
+- Conditional logic (`if mode == "solr"`) in provisioners, builders, and runners
+- Both OpenSearch and Solr code paths existing side-by-side
+- OpenSearch client connections still available alongside Solr connections
+- Builder classes with names like `solr-from-distribution` (instead of just `from-distribution`)
+
+**Why this happened**: The specification language was ambiguous in places:
+- "The tool will no longer support or benchmark OpenSearch clusters" could be read as "disable OpenSearch mode" rather than "remove OpenSearch code"
+- The 75% code retention goal was misinterpreted as "keep all OpenSearch code and add Solr alongside it"
+- The migration utility's existence suggested OSB compatibility at runtime, not just at conversion time
+
+### What Should Have Been Implemented
+
+**A pure Solr tool** with:
+- Single code path: Solr-native client, runners, provisioners, telemetry
+- No mode parameter anywhere
+- OpenSearch code completely removed except for workload import/conversion utilities
+- Direct replacement: `client.py` becomes Solr client, not a shim
+- Pipelines named generically (`from-distribution`, not `solr-from-distribution`)
+- Only OpenSearch compatibility: workload file parsing and corpus format translation
+
+### Impact Assessment
+
+**What works correctly**:
+- All Solr operations execute successfully (indexing, search, commit, optimize, collection management)
+- Telemetry collects Solr metrics correctly
+- Result output works (filesystem writer)
+- Workload migration utility converts OSB workloads correctly
+- End-to-end benchmarks complete successfully
+
+**What needs correction**:
+- Remove dual-mode architecture (mode parameter, conditional logic, shims)
+- Replace shim classes with direct Solr implementations
+- Rename pipelines to remove `solr-` prefix
+- Remove OpenSearch client connections entirely
+- Simplify configuration (no mode selection)
+- Remove unused OpenSearch builder/provisioner code paths
+- Replace `OsClient` terminology with `Client` or `SolrClient` throughout
+
+**Why the completed work is still valuable**:
+- The Solr-specific implementations (runners, telemetry, provisioner) are correct
+- The workload migration logic works correctly
+- The schema auto-generation works correctly
+- All bug fixes (NDJSON translation, date formats, geo-points, file I/O) are solid
+- Test coverage is comprehensive
+
+The correction phase (Phase 8 below) will remove the dual-mode architecture without discarding the working Solr implementations.
+
+---
+
+## Phase 8: Architectural Corrections (Post-Implementation)
+
+**Goal**: Transform the dual-mode implementation into a pure Solr tool by removing mode parameters, shim classes, and OpenSearch code paths while preserving all working Solr functionality.
+
+**Approach**: Systematic removal rather than rewrite — the Solr code works correctly, we just need to remove the OpenSearch scaffolding around it.
+
+This phase is documented in detail in the updated `tasks.md` file (tasks T040-T050+).
+
+---
+
 ## Complexity Tracking
 
 No constitution violations. All complexity is inherent to the fork scope.

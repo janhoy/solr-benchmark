@@ -1053,26 +1053,21 @@ class WorkerCoordinator:
 
         os_clients = self.create_os_clients()
 
-        solr_mode = isinstance(os_clients.get("default"), client.SolrClient)
-
+        # Solr benchmark - skip REST API check (Solr health checked separately via SolrAdminClient)
         skip_rest_api_check = self.config.opts("builder", "skip.rest.api.check")
         uses_static_responses = self.config.opts("client", "options").uses_static_responses
-        if solr_mode:
-            self.logger.info(
-                "Running in Solr-only mode. "
-                "Skipping REST API check and standard telemetry."
-            )
-        elif skip_rest_api_check:
+
+        if skip_rest_api_check:
             self.logger.info("Skipping REST API check as requested explicitly.")
         elif uses_static_responses:
             self.logger.info("Skipping REST API check as static responses are used.")
         else:
-            self.wait_for_rest_api(os_clients)
-            self.target.on_cluster_details_retrieved(self.retrieve_cluster_info(os_clients))
+            # For Solr, REST API check is handled by provisioner health polling
+            self.logger.info("Solr REST API health check handled by provisioner.")
 
         # Redline testing: Check if cpu feedback is enabled. Enable the node-stats telemetry device if we need to
         cpu_max = self.config.opts("workload", "redline.max_cpu_usage", default_value=None, mandatory=False)
-        if cpu_max and not solr_mode:
+        if cpu_max:
             devices = self.config.opts("telemetry", "devices", default_value=[])
             if "node-stats" not in devices:
                 # if node stats aren't enabled but cpu feedback is, add the node-stats telemetry device
@@ -1081,7 +1076,7 @@ class WorkerCoordinator:
                 devices.append("node-stats")
                 self.config.add(config.Scope.application, "telemetry", "devices", devices)
 
-        # In Solr mode, prepare_telemetry detects SolrClient and wires Solr devices.
+        # Telemetry devices wired for Solr (SolrJvmStats, SolrNodeStats, SolrCollectionStats).
         # In static-response mode, telemetry is disabled to avoid connecting to the cluster.
         self.prepare_telemetry(os_clients, enable=not uses_static_responses)
 

@@ -176,6 +176,40 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 - **SC-008**: The migration utility produces an annotated draft Solr workload from any OSB workload file — structural and scheduling constructs are translated automatically, and every unsupported operation appears in the output with a `# TODO` comment. No operations are silently dropped.
 - **SC-009**: The fork's NOTICE file, LICENSE file, and per-file source headers comply with ASF policy, as confirmed by a completed legal review checklist. The NOTICE file correctly attributes both Apache Solr and OpenSearch Contributors.
 
+## Architecture Clarification: Pure Solr Tool (Not Dual-Mode)
+
+**CRITICAL**: This is a pure Solr benchmarking tool, NOT a dual-mode tool that supports both OpenSearch and Solr.
+
+### What This Means
+
+**95% of code = Solr-only**:
+- The tool **ONLY** connects to, provisions, and benchmarks Apache Solr clusters
+- No runtime mode parameter, no conditional logic (`if mode == "solr"`), no shim classes
+- Client layer is pure Solr (pysolr + requests for admin API)
+- Runners execute Solr operations only
+- Telemetry collects Solr metrics only
+- Provisioner downloads/starts/stops Solr only
+- Result writers store Solr benchmark results only
+
+**5% of code = OpenSearch compatibility (workload import ONLY)**:
+- `osbenchmark/tools/migrate_workload.py` — converts OSB workload files to Solr format
+- Workload loader can parse OSB corpus files (NDJSON bulk format) and translate them at index time
+- Schema auto-generation from OpenSearch mappings (convenience fallback for migrated workloads)
+
+**What must NOT exist**:
+- No `mode` parameter anywhere in configuration, client, runners, or provisioners
+- No OpenSearch client connections (opensearchpy fully removed)
+- No OpenSearch metrics store backend
+- No OpenSearch-specific pipelines (`opensearch-from-distribution`, etc.)
+- No conditional logic switching between OpenSearch and Solr code paths
+- No shim/bridge classes that wrap one client to look like another
+
+### Architectural Intent
+
+This fork **replaces** the OpenSearch-specific code in the OSB framework with Solr-specific code. The generic actor-based execution framework, scheduling engine, and metrics aggregation are retained because they are search-engine-agnostic. But the client layer, runners, telemetry, and provisioning are 100% Solr-native.
+
+Users coming from OSB can convert their workloads using the migration utility, but the tool itself does not connect to or benchmark OpenSearch clusters at runtime.
+
 ## Assumptions
 
 - This is a standalone fork intended for contribution as a subproject of the Apache Solr PMC. The tool will no longer support or benchmark OpenSearch clusters; all OpenSearch-specific execution code is replaced.

@@ -36,9 +36,13 @@ from osbenchmark import exceptions
 
 logger = logging.getLogger(__name__)
 
-# Apache Solr download mirrors
-_APACHE_MIRROR = "https://dlcdn.apache.org/solr/solr"
-_ARCHIVE_URL = "https://archive.apache.org/dist/solr/solr"
+# Apache Solr download locations
+# Latest versions available at downloads.apache.org
+_DOWNLOADS_URL = "https://downloads.apache.org/solr/solr"
+# Solr 9.0+ archived versions
+_ARCHIVE_9_URL = "https://archive.apache.org/dist/solr/solr"
+# Pre-9.0 versions (in lucene directory)
+_ARCHIVE_PRE9_URL = "https://archive.apache.org/dist/lucene/solr"
 
 
 class SolrProvisionerError(Exception):
@@ -76,6 +80,11 @@ class SolrProvisioner:
 
         Returns the path to the cached tarball.
         Skips download if the tarball is already cached.
+
+        Tries multiple mirrors in order:
+        1. downloads.apache.org (latest versions)
+        2. archive.apache.org/dist/solr/solr (Solr 9.0+)
+        3. archive.apache.org/dist/lucene/solr (pre-9.0)
         """
         tarball = f"solr-{version}.tgz"
         dest = os.path.join(self.cache_dir, tarball)
@@ -83,8 +92,8 @@ class SolrProvisioner:
             logger.info("Solr %s already cached at %s", version, dest)
             return dest
 
-        # Try Apache mirror first, fall back to archive
-        for base_url in (_APACHE_MIRROR, _ARCHIVE_URL):
+        # Try all Apache mirrors in order
+        for base_url in (_DOWNLOADS_URL, _ARCHIVE_9_URL, _ARCHIVE_PRE9_URL):
             url = f"{base_url}/{version}/{tarball}"
             logger.info("Downloading Solr %s from %s", version, url)
             try:

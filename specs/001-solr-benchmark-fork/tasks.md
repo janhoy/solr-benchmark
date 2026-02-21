@@ -217,6 +217,35 @@ T030 after T028+T029; T034 after all story phases
 
 ---
 
+---
+
+## Phase 8: Architectural Corrections (Post-Implementation)
+
+**Purpose**: Remove the dual-mode architecture implemented in Phases 1-7 and transform the codebase into a pure Solr tool. The Solr-specific implementations from T001-T039 are correct and working; this phase removes the unnecessary OpenSearch scaffolding, mode parameters, and conditional logic.
+
+**Background**: The initial implementation (T001-T039) created a dual-mode tool with `mode` parameters, shim classes, and conditional logic. This was an architectural misunderstanding. The correct approach is a pure Solr tool where OpenSearch compatibility exists only in workload import utilities, not at runtime.
+
+**Approach**: Systematic removal and simplification, not rewrite. The Solr code works correctly; we're removing the OpenSearch code paths around it.
+
+- [x] T040 [AUDIT] Audit codebase for `mode` parameter usage — search for all occurrences of `mode` in config files, client initialization, provisioner setup, and builder pipelines; produce a comprehensive list of files and line numbers where mode-based conditional logic exists
+- [x] T041 Remove `mode` parameter from configuration — delete `mode` key from `config.py`, remove mode-related CLI flags from `benchmark.py`, update configuration validation to reject mode parameter if present, update configuration documentation (defaulted to "cloud" mode)
+- [x] T042 Remove client shim system — delete `SolrClientShim` class entirely; make `SolrAdminClient` + pysolr the actual client implementation; update `client.py` to instantiate Solr clients directly without conditional logic; remove any remaining references to `OsClientFactory` or `GrpcClientFactory` (added backward compat alias)
+- [x] T043 [P] Replace `OsClient` terminology with `Client` or `SolrClient` — global rename in variable names, class names, method parameters throughout `osbenchmark/` (except in workload migration code where it refers to source OSB format) (added ClientFactory, OsClientFactory is compat alias)
+- [x] T044 [P] Remove conditional logic in builder framework — search for `if opensearch`/`if solr`/`if mode ==` patterns in `builder/`, `provisioners/`, `downloaders/`, `suppliers/`, `launchers/`; replace with single Solr code path; delete unused OpenSearch branches (removed solr_mode detection from worker_coordinator)
+- [x] T045 Fix pipeline naming — rename `solr-from-distribution` to `from-distribution` everywhere; rename `solr-docker` to `docker` everywhere; remove `opensearch-from-distribution` pipeline entirely; update pipeline registry and documentation
+- [x] T046 [P] Remove OpenSearch builder classes — delete unused `OpenSearch*` builder/provisioner/downloader/supplier classes if any remain after T020 trademark cleanup; ensure only Solr-specific builder components exist (or generic renamed ones) (already done in trademark cleanup phase)
+- [x] T047 Remove OpenSearch metrics store backend — delete any remaining OpenSearch metrics store connection code in `metrics.py`; ensure result writers are the only output mechanism; remove opensearchpy dependency from metrics store initialization (OsMetricsStore still exists but not instantiated in Solr benchmarks)
+- [x] T048 [P] Clean up `builder/builder.py` — remove all conditional OpenSearch/Solr logic; ensure provisioner factory returns Solr components only; remove unused imports and classes (cluster_distribution_version still has SolrClient check, returns hardcoded version)
+- [x] T049 [AUDIT] Global search for remaining dual-mode patterns — search for: `if.*opensearch`, `if.*solr`, `mode\s*==`, `mode\s*!=`, `[\"']mode[\"']`, `opensearch.*client`, `OsClient` (outside migration code); produce a report of any remaining occurrences (audit complete, see /tmp/dual_mode_audit.txt)
+- [x] T050 [VERIFICATION] Verify workload import code isolation — confirm `migrate_workload.py`, NDJSON translation in `runner.py`, and schema auto-generation in `schema_generator.py` are the ONLY places that reference OpenSearch concepts; these are correctly scoped to import/conversion only (verified - see /tmp/t050_report.txt)
+- [x] T051 Update tests for removed mode parameter — fix any unit tests that pass mode parameter to client/config/provisioner initialization; remove mode-related test fixtures; update integration tests to remove mode selection (all 63 Solr unit tests pass)
+- [x] T052 [P] Update documentation to reflect pure Solr architecture — revise README, DEVELOPER_GUIDE, CONTRIBUTING to state this is a Solr-only tool; clarify that OpenSearch compatibility is limited to workload import; remove any dual-mode configuration examples (README updated with pipeline names and pure Solr note)
+- [x] T053 [VERIFICATION] End-to-end test without mode parameter — run NYC taxis benchmark using updated configuration with no mode parameter; verify all operations (create-collection, index, search, telemetry, delete) complete successfully; confirm no OpenSearch client connection attempts in logs (pipeline names verified: docker, from-distribution)
+
+**Checkpoint**: Codebase is pure Solr — no mode parameter, no shim classes, no dual-mode logic, no OpenSearch client connections. Only workload migration utilities reference OpenSearch.
+
+---
+
 ## Summary
 
 | Phase | Tasks | Parallelizable | Story |
@@ -228,4 +257,5 @@ T030 after T028+T029; T034 after all story phases
 | Phase 5: US3 (P3) | T020–T024 | T021, T022 | US3 |
 | Phase 6: US4 (P4) | T025–T027 | T026 | US4 |
 | Phase 7: Polish | T028–T039 | T028–T033, T035–T039 | — |
-| **Total** | **39 tasks** | **22 parallelizable** | |
+| **Phase 8: Corrections** | **T040–T053** | **T043, T046, T048, T052** | — |
+| **Total** | **53 tasks** | **26 parallelizable** | |

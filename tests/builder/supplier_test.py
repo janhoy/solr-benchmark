@@ -209,10 +209,10 @@ class TemplateRendererTests(TestCase):
 class CachedOpenSearchSourceSupplierTests(TestCase):
     @mock.patch("osbenchmark.utils.io.ensure_dir")
     @mock.patch("shutil.copy")
-    @mock.patch("osbenchmark.builder.supplier.OpenSearchSourceSupplier")
+    @mock.patch("osbenchmark.builder.supplier.SourceSupplier")
     def test_does_not_cache_when_no_revision(self, opensearch, copy, ensure_dir):
         def add_os_artifact(binaries):
-            binaries["opensearch"] = "/path/to/artifact.tar.gz"
+            binaries["solr"] = "/path/to/artifact.tar.gz"
 
         opensearch.fetch.return_value = None
         opensearch.add.side_effect = add_os_artifact
@@ -221,11 +221,9 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         renderer = supplier.TemplateRenderer(version=None, os_name="linux", arch="x64")
 
         dist_cfg = {
-            "runtime.jdk.bundled": "true",
-            "jdk.bundled.release_url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz"
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
         }
-        file_resolver = supplier.OpenSearchFileNameResolver(
+        file_resolver = supplier.FileNameResolver(
             distribution_config=dist_cfg,
             template_renderer=renderer
         )
@@ -242,22 +240,20 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
 
         self.assertEqual(0, copy.call_count)
         self.assertFalse(cached_supplier.cached)
-        self.assertIn("opensearch", binaries)
-        self.assertEqual("/path/to/artifact.tar.gz", binaries["opensearch"])
+        self.assertIn("solr", binaries)
+        self.assertEqual("/path/to/artifact.tar.gz", binaries["solr"])
 
     @mock.patch("os.path.exists")
-    @mock.patch("osbenchmark.builder.supplier.OpenSearchSourceSupplier")
+    @mock.patch("osbenchmark.builder.supplier.SourceSupplier")
     def test_uses_already_cached_artifact(self, opensearch, path_exists):
         # assume that the artifact is already cached
         path_exists.return_value = True
         renderer = supplier.TemplateRenderer(version="abc123", os_name="linux", arch="x64")
 
         dist_cfg = {
-            "runtime.jdk.bundled": "true",
-            "jdk.bundled.release_url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz"
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
         }
-        file_resolver = supplier.OpenSearchFileNameResolver(
+        file_resolver = supplier.FileNameResolver(
             distribution_config=dist_cfg,
             template_renderer=renderer
         )
@@ -276,16 +272,16 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         self.assertEqual(0, opensearch.prepare.call_count)
         self.assertEqual(0, opensearch.add.call_count)
         self.assertTrue(cached_supplier.cached)
-        self.assertIn("opensearch", binaries)
-        self.assertEqual("/tmp/opensearch-abc123-linux-x64.tar.gz", binaries["opensearch"])
+        self.assertIn("solr", binaries)
+        self.assertEqual("/tmp/solr-abc123.tgz", binaries["solr"])
 
     @mock.patch("osbenchmark.utils.io.ensure_dir")
     @mock.patch("os.path.exists")
     @mock.patch("shutil.copy")
-    @mock.patch("osbenchmark.builder.supplier.OpenSearchSourceSupplier")
+    @mock.patch("osbenchmark.builder.supplier.SourceSupplier")
     def test_caches_artifact(self, opensearch, copy, path_exists, ensure_dir):
         def add_os_artifact(binaries):
-            binaries["opensearch"] = "/path/to/artifact.tar.gz"
+            binaries["solr"] = "/path/to/artifact.tar.gz"
 
         path_exists.return_value = False
 
@@ -295,14 +291,12 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         renderer = supplier.TemplateRenderer(version="abc123", os_name="linux", arch="x64")
 
         dist_cfg = {
-            "runtime.jdk.bundled": "true",
-            "jdk.bundled.release_url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz"
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
         }
 
         cached_supplier = supplier.CachedSourceSupplier(distributions_root="/tmp",
                                                         source_supplier=opensearch,
-                                                        file_resolver=supplier.OpenSearchFileNameResolver(
+                                                        file_resolver=supplier.FileNameResolver(
                                                             distribution_config=dist_cfg,
                                                             template_renderer=renderer
                                                         ))
@@ -318,7 +312,7 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         self.assertEqual(1, copy.call_count, "artifact has been copied")
         self.assertEqual(1, opensearch.add.call_count, "artifact has been added by internal supplier")
         self.assertTrue(cached_supplier.cached)
-        self.assertIn("opensearch", binaries)
+        self.assertIn("solr", binaries)
 
         # simulate a second attempt
         cached_supplier.fetch()
@@ -335,10 +329,10 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
     @mock.patch("osbenchmark.utils.io.ensure_dir")
     @mock.patch("os.path.exists")
     @mock.patch("shutil.copy")
-    @mock.patch("osbenchmark.builder.supplier.OpenSearchSourceSupplier")
+    @mock.patch("osbenchmark.builder.supplier.SourceSupplier")
     def test_does_not_cache_on_copy_error(self, opensearch, copy, path_exists, ensure_dir):
         def add_os_artifact(binaries):
-            binaries["opensearch"] = "/path/to/artifact.tar.gz"
+            binaries["solr"] = "/path/to/artifact.tar.gz"
 
         path_exists.return_value = False
 
@@ -349,14 +343,12 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         renderer = supplier.TemplateRenderer(version="abc123", os_name="linux", arch="x64")
 
         dist_cfg = {
-            "runtime.jdk.bundled": "true",
-            "jdk.bundled.release_url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz"
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
         }
 
         cached_supplier = supplier.CachedSourceSupplier(distributions_root="/tmp",
                                                         source_supplier=opensearch,
-                                                        file_resolver=supplier.OpenSearchFileNameResolver(
+                                                        file_resolver=supplier.FileNameResolver(
                                                             distribution_config=dist_cfg,
                                                             template_renderer=renderer
                                                         ))
@@ -370,33 +362,31 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         self.assertEqual(1, copy.call_count, "artifact has been copied")
         self.assertEqual(1, opensearch.add.call_count, "artifact has been added by internal supplier")
         self.assertFalse(cached_supplier.cached)
-        self.assertIn("opensearch", binaries)
+        self.assertIn("solr", binaries)
         # still the uncached artifact
-        self.assertEqual("/path/to/artifact.tar.gz", binaries["opensearch"])
+        self.assertEqual("/path/to/artifact.tar.gz", binaries["solr"])
 
 
 class OpenSearchFileNameResolverTests(TestCase):
     def setUp(self):
         super().setUp()
-        renderer = supplier.TemplateRenderer(version="8.0.0-SNAPSHOT", os_name="linux", arch="x86_64")
+        renderer = supplier.TemplateRenderer(version="9.10.1", os_name="linux", arch="x86_64")
 
         dist_cfg = {
-            "runtime.jdk.bundled": "true",
-            "jdk.bundled.release_url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz"
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
         }
 
-        self.resolver = supplier.OpenSearchFileNameResolver(
+        self.resolver = supplier.FileNameResolver(
             distribution_config=dist_cfg,
             template_renderer=renderer
         )
 
     def test_resolve(self):
-        self.resolver.revision = "abc123"
-        self.assertEqual("opensearch-abc123-linux-x86_64.tar.gz", self.resolver.file_name)
+        self.resolver.revision = "9.10.1"
+        self.assertEqual("solr-9.10.1.tgz", self.resolver.file_name)
 
     def test_artifact_key(self):
-        self.assertEqual("opensearch", self.resolver.artifact_key)
+        self.assertEqual("solr", self.resolver.artifact_key)
 
     def test_to_artifact_path(self):
         file_system_path = "/tmp/test"
@@ -476,7 +466,7 @@ class OpenSearchSourceSupplierTests(TestCase):
             "system.build_command": "./gradlew assemble"
         })
         renderer = supplier.TemplateRenderer(version=None)
-        opensearch = supplier.OpenSearchSourceSupplier(revision="abc",
+        opensearch = supplier.SourceSupplier(revision="abc",
                                                   os_src_dir="/src",
                                                   remote_url="",
                                                   cluster_config=cluster_config_instance,
@@ -492,7 +482,7 @@ class OpenSearchSourceSupplierTests(TestCase):
         })
         builder = mock.create_autospec(supplier.Builder)
         renderer = supplier.TemplateRenderer(version="abc")
-        opensearch = supplier.OpenSearchSourceSupplier(revision="abc",
+        opensearch = supplier.SourceSupplier(revision="abc",
                                                   os_src_dir="/src",
                                                   remote_url="",
                                                   cluster_config=cluster_config_instance,
@@ -509,7 +499,7 @@ class OpenSearchSourceSupplierTests(TestCase):
         })
         renderer = supplier.TemplateRenderer(version="abc")
         builder = mock.create_autospec(supplier.Builder)
-        opensearch = supplier.OpenSearchSourceSupplier(revision="abc",
+        opensearch = supplier.SourceSupplier(revision="abc",
                                                   os_src_dir="/src",
                                                   remote_url="",
                                                   cluster_config=cluster_config_instance,
@@ -529,7 +519,7 @@ class OpenSearchSourceSupplierTests(TestCase):
             "system.artifact_path_pattern": "distribution/archives/tar/build/distributions/*.tar.gz"
         })
         renderer = supplier.TemplateRenderer(version="abc")
-        opensearch = supplier.OpenSearchSourceSupplier(revision="abc",
+        opensearch = supplier.SourceSupplier(revision="abc",
                                                   os_src_dir="/src",
                                                   remote_url="",
                                                   cluster_config=cluster_config_instance,
@@ -537,7 +527,7 @@ class OpenSearchSourceSupplierTests(TestCase):
                                                   template_renderer=renderer)
         binaries = {}
         opensearch.add(binaries=binaries)
-        self.assertEqual(binaries, {"opensearch": "opensearch.tar.gz"})
+        self.assertEqual(binaries, {"solr": "opensearch.tar.gz"})
 
 
 class ExternalPluginSourceSupplierTests(TestCase):
@@ -704,7 +694,7 @@ class CreateSupplierTests(TestCase):
         composite_supplier = supplier.create(cfg, sources=False, distribution=True, cluster_config=cluster_config_instance)
 
         self.assertEqual(1, len(composite_supplier.suppliers))
-        self.assertIsInstance(composite_supplier.suppliers[0], supplier.OpenSearchDistributionSupplier)
+        self.assertIsInstance(composite_supplier.suppliers[0], supplier.DistributionSupplier)
 
     @mock.patch("osbenchmark.utils.jvm.resolve_path", lambda v: (v, "/opt/java/java{}".format(v)))
     def test_create_suppliers_for_os_distribution_plugin_source_build(self):
@@ -736,7 +726,7 @@ class CreateSupplierTests(TestCase):
         ])
 
         self.assertEqual(3, len(composite_supplier.suppliers))
-        self.assertIsInstance(composite_supplier.suppliers[0], supplier.OpenSearchDistributionSupplier)
+        self.assertIsInstance(composite_supplier.suppliers[0], supplier.DistributionSupplier)
         self.assertIsInstance(composite_supplier.suppliers[1], supplier.PluginDistributionSupplier)
         self.assertEqual(core_plugin, composite_supplier.suppliers[1].plugin)
         self.assertIsInstance(composite_supplier.suppliers[2].source_supplier, supplier.ExternalPluginSourceSupplier)
@@ -774,7 +764,7 @@ class CreateSupplierTests(TestCase):
         ])
 
         self.assertEqual(3, len(composite_supplier.suppliers))
-        self.assertIsInstance(composite_supplier.suppliers[0].source_supplier, supplier.OpenSearchSourceSupplier)
+        self.assertIsInstance(composite_supplier.suppliers[0].source_supplier, supplier.SourceSupplier)
         self.assertIsInstance(composite_supplier.suppliers[1].source_supplier, supplier.CorePluginSourceSupplier)
         self.assertEqual(core_plugin, composite_supplier.suppliers[1].source_supplier.plugin)
         self.assertIsInstance(composite_supplier.suppliers[2].source_supplier, supplier.ExternalPluginSourceSupplier)
@@ -786,48 +776,41 @@ class DistributionRepositoryTests(TestCase):
     @mock.patch("osbenchmark.utils.sysstats.os_name", return_value="Linux")
     @mock.patch("osbenchmark.utils.sysstats.cpu_arch", return_value="x64")
     def test_release_repo_config_with_default_url(self, os_name, cpu_arch):
-        renderer = supplier.TemplateRenderer(version="1.0.0")
+        renderer = supplier.TemplateRenderer(version="9.10.1")
         repo = supplier.DistributionRepository(name="release", distribution_config={
-            "runtime.jdk.bundled": "true",
-            "jdk.bundled.release_url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz",
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz",
             "release.cache": "true"
         }, template_renderer=renderer)
-        self.assertEqual("https://artifacts.opensearch.org/releases/bundle/opensearch/1.0.0/opensearch-1.0.0-linux-x64.tar.gz",
+        self.assertEqual("https://downloads.apache.org/solr/solr/9.10.1/solr-9.10.1.tgz",
          repo.download_url)
-        self.assertEqual("opensearch-1.0.0-linux-x64.tar.gz", repo.file_name)
+        self.assertEqual("solr-9.10.1.tgz", repo.file_name)
         self.assertTrue(repo.cache)
 
     @mock.patch("osbenchmark.utils.sysstats.cpu_arch", return_value="x64")
     def test_release_repo_config_with_user_url(self, cpu_arch):
-        renderer = supplier.TemplateRenderer(version="1.0.0")
+        renderer = supplier.TemplateRenderer(version="9.10.1")
         repo = supplier.DistributionRepository(name="release", distribution_config={
-            "jdk.unbundled.release_url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz",
-            "runtime.jdk.bundled": "false",
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz",
             # user override
-            "release.url":
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz",
+            "release.url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz",
             "release.cache": "false"
         }, template_renderer=renderer)
-        self.assertEqual("https://artifacts.opensearch.org/releases/bundle/opensearch/1.0.0/opensearch-1.0.0-linux-x64.tar.gz",
+        self.assertEqual("https://downloads.apache.org/solr/solr/9.10.1/solr-9.10.1.tgz",
          repo.download_url)
-        self.assertEqual("opensearch-1.0.0-linux-x64.tar.gz", repo.file_name)
+        self.assertEqual("solr-9.10.1.tgz", repo.file_name)
         self.assertFalse(repo.cache)
 
     def test_missing_url(self):
-        renderer = supplier.TemplateRenderer(version="1.0.0")
+        renderer = supplier.TemplateRenderer(version="9.10.1")
         repo = supplier.DistributionRepository(name="miss", distribution_config={
-            "jdk.unbundled.release_url": "https://artifacts.opensearch\
-                .org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz",
-            "runtime.jdk.bundled": "false",
+            "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz",
             "release.cache": "true"
         }, template_renderer=renderer)
         with self.assertRaises(exceptions.SystemSetupError) as ctx:
             # pylint: disable=pointless-statement
             # noinspection PyStatementEffect
             repo.download_url
-        self.assertEqual("Neither config key [miss.url] nor [jdk.unbundled.miss_url] is defined.", ctx.exception.args[0])
+        self.assertEqual("Neither config key [miss.url] nor [miss_url] is defined.", ctx.exception.args[0])
 
     def test_missing_cache(self):
         renderer = supplier.TemplateRenderer(version="1.0.0")
