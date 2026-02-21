@@ -966,8 +966,8 @@ class WorkerCoordinator:
             opensearch[cluster_name] = self.os_client_factory(cluster_hosts, cluster_client_options).create()
         return opensearch
 
+    # TODO: Remove opensearch telemetry and implement custom Solr ones
     def prepare_telemetry(self, opensearch, enable):
-        """TODO: Remove opensearch telemetry and implement custom Solr ones""""
         enabled_devices = self.config.opts("telemetry", "devices")
         telemetry_params = self.config.opts("telemetry", "params")
         log_root = paths.test_run_root(self.config)

@@ -35,7 +35,7 @@ PROGRAM_NAME = os.getenv("BENCHMARK_ALTERNATIVE_BINARY_NAME", os.path.basename(s
 
 DOC_LINK = "https://solr.apache.org/guide/"
 
-FORUM_LINK = "https://lists.apache.org/list.html?users@solr.apache.org"
+FORUM_LINK = "https://solr.apache.org/community.html#mailing-lists-chat"
 
 BANNER = r"""
    _____       __        ____                  __                         __

@@ -2,7 +2,7 @@ import os
 from unittest import TestCase, mock
 from unittest.mock import Mock
 
-from osbenchmark.builder.installers.preparers.opensearch_preparer import SolrPreparer
+from osbenchmark.builder.installers.preparers.solr_preparer import SolrPreparer
 from osbenchmark.builder.models.host import Host
 from osbenchmark.builder.models.node import Node
 from osbenchmark.builder.cluster_config import ClusterConfigInstance

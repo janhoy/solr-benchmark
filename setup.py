@@ -106,13 +106,24 @@ install_requires = [
     "zstandard>=0.22.0",
     # License: BSD
     # Required for knnvector workload
+    "h5py>=3.10.0",
+    # License: BSD
+    # Required for knnvector workload
     "numpy>=1.24.2,<=1.26.4",
     # License: MIT
     "tqdm",
     # License: MIT
     "faker",
+    # License: BSD
+    "pandas>=1.4.3",
     # License: MIT
     "mimesis==11.1.0",
+    # Licence: BSD-3-Clause
+    "dask",
+    # Licence: BSD-3-Clause
+    "dask[distributed]",
+    # Licence: BSD-3-Clause
+    "bokeh!=3.0.*,>=2.4.2",
     # License: MIT
     "pydantic>=2.10.6",
     # License: MIT
