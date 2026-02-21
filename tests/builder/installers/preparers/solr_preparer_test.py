@@ -47,8 +47,8 @@ class NodePreparerTests(TestCase):
         uuid.return_value = self.node_id
 
         node = self.preparer.prepare(self.host, self.binaries)
-        self.assertEqual(node.binary_path, os.path.join(self.test_run_root, self.node_id, "install/opensearch*"))
-        self.assertEqual(node.data_paths, [os.path.join(self.test_run_root, self.node_id, "install/opensearch*/data")])
+        self.assertEqual(node.binary_path, os.path.join(self.test_run_root, self.node_id, "install/solr*"))
+        self.assertEqual(node.data_paths, [os.path.join(self.test_run_root, self.node_id, "install/solr*/data")])
         self.assertEqual(node.port, 9200)
         self.assertEqual(node.root_dir, os.path.join(self.test_run_root, self.node_id))
         self.assertEqual(node.name, self.node_id)

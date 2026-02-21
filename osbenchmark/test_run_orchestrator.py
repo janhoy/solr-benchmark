@@ -365,7 +365,7 @@ def solr_from_distribution(cfg):
       - solr.cache_dir        — directory for cached tarballs (default: ~/.solr-benchmark/cache)
     """
     logger = logging.getLogger(__name__)
-    version_str = cfg.opts("distribution", "version")
+    version_str = cfg.opts("builder", "distribution.version")
     port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
     base_dir = os.path.expanduser("~/.solr-benchmark")
     install_dir = cfg.opts("solr", "install_dir", mandatory=False,

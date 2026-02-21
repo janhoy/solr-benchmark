@@ -186,7 +186,7 @@ class BareProvisioner:
         self.logger = logging.getLogger(__name__)
 
     def prepare(self, binary):
-        self.os_installer.install(binary["opensearch"])
+        self.os_installer.install(binary["solr"])
         # we need to immediately delete it as plugins may copy their configuration during installation.
         self.os_installer.delete_pre_bundled_configuration()
 
@@ -269,13 +269,18 @@ class NodeInstaller:
 
         self.logger.info("Unzipping %s to %s", binary, self.install_dir)
         io.decompress(binary, self.install_dir)
-        self.os_home_path = glob.glob(os.path.join(self.install_dir, "opensearch*"))[0]
+        self.os_home_path = glob.glob(os.path.join(self.install_dir, "solr*"))[0]
         self.data_paths = self._data_paths()
 
     def delete_pre_bundled_configuration(self):
+        # Solr doesn't have a pre-bundled config directory like OpenSearch
+        # Configuration is managed through configsets in server/solr/configsets/
         config_path = os.path.join(self.os_home_path, "config")
-        self.logger.info("Deleting pre-bundled configuration at [%s]", config_path)
-        shutil.rmtree(config_path)
+        if os.path.exists(config_path):
+            self.logger.info("Deleting pre-bundled configuration at [%s]", config_path)
+            shutil.rmtree(config_path)
+        else:
+            self.logger.info("No pre-bundled config directory found at [%s], skipping deletion", config_path)
 
     def invoke_install_hook(self, phase, variables):
         env = {}

@@ -62,7 +62,7 @@ class SolrPreparer(Preparer):
         self.executor.execute(host, f"tar -xzvf {binary} --directory {node.binary_path}")
 
     def _update_node_binary_path(self, node):
-        node.binary_path = os.path.join(node.binary_path, "opensearch*")
+        node.binary_path = os.path.join(node.binary_path, "solr*")
 
     def _set_node_data_paths(self, node):
         node.data_paths = [os.path.join(node.binary_path, "data")]
