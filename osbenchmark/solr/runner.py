@@ -385,215 +385,9 @@ def _parse_bulk_pairs(first_action_line, lines_iter):
 
 
 # ---------------------------------------------------------------------------
-# OpenSearch → Solr query translation helpers
-#
-# Best-effort translation of common OpenSearch query DSL patterns to Solr
-# query syntax.  Complex or unknown query structures fall back to q=*:*.
+# OpenSearch → Solr conversion is now in osbenchmark.solr.conversion package
+# These helpers are imported on-demand only when processing OpenSearch workloads
 # ---------------------------------------------------------------------------
-
-def _solr_escape(value):
-    """Escape special Lucene/Solr query characters in a field value."""
-    special = r'+-&&||!(){}[]^"~*?:\/'
-    result = []
-    for char in str(value):
-        if char in special:
-            result.append('\\' + char)
-        else:
-            result.append(char)
-    return ''.join(result)
-
-
-def _convert_os_date_to_solr(date_str, os_format=None):
-    """
-    Convert an OpenSearch date string to Solr ISO 8601 format.
-
-    Args:
-        date_str: Date string from OpenSearch query (e.g., "01/01/2015")
-        os_format: OpenSearch format string (e.g., "dd/MM/yyyy") or None
-
-    Returns:
-        ISO 8601 date string for Solr (e.g., "2015-01-01T00:00:00Z")
-
-    If the date is already in ISO format or conversion fails, returns the
-    original string unchanged.
-    """
-    if not isinstance(date_str, str) or date_str in ("*", "now"):
-        return date_str
-
-    # Map OpenSearch date format patterns to Python strptime format
-    OS_TO_PYTHON_FORMAT = {
-        "dd/MM/yyyy": "%d/%m/%Y",
-        "MM/dd/yyyy": "%m/%d/%Y",
-        "yyyy-MM-dd": "%Y-%m-%d",
-        "yyyy/MM/dd": "%Y/%m/%d",
-        "dd-MM-yyyy": "%d-%m-%Y",
-        "MM-dd-yyyy": "%m-%d-%Y",
-        # Add more as needed
-    }
-
-    # If format is provided, use it to parse the date
-    if os_format:
-        python_fmt = OS_TO_PYTHON_FORMAT.get(os_format)
-        if python_fmt:
-            try:
-                dt = datetime.strptime(date_str, python_fmt)
-                return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-            except ValueError:
-                logger.warning(f"Failed to parse date '{date_str}' with format '{os_format}'")
-                return date_str
-        else:
-            logger.warning(f"Unknown OpenSearch date format: '{os_format}'")
-
-    # Try common patterns if no format specified
-    for python_fmt in OS_TO_PYTHON_FORMAT.values():
-        try:
-            dt = datetime.strptime(date_str, python_fmt)
-            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        except ValueError:
-            continue
-
-    # If it's already in ISO-like format, return as-is
-    # (handles cases like "2015-01-01T00:00:00Z" or partial ISO)
-    if "T" in date_str or len(date_str) == 10:  # YYYY-MM-DD
-        return date_str
-
-    logger.warning(f"Could not parse date '{date_str}', using as-is")
-    return date_str
-
-
-def _os_query_to_solr_q(body):
-    """
-    Translate an OpenSearch query DSL dict to a Solr ``q`` string.
-
-    Supported patterns:
-      - ``match_all``             → ``*:*``
-      - ``term``                  → ``field:value``
-      - ``terms``                 → ``field:(v1 v2 v3)``
-      - ``match`` / ``match_phrase`` → ``field:value``
-      - ``range``                 → ``field:[lo TO hi]``
-      - ``exists``                → ``field:[* TO *]``
-      - ``bool`` (must/filter/should/must_not) → recursive translation
-      - ``ids``                   → ``id:(id1 id2 ...)``
-
-    Falls back to ``*:*`` for unrecognised patterns (logs at DEBUG level).
-    """
-    if not body or not isinstance(body, dict):
-        return "*:*"
-    query = body.get("query", {})
-    return _translate_query_node(query)
-
-
-def _translate_query_node(node):
-    """Recursively translate a single OpenSearch query node."""
-    if not node or not isinstance(node, dict):
-        return "*:*"
-
-    if "match_all" in node:
-        return "*:*"
-
-    if "match_none" in node:
-        return "-*:*"
-
-    if "term" in node:
-        for field, value in node["term"].items():
-            v = value.get("value", value) if isinstance(value, dict) else value
-            return f"{field}:{_solr_escape(v)}"
-
-    if "terms" in node:
-        for field, values in node["terms"].items():
-            if field.startswith("_"):
-                continue
-            escaped = " ".join(_solr_escape(v) for v in values)
-            return f"{field}:({escaped})"
-
-    if "match" in node or "match_phrase" in node:
-        sub = node.get("match") or node.get("match_phrase")
-        for field, value in sub.items():
-            v = value.get("query", value) if isinstance(value, dict) else value
-            return f"{field}:{_solr_escape(v)}"
-
-    if "range" in node:
-        for field, bounds in node["range"].items():
-            lo = bounds.get("gte", bounds.get("gt", "*"))
-            hi = bounds.get("lte", bounds.get("lt", "*"))
-            # Convert dates if format is specified (common for date fields)
-            os_format = bounds.get("format")
-            lo = _convert_os_date_to_solr(lo, os_format)
-            hi = _convert_os_date_to_solr(hi, os_format)
-            return f"{field}:[{lo} TO {hi}]"
-
-    if "exists" in node:
-        field = node["exists"].get("field", "*")
-        return f"{field}:[* TO *]"
-
-    if "ids" in node:
-        values = node["ids"].get("values", [])
-        if values:
-            escaped = " ".join(_solr_escape(v) for v in values)
-            return f"id:({escaped})"
-        return "*:*"
-
-    if "bool" in node:
-        bool_q = node["bool"]
-        parts = []
-
-        def _add(clauses, prefix):
-            if not clauses:
-                return
-            if isinstance(clauses, dict):
-                clauses = [clauses]
-            for clause in clauses:
-                sub = _translate_query_node(clause)
-                if sub and sub != "*:*":
-                    parts.append(f"{prefix}({sub})")
-
-        _add(bool_q.get("must"), "+")
-        _add(bool_q.get("filter"), "+")
-        _add(bool_q.get("must_not"), "-")
-
-        shoulds = bool_q.get("should", [])
-        if isinstance(shoulds, dict):
-            shoulds = [shoulds]
-        should_parts = [_translate_query_node(s) for s in shoulds]
-        should_parts = [s for s in should_parts if s and s != "*:*"]
-        if should_parts:
-            parts.append("(" + " ".join(should_parts) + ")")
-
-        return " ".join(parts) if parts else "*:*"
-
-    # Unknown / untranslatable query node
-    logger.warning(
-        "Cannot translate OpenSearch query type '%s' to Solr syntax. "
-        "Falling back to q=*:* (results may not match workload intent). "
-        "Consider rewriting this operation as a native Solr workload task.",
-        list(node.keys()),
-    )
-    return "*:*"
-
-
-def _extract_sort_param(body):
-    """Extract a Solr sort string from an OpenSearch sort clause."""
-    if not isinstance(body, dict) or "sort" not in body:
-        return None
-    sort_clauses = body["sort"]
-    if isinstance(sort_clauses, dict):
-        sort_clauses = [sort_clauses]
-    solr_sorts = []
-    for clause in sort_clauses:
-        if isinstance(clause, str):
-            solr_sorts.append(clause)
-        elif isinstance(clause, dict):
-            for field, order_info in clause.items():
-                if field == "_score":
-                    continue
-                if isinstance(order_info, dict):
-                    order = order_info.get("order", "asc")
-                elif isinstance(order_info, str):
-                    order = order_info
-                else:
-                    order = "asc"
-                solr_sorts.append(f"{field} {order}")
-    return ", ".join(solr_sorts) if solr_sorts else None
 
 
 # ---------------------------------------------------------------------------
@@ -738,9 +532,15 @@ class SolrSearch(SolrRunner):
                         "ignored (collection=%s). Consider rewriting as a native Solr facet query.",
                         collection,
                     )
-                q = _os_query_to_solr_q(body)
+                # Import conversion modules (only used for OpenSearch workloads)
+                from osbenchmark.solr.conversion.query import (
+                    translate_opensearch_query,
+                    extract_sort_parameter,
+                )
+
+                q = translate_opensearch_query(body)
                 rows = body.get("size", 10) if isinstance(body, dict) else 10
-                sort_param = _extract_sort_param(body)
+                sort_param = extract_sort_parameter(body)
 
                 solr_params = dict(params)
                 solr_params["collection"] = collection
@@ -941,7 +741,8 @@ class SolrCreateCollection(SolrRunner):
                 "(convenience fallback - native Solr workloads are recommended)"
             )
             try:
-                from osbenchmark.solr.schema_generator import (
+                # Import conversion modules (only used for OpenSearch workloads)
+                from osbenchmark.solr.conversion.schema import (
                     translate_opensearch_mapping,
                     generate_schema_xml,
                     create_configset_from_schema,
@@ -950,11 +751,11 @@ class SolrCreateCollection(SolrRunner):
                 # Extract field definitions from mappings
                 properties = mappings.get("properties", {})
                 if properties:
-                    # Translate OpenSearch types to Solr types
-                    field_defs = translate_opensearch_mapping(properties)
+                    # Translate OpenSearch types to Solr types (including multi-fields)
+                    field_defs, copy_fields = translate_opensearch_mapping(properties)
 
-                    # Generate schema.xml
-                    schema_xml = generate_schema_xml(field_defs, unique_key="id")
+                    # Generate schema.xml with copyField directives for multi-fields
+                    schema_xml = generate_schema_xml(field_defs, copy_fields=copy_fields, unique_key="id")
 
                     # Create temporary configset directory
                     auto_generated_configset = create_configset_from_schema(
@@ -1000,7 +801,7 @@ class SolrCreateCollection(SolrRunner):
         finally:
             # Clean up auto-generated configset
             if auto_generated_configset:
-                from osbenchmark.solr.schema_generator import cleanup_configset
+                from osbenchmark.solr.conversion.schema import cleanup_configset
                 cleanup_configset(auto_generated_configset)
 
         elapsed = time.perf_counter() - start

@@ -32,11 +32,75 @@ from osbenchmark.solr.runner import (
     SolrDeleteCollection,
     SolrRawRequest,
 )
+from osbenchmark.solr.conversion.field import normalize_field_name
+from osbenchmark.solr.conversion.query import translate_opensearch_query
+
+
+# Backward compatibility aliases for tests
+def _normalize_field_name(field):
+    """Test compatibility wrapper."""
+    return normalize_field_name(field)
+
+
+def _translate_query_node(node):
+    """Test compatibility wrapper."""
+    return translate_opensearch_query({"query": node})
 
 
 def _run(coro):
     """Run an async coroutine synchronously for testing."""
     return asyncio.get_event_loop().run_until_complete(coro)
+
+
+class TestFieldNameNormalization(unittest.TestCase):
+    """Test OpenSearch to Solr field name normalization with underscore convention."""
+
+    def test_raw_suffix_to_underscore(self):
+        """Test that .raw suffix is converted to underscore."""
+        self.assertEqual("country_code_raw", _normalize_field_name("country_code.raw"))
+        self.assertEqual("name_raw", _normalize_field_name("name.raw"))
+        self.assertEqual("title_raw", _normalize_field_name("title.raw"))
+
+    def test_keyword_suffix_to_underscore(self):
+        """Test that .keyword suffix is converted to underscore."""
+        self.assertEqual("country_code_keyword", _normalize_field_name("country_code.keyword"))
+        self.assertEqual("name_keyword", _normalize_field_name("name.keyword"))
+
+    def test_sort_suffix_to_underscore(self):
+        """Test that .sort suffix is converted to underscore."""
+        self.assertEqual("title_sort", _normalize_field_name("title.sort"))
+        self.assertEqual("name_sort", _normalize_field_name("name.sort"))
+
+    def test_regular_fields_unchanged(self):
+        """Test that regular field names are unchanged."""
+        self.assertEqual("country_code", _normalize_field_name("country_code"))
+        self.assertEqual("title", _normalize_field_name("title"))
+        self.assertEqual("_id", _normalize_field_name("_id"))
+
+    def test_term_query_with_raw_field(self):
+        """Test that term queries with .raw fields are normalized to _raw."""
+        query = {"term": {"country_code.raw": "US"}}
+        result = _translate_query_node(query)
+        # Should use country_code_raw (underscore convention)
+        self.assertEqual("country_code_raw:US", result)
+
+    def test_term_query_with_keyword_field(self):
+        """Test that term queries with .keyword fields are normalized to _keyword."""
+        query = {"term": {"name.keyword": "John"}}
+        result = _translate_query_node(query)
+        self.assertEqual("name_keyword:John", result)
+
+    def test_range_query_with_raw_field(self):
+        """Test that range queries with .raw fields are normalized to _raw."""
+        query = {"range": {"population.raw": {"gte": 1000, "lte": 5000}}}
+        result = _translate_query_node(query)
+        self.assertEqual("population_raw:[1000 TO 5000]", result)
+
+    def test_exists_query_with_raw_field(self):
+        """Test that exists queries with .raw fields are normalized to _raw."""
+        query = {"exists": {"field": "country_code.raw"}}
+        result = _translate_query_node(query)
+        self.assertEqual("country_code_raw:[* TO *]", result)
 
 
 class TestTranslateNdjsonBatch(unittest.TestCase):
