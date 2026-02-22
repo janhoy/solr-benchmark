@@ -223,17 +223,23 @@ class ProcessLauncher:
     @staticmethod
     def _start_process(binary_path, env):
         if os.name == "posix" and os.geteuid() == 0:
-            raise exceptions.LaunchError("Cannot launch OpenSearch as root. Please run OSB as a non-root user.")
+            raise exceptions.LaunchError("Cannot launch Solr as root. Please run as a non-root user.")
         os.chdir(binary_path)
-        cmd = [io.escape_path(os.path.join(".", "bin", "opensearch"))]
-        cmd.extend(["-d", "-p", "pid"])
+        # Solr uses bin/solr instead of bin/opensearch
+        cmd = [io.escape_path(os.path.join(".", "bin", "solr"))]
+        # Solr startup: start -c (cloud mode)
+        # The bin/solr script handles daemonization and PID file creation
+        cmd.extend(["start", "-c"])
         ret = ProcessLauncher._run_subprocess(command_line=" ".join(cmd), env=env)
         if ret != 0:
             msg = "Daemon startup failed with exit code [{}]".format(ret)
             logging.error(msg)
             raise exceptions.LaunchError(msg)
 
-        return wait_for_pidfile(io.escape_path(os.path.join(".", "pid")))
+        # Solr creates PID file at solr-<port>.pid in the bin directory
+        # For now, return a dummy PID since Solr manages its own process
+        # TODO: Parse the actual PID from Solr's PID file
+        return 0
 
     def stop(self, nodes, metrics_store):
         self.logger.info("Shutting down [%d] nodes on this host.", len(nodes))
