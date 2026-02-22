@@ -335,17 +335,17 @@ def docker(cfg):
 
 
 Pipeline("from-sources",
-         "Builds and provisions OpenSearch, runs a benchmark and publishes results.", from_sources)
+         "Builds Solr from source, provisions it locally, runs a benchmark, and tears down.", from_sources)
 
 Pipeline("from-distribution",
-         "Downloads an OpenSearch distribution, provisions it, runs a benchmark and publishes results.", from_distribution)
+         "Downloads a Solr distribution, provisions it locally, runs a benchmark, and tears down.", from_distribution)
 
 Pipeline("benchmark-only",
          "Assumes an already running search engine instance, runs a benchmark and publishes results", benchmark_only)
 
-# Very experimental Docker pipeline. Should only be used with great care and is also not supported on all platforms.
+# Docker pipeline for containerized Solr deployments
 Pipeline("docker",
-         "Runs a benchmark against the official OpenSearch Docker container and publishes results", docker, stable=False)
+         "Starts Solr via Docker, runs a benchmark, and removes the container on teardown.", docker, stable=False)
 
 
 # ---------------------------------------------------------------------------
