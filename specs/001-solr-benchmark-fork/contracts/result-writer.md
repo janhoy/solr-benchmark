@@ -27,11 +27,25 @@ class ResultWriter(ABC):
         Called once before any metrics are written.
 
         Args:
-            run_metadata: dict containing at minimum:
-                - "run_id": str   — unique run identifier (ISO timestamp)
-                - "workload": str — workload name
-                - "challenge": str — challenge name
-                - "solr_version": str — detected Solr version string
+            run_metadata: dict containing benchmark run metadata including:
+                - "run_id": str              — unique run identifier (ISO timestamp)
+                - "timestamp": float         — Unix epoch seconds when run started
+                - "workload": str            — workload name
+                - "test_procedure": str      — test procedure (challenge) name
+                - "pipeline": str            — pipeline used (e.g., "docker", "from-distribution")
+                - "distribution-version": str — Solr version string (in cluster metadata)
+                - "user-tags": dict          — user-provided tags/labels for custom annotations
+                - "cluster-config-instance": list — cluster-config name(s) used (e.g., ["4gheap"])
+                - "cluster-config-spec": dict — complete cluster configuration specification:
+                    - "variables": dict           — all config variables (heap_size, GC settings, etc.)
+                    - "base_configs": list        — chain of base configs (e.g., ["vanilla"])
+                    - "template_paths": list      — paths to config templates used
+                    - "effective_settings": dict  — resolved configuration values after template rendering
+
+        Note: This metadata supports time-series analysis by enabling comparison
+        of benchmark runs across different cluster configurations, versions, and settings.
+        The cluster-config-spec is critical for result portal display, allowing users to
+        filter/group results by configuration (e.g., "all 4GB heap runs" vs "all 8GB heap runs").
         """
 
     @abstractmethod
@@ -107,16 +121,40 @@ results_path = ~/.solr-benchmark/results
 Writes results to the path configured in `results_path`:
 
 ```
-{results_path}/{run_id}/
-├── results.json   ← all metrics as JSON
-├── results.csv    ← flattened CSV
+{results_path}/YYYYMMDD_HHMMSS_<run-id-prefix>/
+├── test_run.json  ← complete benchmark metadata + results (copied from test-runs store)
+├── results.csv    ← flattened CSV of key metrics
 └── summary.txt    ← markdown table (also printed to stdout)
 ```
 
 Behaviour:
-- `open()`: creates the run directory
+- `open()`: creates the timestamped run directory (e.g., `20260222_143052_a34ff090/`)
 - `write()`: appends metrics to the in-memory accumulator
-- `close()`: writes `results.json`, `results.csv`, `summary.txt`; prints summary to stdout
+- `close()`: copies `test_run.json` from the test-runs store, generates `results.csv` and `summary.txt`, prints summary to stdout
+
+**Primary Result Format: test_run.json**
+
+The `test_run.json` file (copied from `~/.solr-benchmark/benchmarks/test-runs/<run-id>/test_run.json`) is the complete canonical record of the benchmark run. It contains:
+- Benchmark version and revision
+- Environment name
+- Test run ID and timestamp (ISO 8601)
+- Pipeline type (docker, from-distribution, benchmark-only, etc.)
+- **User tags** (custom labels via `--user-tag`)
+- Workload name and revision
+- Test procedure (challenge) name
+- **Cluster configuration name** (e.g., "4gheap", "external")
+- **Cluster configuration specification** (all variables, heap_size, GC settings, template paths, effective configuration values)
+- Distribution version and flavor
+- **Complete results**: operation metrics, correctness metrics, profile metrics, system metrics (GC, merge times, segment counts, etc.)
+
+**Rationale for Using test_run.json**:
+The tool already creates this comprehensive file in the test-runs store. Rather than duplicating data by creating a separate custom format, the result writer copies this single source of truth into each results directory. This ensures:
+- No format duplication or metadata drift
+- All metadata needed for time-series analysis is present (including complete cluster-config specification)
+- Single canonical record per benchmark run
+- Result portal can filter/group runs by cluster configuration (e.g., all 4GB heap runs)
+- Users can correlate performance changes with configuration changes
+- CSV and summary.txt remain available as convenience formats
 
 ---
 

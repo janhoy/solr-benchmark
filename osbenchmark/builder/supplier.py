@@ -64,7 +64,7 @@ def create(cfg, sources, distribution, cluster_config, plugins=None):
         except ValueError:
             raise exceptions.SystemSetupError(f"ClusterConfigInstance config key [build.jdk] is invalid: [{raw_build_jdk}] (must be int)")
 
-        os_src_dir = os.path.join(_src_dir(cfg), _config_value(src_config, "opensearch.src.subdir"))
+        os_src_dir = os.path.join(_src_dir(cfg), _config_value(src_config, "src.subdir"))
         builder = Builder(os_src_dir, build_jdk, paths.logs())
     else:
         builder = None
@@ -92,7 +92,7 @@ def create(cfg, sources, distribution, cluster_config, plugins=None):
         source_distributions_root = None
 
     if os_supplier_type == "source":
-        os_src_dir = os.path.join(_src_dir(cfg), _config_value(src_config, "opensearch.src.subdir"))
+        os_src_dir = os.path.join(_src_dir(cfg), _config_value(src_config, "src.subdir"))
 
         source_supplier = SourceSupplier(os_version,
                                                       os_src_dir,

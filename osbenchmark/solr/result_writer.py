@@ -19,6 +19,7 @@ import csv
 import json
 import logging
 import os
+import shutil
 from abc import ABC, abstractmethod
 
 import tabulate as tabulate_lib
@@ -95,7 +96,35 @@ class LocalFilesystemResultWriter(ResultWriter):
     def open(self, run_metadata: dict) -> None:
         self._run_metadata = run_metadata
         run_id = run_metadata.get("run_id", "unknown")
-        self._run_dir = os.path.join(self._results_path, run_id)
+        timestamp = run_metadata.get("timestamp")
+
+        # Create a descriptive folder name with timestamp
+        # Format: YYYYMMDD_HHMMSS_<first8-of-uuid>
+        # Example: 20260222_143052_7a82f1ea
+        if timestamp and run_id != "unknown":
+            from datetime import datetime
+            # timestamp can be either a datetime object or Unix timestamp (float/int)
+            if isinstance(timestamp, datetime):
+                time_str = timestamp.strftime("%Y%m%d_%H%M%S")
+            elif isinstance(timestamp, (int, float)):
+                import time
+                time_str = time.strftime("%Y%m%d_%H%M%S", time.gmtime(timestamp))
+            else:
+                # Unknown timestamp type, fall back to run_id only
+                logger.warning("Unknown timestamp type: %s, using run_id only", type(timestamp))
+                time_str = None
+
+            if time_str:
+                # Use first 8 chars of run_id for uniqueness
+                run_id_short = run_id[:8] if len(run_id) >= 8 else run_id
+                folder_name = f"{time_str}_{run_id_short}"
+            else:
+                folder_name = run_id
+        else:
+            # Fallback to just run_id if no timestamp
+            folder_name = run_id
+
+        self._run_dir = os.path.join(self._results_path, folder_name)
         os.makedirs(self._run_dir, exist_ok=True)
         self._metrics = []
         self._opened = True
@@ -111,7 +140,7 @@ class LocalFilesystemResultWriter(ResultWriter):
         if not self._metrics:
             logger.warning("No metrics to write — result files will be empty")
 
-        self._write_json()
+        self._copy_test_run_json()
         self._write_csv()
         summary = self._write_summary()
         print(summary)
@@ -120,13 +149,32 @@ class LocalFilesystemResultWriter(ResultWriter):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _write_json(self) -> None:
-        output = dict(self._run_metadata)
-        output["metrics"] = self._metrics
-        path = os.path.join(self._run_dir, "results.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(output, f, indent=2)
-        logger.info("Wrote %s", path)
+    def _copy_test_run_json(self) -> None:
+        """
+        Copy test_run.json from the test-runs store to the results directory.
+        This file is the complete canonical record of the benchmark run.
+        """
+        run_id = self._run_metadata.get("run_id", "unknown")
+        if run_id == "unknown":
+            logger.warning("No run_id available, cannot copy test_run.json")
+            return
+
+        # Determine test-runs directory from results path
+        # results_path is like ~/.solr-benchmark/results
+        # test-runs path is like ~/.solr-benchmark/benchmarks/test-runs/<run-id>/test_run.json
+        benchmark_root = os.path.dirname(self._results_path)
+        test_runs_dir = os.path.join(benchmark_root, "benchmarks", "test-runs")
+        source_path = os.path.join(test_runs_dir, run_id, "test_run.json")
+        dest_path = os.path.join(self._run_dir, "test_run.json")
+
+        if os.path.exists(source_path):
+            try:
+                shutil.copy2(source_path, dest_path)
+                logger.info("Copied test_run.json from %s to %s", source_path, dest_path)
+            except Exception as e:
+                logger.warning("Failed to copy test_run.json: %s", e)
+        else:
+            logger.warning("Source test_run.json not found at %s", source_path)
 
     def _write_csv(self) -> None:
         if not self._metrics:

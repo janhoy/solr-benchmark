@@ -120,6 +120,7 @@ def comma_separated_string_to_number_list(string_list):
 class SummaryResultsPublisher:
     def __init__(self, results, config):
         self.results = results
+        self.config = config
         self.results_file = config.opts("reporting", "output.path")
         self.results_format = config.opts("reporting", "format")
         self.numbers_align = config.opts("reporting", "numbers.align",
@@ -239,7 +240,13 @@ class SummaryResultsPublisher:
                 {"name": row[0], "task": row[1], "value": row[2], "unit": row[3] or ""}
                 for row in metrics_table if row
             ]
+            # Build run metadata with run_id from config and any other stats metadata
             run_metadata = self.results.as_dict() if hasattr(self.results, "as_dict") else {}
+            run_metadata["run_id"] = self.config.opts("system", "test_run.id")
+            # Convert datetime to Unix timestamp (seconds since epoch) for JSON serialization
+            time_start = self.config.opts("system", "time.start")
+            if time_start:
+                run_metadata["timestamp"] = time_start.timestamp() if hasattr(time_start, "timestamp") else time_start
             try:
                 self._result_writer.open(run_metadata)
                 self._result_writer.write(structured)

@@ -234,20 +234,31 @@ class BenchmarkCoordinator:
         self.test_run.distribution_flavor = distribution_flavor
         self.test_run.distribution_version = distribution_version
         self.test_run.revision = revision
+
+        # If version wasn't detected from cluster, try to get it from config
+        if not self.test_run.distribution_version:
+            self.test_run.distribution_version = self.cfg.opts("builder", "distribution.version", mandatory=False)
+
         # store test_run initially (without any results) so other components can retrieve full metadata
         self.test_run_store.store_test_run(self.test_run)
+
+        # test_procedure = the specific benchmark scenario within a workload (e.g., "append-no-conflicts")
+        # cluster_config = the cluster configuration variant (e.g., "vanilla", "4gheap")
+        # pipeline = how the cluster is provisioned (e.g., "docker", "from-sources", "benchmark-only")
         if self.test_run.test_procedure.auto_generated:
-            console.info("Running test with workload [{}] and cluster_config {} with version [{}].\n"
-                         .format(self.test_run.workload_name,
+            console.info("Running benchmark with pipeline [{}], workload [{}], cluster_config [{}], version [{}].\n"
+                         .format(self.test_run.pipeline,
+                         self.test_run.workload_name,
                          self.test_run.cluster_config,
-                         self.test_run.distribution_version))
+                         self.test_run.distribution_version or "unknown"))
         else:
-            console.info("Running test with workload [{}], test_procedure [{}] and cluster_config {} with version [{}].\n"
+            console.info("Running benchmark with pipeline [{}], workload [{}], test_procedure [{}], cluster_config [{}], version [{}].\n"
                          .format(
+                             self.test_run.pipeline,
                              self.test_run.workload_name,
                              self.test_run.test_procedure_name,
                              self.test_run.cluster_config,
-                             self.test_run.distribution_version
+                             self.test_run.distribution_version or "unknown"
                              ))
 
     def on_task_finished(self, new_metrics):

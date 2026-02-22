@@ -1301,12 +1301,15 @@ def create_test_run(cfg, workload, test_procedure, workload_revision=None):
     # In tests, we don't get the default command-line arg value for percentiles,
     # so supply them as defaults here as well
 
+    # Get cluster_config_instance if available (stored during provisioning)
+    cluster_config_instance = cfg.opts("builder", "cluster_config.instance", mandatory=False, default_value=None)
+
     return TestRun(benchmark_version, benchmark_revision,
     environment, test_run_id, test_run_timestamp,
     pipeline, user_tags, workload,
     workload_params, test_procedure, cluster_config, cluster_config_params,
     plugin_params, workload_revision, latency_percentiles=latency_percentiles,
-    throughput_percentiles=throughput_percentiles)
+    throughput_percentiles=throughput_percentiles, cluster_config_instance=cluster_config_instance)
 
 
 class TestRun:
@@ -1316,7 +1319,8 @@ class TestRun:
                  cluster_config_params, plugin_params,
                  workload_revision=None, cluster_config_revision=None,
                  distribution_version=None, distribution_flavor=None,
-                 revision=None, results=None, meta_data=None, latency_percentiles=None, throughput_percentiles=None):
+                 revision=None, results=None, meta_data=None, latency_percentiles=None, throughput_percentiles=None,
+                 cluster_config_instance=None):
         if results is None:
             results = {}
         # this happens when the test run is created initially
@@ -1353,6 +1357,7 @@ class TestRun:
         self.meta_data = meta_data
         self.latency_percentiles = latency_percentiles
         self.throughput_percentiles = throughput_percentiles
+        self.cluster_config_instance = cluster_config_instance
 
 
     @property
@@ -1411,6 +1416,16 @@ class TestRun:
             d["cluster-config-instance-params"] = self.cluster_config_params
         if self.plugin_params:
             d["plugin-params"] = self.plugin_params
+        # Add complete cluster-config specification for result portal display and time-series analysis
+        if self.cluster_config_instance:
+            d["cluster-config-spec"] = {
+                "names": self.cluster_config_instance.names if hasattr(self.cluster_config_instance, "names") else [],
+                "variables": self.cluster_config_instance.variables if hasattr(self.cluster_config_instance, "variables") else {},
+                "config_paths": self.cluster_config_instance.config_paths if hasattr(self.cluster_config_instance, "config_paths") else [],
+                "root_path": self.cluster_config_instance.root_path if hasattr(self.cluster_config_instance, "root_path") else None,
+                "provider": str(self.cluster_config_instance.provider) if hasattr(self.cluster_config_instance, "provider") else None,
+                "flavor": str(self.cluster_config_instance.flavor) if hasattr(self.cluster_config_instance, "flavor") else None,
+            }
         return d
     def to_result_dicts(self):
         """

@@ -475,9 +475,19 @@ class DockerProvisioner:
                                  self.node_name, self.node_root_dir, self.binary_path, self.data_paths)
 
     def docker_vars(self, mounts):
+        # Determine Docker image based on version type
+        # SNAPSHOT versions use apache/solr-nightly, release versions use solr
+        base_docker_image = self.cluster_config.mandatory_var("docker_image")
+        if self.distribution_version and "-SNAPSHOT" in self.distribution_version:
+            # For SNAPSHOT versions, use apache/solr-nightly
+            docker_image = "apache/solr-nightly"
+        else:
+            # For release versions, use the configured image (typically "solr")
+            docker_image = base_docker_image
+
         v = {
             "os_version": self.distribution_version,
-            "docker_image": self.cluster_config.mandatory_var("docker_image"),
+            "docker_image": docker_image,
             "http_port": self.http_port,
             "os_data_dir": self.data_paths[0],
             "os_log_dir": self.node_log_dir,

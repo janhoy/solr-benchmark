@@ -169,7 +169,9 @@ class ProcessLauncher:
         t = telemetry.Telemetry(enabled_devices, devices=node_telemetry)
         env = self._prepare_env(node_name, java_home, t)
         t.on_pre_node_start(node_name)
-        node_pid = self._start_process(binary_path, env)
+        # Get Solr version for version-specific startup command
+        distribution_version = self.cfg.opts("builder", "distribution.version", mandatory=False)
+        node_pid = self._start_process(binary_path, env, distribution_version)
         self.logger.info("Successfully started node [%s] with PID [%s].", node_name, node_pid)
         node = cluster.Node(node_pid, binary_path, host_name, node_name, t)
 
@@ -221,15 +223,37 @@ class ProcessLauncher:
         return command_line_process.returncode
 
     @staticmethod
-    def _start_process(binary_path, env):
+    def _start_process(binary_path, env, distribution_version=None):
         if os.name == "posix" and os.geteuid() == 0:
             raise exceptions.LaunchError("Cannot launch Solr as root. Please run as a non-root user.")
         os.chdir(binary_path)
         # Solr uses bin/solr instead of bin/opensearch
         cmd = [io.escape_path(os.path.join(".", "bin", "solr"))]
-        # Solr startup: start -c (cloud mode)
+
+        # Solr startup command varies by version:
+        # - Solr 9.x: requires --cloud flag for SolrCloud mode
+        # - Solr 10.x+: just "start" enables SolrCloud mode with embedded ZooKeeper by default
         # The bin/solr script handles daemonization and PID file creation
-        cmd.extend(["start", "-c"])
+        cmd.append("start")
+
+        # Determine if we need --cloud flag based on version
+        if distribution_version:
+            # Extract major version (handle formats like "9.10.1", "10.0.0-SNAPSHOT", "11.0.0-SNAPSHOT")
+            version_parts = distribution_version.split("-")[0].split(".")
+            if version_parts:
+                try:
+                    major_version = int(version_parts[0])
+                    if major_version < 10:
+                        # Solr 9.x and earlier require --cloud flag
+                        cmd.append("--cloud")
+                        logging.info("Using --cloud flag for Solr %s", distribution_version)
+                    else:
+                        logging.info("Solr %s uses embedded cloud mode by default", distribution_version)
+                except (ValueError, IndexError):
+                    # If we can't parse version, assume newer Solr (no flag)
+                    logging.warning("Could not parse Solr version from '%s', assuming 10.x+ (no --cloud flag)",
+                                  distribution_version)
+
         ret = ProcessLauncher._run_subprocess(command_line=" ".join(cmd), env=env)
         if ret != 0:
             msg = "Daemon startup failed with exit code [{}]".format(ret)

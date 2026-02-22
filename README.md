@@ -122,8 +122,47 @@ A Solr workload is a JSON file with the following top-level keys:
 
 ## Result output
 
-Results are written as JSON, CSV, and a plain-text summary under
-`~/.solr-benchmark/results/<run-id>/` by default.
+Results are written to timestamped directories under `~/.solr-benchmark/results/` by default.
+
+Each benchmark run creates a directory named `YYYYMMDD_HHMMSS_<run-id-prefix>/` containing:
+
+- **test_run.json** — Complete canonical record of the benchmark run including:
+  - Benchmark metadata (version, environment, pipeline, user tags)
+  - Workload and test procedure information
+  - Cluster configuration specification (heap size, GC settings, all variables)
+  - Distribution version and flavor
+  - Detailed operation metrics (throughput, latency, error rates)
+  - System metrics (GC times, merge times, segment counts, etc.)
+- **results.csv** — Flattened CSV export of key metrics for spreadsheet analysis
+- **summary.txt** — Human-readable markdown table (also printed to console)
+
+### Time-Series Analysis
+
+The `test_run.json` file includes complete cluster-config specification, making it easy to:
+- Compare performance across different configurations (4GB heap vs 8GB heap)
+- Filter and group results by configuration in a results portal/dashboard
+- Correlate configuration changes with performance changes
+- Track performance trends over time with custom user tags (`--user-tag "key:value"`)
+
+### Example: Analyzing Results
+
+```bash
+# Run benchmark with specific config and tag
+solr-benchmark run --cluster-config 4gheap --user-tag "baseline:true" \
+  --workload nyc_taxis --test-mode
+
+# Results stored in ~/.solr-benchmark/results/20260222_143052_a34ff090/
+# Inspect complete metadata:
+cat ~/.solr-benchmark/results/20260222_143052_a34ff090/test_run.json | jq .
+
+# Extract cluster-config specification:
+cat ~/.solr-benchmark/results/20260222_143052_a34ff090/test_run.json | \
+  jq '."cluster-config-spec"'
+
+# Extract throughput metrics:
+cat ~/.solr-benchmark/results/20260222_143052_a34ff090/test_run.json | \
+  jq '.results.op_metrics[] | {task, throughput}'
+```
 
 ## Development
 

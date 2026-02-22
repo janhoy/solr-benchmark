@@ -246,6 +246,34 @@ T030 after T028+T029; T034 after all story phases
 
 ---
 
+## Phase 9: Result Storage Consolidation (Post-Implementation)
+
+**Purpose**: Eliminate format duplication between test_run.json (stored in test-runs/) and custom results files (in results/) by using test_run.json as the primary result format and copying it into each timestamped results directory. Additionally, ensure complete cluster-config specification is recorded for time-series analysis and result portal display.
+
+**Background**: The tool currently creates two separate result artifacts:
+1. **test_run.json** in `~/.solr-benchmark/benchmarks/test-runs/<run-id>/` — comprehensive metadata (benchmark version, environment, pipeline, user-tags, workload, test_procedure, cluster config, distribution version, and full detailed results)
+2. **results/** directory — custom-formatted results.json, results.csv, summary.txt
+
+Two issues discovered:
+- The test_run.json already contains ALL needed metadata for time-series analysis. Creating a separate results.json duplicates data and risks metadata drift.
+- **Cluster-config specification not recorded**: Currently only stores cluster-config name (e.g., "4gheap") but NOT the actual configuration specification (heap_size, GC settings, variables, etc.). For result portal display and configuration comparison, the complete cluster-config specification must be recorded.
+
+**Approach**: Add complete cluster-config specification to test_run.json, copy it to results directory, keep CSV and summary for convenience.
+
+- [X] T054 [RESEARCH] Audit TestRun metadata completeness — read current test_run.json format; identify what cluster-config metadata is missing (currently only stores name, not specification); review ClusterConfigInstance class to understand available config data (variables, template paths, base configs); document what needs to be added
+- [X] T055 Add cluster-config specification to TestRun — update `metrics.py` TestRun class to include complete cluster-config specification in as_dict() output: config name(s), all variables (heap_size, GC settings, etc.), base config chain, template paths, and effective configuration values; store as "cluster-config-spec" field alongside existing "cluster-config-instance" name field
+- [X] T056 Capture cluster-config specification during provisioning — update provisioner/builder code to pass complete ClusterConfigInstance specification to TestRun when created; ensure all config variables and effective settings are captured; verify cluster-config data flows from provisioner → test_run_store → test_run.json file
+- [X] T057 Update LocalFilesystemResultWriter to copy test_run.json — modify `LocalFilesystemResultWriter.close()` to copy (or symlink) the test_run.json from the test-runs store into the timestamped results directory; handle case where test_run.json doesn't exist yet (race condition)
+- [X] T058 Remove custom results.json generation — delete the code in LocalFilesystemResultWriter that creates a custom results.json format; keep only the test_run.json copy, results.csv, and summary.txt generation; update unit tests
+- [X] T059 Update result-writer.md contract — revise the contract documentation to specify that the results directory MUST contain: test_run.json (copied from test-runs store), results.csv (flattened metrics), summary.txt (markdown table); remove references to custom metadata format
+- [X] T060 Update FR-027a/FR-027b in spec.md — revise the requirements to specify test_run.json as the primary result format; document that hardware metadata is added before storage; clarify the rationale (eliminate format duplication)
+- [ ] T061 [VERIFICATION] End-to-end test of consolidated results — run a benchmark with specific cluster-config (`--cluster-config 4gheap`) and user tags (`--user-tag "test:consolidation"`); verify results directory contains test_run.json with all metadata (pipeline, user-tags, cluster-config-spec with heap_size and all variables, results); verify results.csv and summary.txt are still generated; confirm no custom results.json exists; confirm cluster-config specification is complete enough for result portal filtering/grouping
+- [X] T062 Update documentation for result format — update README and any user guides to explain that test_run.json is the complete canonical record; CSV and summary.txt are convenience formats; show example of how to analyze test_run.json for time-series analysis
+
+**Checkpoint**: Results directory contains complete test_run.json (with full cluster-config specification including all variables and settings), results.csv, and summary.txt. No format duplication. Single source of truth per benchmark run. Cluster-config details sufficient for result portal display and performance comparison across configurations.
+
+---
+
 ## Summary
 
 | Phase | Tasks | Parallelizable | Story |
@@ -258,4 +286,5 @@ T030 after T028+T029; T034 after all story phases
 | Phase 6: US4 (P4) | T025–T027 | T026 | US4 |
 | Phase 7: Polish | T028–T039 | T028–T033, T035–T039 | — |
 | **Phase 8: Corrections** | **T040–T053** | **T043, T046, T048, T052** | — |
-| **Total** | **53 tasks** | **26 parallelizable** | |
+| **Phase 9: Results Consolidation** | **T054–T062** | **T054, T059, T060, T062** | — |
+| **Total** | **62 tasks** | **30 parallelizable** | |

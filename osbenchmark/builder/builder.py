@@ -644,6 +644,8 @@ def load_cluster_config(cfg, external):
         plugins = cc.load_plugins(cluster_config_path,
                                     cfg.opts("builder", "cluster_config.plugins", mandatory=False),
                                     cfg.opts("builder", "plugin.params", mandatory=False))
+        # Store cluster_config_instance in config for TestRun to access (for result metadata)
+        cfg.add(config.Scope.applicationOverride, "builder", "cluster_config.instance", cluster_config)
     return cluster_config, plugins
 
 

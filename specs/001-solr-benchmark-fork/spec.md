@@ -149,7 +149,18 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 - **FR-024**: The tool MUST rename its CLI entry points, top-level package, and all branding to reflect Solr (e.g., `solr-benchmark` / `solr-benchmarkd`). No OpenSearch branding should remain in user-facing output.
 - **FR-025**: The actor-based distributed execution model, scheduling engine, and metrics aggregation/reporting pipeline MUST be retained as the core framework, since these are not search-engine-specific.
 - **FR-026**: Generic framework configuration files (benchmark.ini structure, tox.ini, test runner config) MUST be preserved unless there is a concrete functional reason to change them.
-- **FR-027**: Benchmark result output MUST use a pluggable result writer architecture. The tool MUST ship with a local filesystem writer as the default implementation, which writes results as JSON and CSV files to a configurable output path and prints a summary table to the console. The result writer interface MUST be defined so that additional writers (e.g., S3, Solr collection, relational database) can be implemented and registered without modifying core tool code. The active writer MUST be selectable via configuration.
+- **FR-027**: Benchmark result output MUST use a pluggable result writer architecture. The tool MUST ship with a local filesystem writer as the default implementation, which writes results to a timestamped directory and prints a summary table to the console. The result writer interface MUST be defined so that additional writers (e.g., S3, Solr collection, relational database) can be implemented and registered without modifying core tool code. The active writer MUST be selectable via configuration.
+- **FR-027a**: The local filesystem result writer MUST create a timestamped results directory under the configured results path (e.g., `~/.solr-benchmark/results/YYYYMMDD_HHMMSS_<run-id-prefix>/`) containing:
+  - **test_run.json**: Complete benchmark run metadata and detailed results (copied from the test-runs store). This file already contains all metadata needed for time-series analysis: run_id, timestamp, pipeline, user-tags, workload, test_procedure, cluster configuration, distribution version, and full operation metrics.
+  - **results.csv**: Flattened CSV export of key metrics (throughput, latency, error rate) for spreadsheet analysis.
+  - **summary.txt**: Human-readable markdown table of key metrics (also printed to console).
+
+  **Rationale**: The tool already creates a complete `test_run.json` file in `~/.solr-benchmark/benchmarks/test-runs/<run-id>/` that contains comprehensive metadata (benchmark version, environment, pipeline, user-tags, cluster config, results). Rather than inventing a new result format, the result writer MUST copy or symlink this file into the timestamped results directory. This ensures users have a single, complete record of each benchmark run without format duplication or metadata drift.
+- **FR-027b**: Cluster configuration specification MUST be recorded in the test_run.json file before it is stored or copied to results. This includes not only the cluster-config name (e.g., "4gheap") but the complete configuration specification: all variables (heap_size, GC settings, etc.), template paths, and effective configuration values used for the benchmark run. This metadata is critical for time-series analysis and result comparison, enabling users to:
+  - Compare performance across different cluster configurations (e.g., 4GB heap vs 8GB heap)
+  - Correlate configuration changes with performance changes
+  - Filter and group results by configuration in a results portal/dashboard
+  - Reproduce benchmark runs with identical cluster settings
 
 ### Key Entities
 
