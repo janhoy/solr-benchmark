@@ -268,6 +268,47 @@ This phase is documented in detail in the updated `tasks.md` file (Phase 9 tasks
 
 ---
 
+---
+
+## Phase 10: Workload Conversion Refactor (Post-Implementation)
+
+**Purpose**: Replace the runtime OpenSearch-to-Solr conversion that is currently tangled into runner execution with a clean pre-run conversion architecture. After this phase, the runners execute only Solr-native operations; all OpenSearch → Solr translation happens once, at workload load time.
+
+**Background**: After Phase 8/9 work, runtime conversion still exists:
+- `SolrSearch.__call__()` contains Mode 3: detects OpenSearch DSL bodies and translates them per-query at execution time (thousands of calls per benchmark run)
+- `SolrCreateIndexBridge`, `SolrBulkBridge`, `SolrDeleteIndexBridge` map OpenSearch operation types to Solr equivalents at runtime
+- `SolrCreateCollection` auto-generates schema from OpenSearch mappings at runtime
+- No mechanism to detect and convert the full workload before execution begins
+
+**Target architecture**:
+1. Workload loaded → format detected → if OpenSearch: converted to disk as `<name>-solr/` → loaded as Solr-native → executed (pure Solr ops)
+2. Subsequent runs: `CONVERTED.md` detected → skip conversion → load existing Solr workload
+3. `convert-workload` CLI command for explicit offline conversion
+4. Runners are Solr-native only: Mode 1 (flat params) or Mode 2 (Solr JSON Query DSL body)
+
+**Key design decisions**:
+- Converted search operations use **Solr JSON Query DSL** (not flat params): `{"query": "...", "filter": [...], "limit": n, "sort": "...", "facet": {...}}`
+- OpenSearch aggregations are translated to **Solr JSON facets** (terms, range, stats) — not dropped
+- Conversion output is Mode 2 of SolrSearch (POST body to `/query`); Mode 1 remains for natively-authored Solr workloads
+- Corpus data files (NDJSON, GBs) are NOT pre-converted; NDJSON translation remains streaming in `SolrBulkIndex`
+- Bridge runners removed (clean break); workloads must be converted first
+
+**New module**: `osbenchmark/solr/conversion/workload_converter.py`
+- `detect_workload_format_from_file(workload_json_path)` — reads raw JSON, calls `is_opensearch_workload(dict)` from detector.py
+- `is_already_converted(output_dir)` — checks for CONVERTED.md
+- `convert_opensearch_workload(source_dir, output_dir) -> dict` — main conversion; returns `{"output_dir": ..., "issues": [...]}`
+- `_convert_indices_to_collections(workload_dict)` — `indices` → `collections` with configset references
+- `_convert_operation(op_dict) -> dict | None` — renames op type, converts body; returns None if skipped
+- `_convert_search_body_to_solr_json_dsl(body)` — wraps translate_to_solr_json_dsl() result into a Solr JSON DSL body dict
+
+**New function in** `osbenchmark/solr/conversion/query.py`:
+- `translate_to_solr_json_dsl(body: dict) -> dict` — builds `{"query": ..., "filter": [...], "limit": n, "sort": "...", "facet": {...}}` from OpenSearch body
+- `_convert_aggregations_to_facets(aggs: dict) -> dict` — maps OpenSearch agg types to Solr JSON facets
+
+**Approach**: Systematic addition of conversion layer + targeted removal of runtime translation code.
+
+---
+
 ## Complexity Tracking
 
 No constitution violations. All complexity is inherent to the fork scope.

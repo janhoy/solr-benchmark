@@ -404,6 +404,16 @@ def solr_from_distribution(cfg):
             logger.warning("Solr clean failed during teardown: %s", exc)
 
 
+def _normalize_solr_docker_tag(version: str) -> str:
+    """
+    Return the Solr Docker image tag for the given distribution version string.
+
+    Solr uses the full version string as the Docker tag (e.g. "9.10.1", "10.0.0-SNAPSHOT").
+    A missing or empty version falls back to "9".
+    """
+    return version if version else "9"
+
+
 def solr_docker(cfg):
     """
     Start Solr via Docker, run benchmark, then stop the container.
@@ -414,7 +424,8 @@ def solr_docker(cfg):
       - distribution.version  — Docker image tag (e.g. "9", "9.7.0", "10")
       - solr.port             — port mapping (default: 8983)
     """
-    version_tag = cfg.opts("distribution", "version", mandatory=False, default_value="9")
+    raw_version = cfg.opts("distribution", "version", mandatory=False, default_value="9")
+    version_tag = _normalize_solr_docker_tag(raw_version)
     port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
 
     launcher = SolrDockerLauncher(port=port)

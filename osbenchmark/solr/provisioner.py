@@ -254,13 +254,19 @@ class SolrDockerLauncher:
         Start a Solr container.
 
         Args:
-            version_tag: Docker image tag, e.g. "9", "10", "9.7.0".
+            version_tag: Docker image tag, e.g. "9.10.1", "10.0.0-SNAPSHOT".
+                         SNAPSHOT builds are pulled from apache/solr-nightly;
+                         stable releases use the official solr image.
             mode:        "cloud" (default), "user-managed", or None (defaults to "cloud").
         """
         if mode is None:
             mode = "cloud"
 
-        image = f"solr:{version_tag}"
+        # SNAPSHOT builds live in apache/solr-nightly; stable releases use the official solr image
+        if "SNAPSHOT" in version_tag.upper():
+            image = f"apache/solr-nightly:{version_tag}"
+        else:
+            image = f"solr:{version_tag}"
 
         # Build the command — pass '-c' after the image to start in cloud mode
         cmd = [
@@ -273,6 +279,9 @@ class SolrDockerLauncher:
         ]
         if mode == "cloud":
             cmd.append("-c")  # SolrCloud mode
+
+        # Remove any stale container with the same name before starting
+        subprocess.run(["docker", "rm", "-f", self.container_name], capture_output=True, text=True)
 
         logger.info("Starting Solr Docker container: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)

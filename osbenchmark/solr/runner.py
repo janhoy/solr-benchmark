@@ -34,6 +34,11 @@ import requests
 
 from osbenchmark import exceptions as benchmark_exceptions
 from osbenchmark.solr.client import SolrAdminClient, CollectionAlreadyExistsError, CollectionNotFoundError
+from osbenchmark.solr.conversion.detector import (
+    is_opensearch_body,
+    has_opensearch_aggregations,
+    is_opensearch_only_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +99,34 @@ def solr_runner(fn):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _fetch_first_collection(host: str, port: int, tls: bool = False) -> str:
+    """
+    Query Solr admin API and return the first available collection name.
+
+    Used as a fallback when a param source returns ``index: None`` (common in
+    standard OSB workloads designed for OpenSearch where the index is resolved
+    from the document routing, not the request URL).
+
+    Returns None if no collections exist or the request fails.
+    """
+    scheme = "https" if tls else "http"
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        resp = session.get(
+            f"{scheme}://{host}:{port}/solr/admin/collections",
+            params={"action": "LIST"},
+            timeout=5
+        )
+        if resp.ok:
+            cols = resp.json().get("collections", [])
+            if cols:
+                return sorted(cols)[0]   # deterministic: alphabetically first
+    except Exception as exc:
+        logger.warning("Could not fetch collection list from Solr (%s:%s): %s", host, port, exc)
+    return None
+
 
 def _solr_client(params):
     """
@@ -512,9 +545,17 @@ class SolrSearch(SolrRunner):
     async def __call__(self, solr_not_used, params):
         host = params.get("host", "localhost")
         port = params.get("port", 8983)
-        # Accept 'index' as alias for 'collection' (standard OSB workload format)
-        collection = params.get("collection") or params.get("index", "default")
         tls = params.get("tls", False)
+        # Accept 'index' as alias for 'collection' (standard OSB workload format).
+        # When a param source returns index=None (OSB workloads that rely on OpenSearch
+        # routing), fall back to the first available Solr collection.
+        collection = params.get("collection") or params.get("index") or None
+        if not collection:
+            collection = _fetch_first_collection(host, port, tls)
+            if collection:
+                logger.debug("No collection in params; using first Solr collection: %s", collection)
+            else:
+                collection = "default"
         timeout = params.get("timeout", 30)
         scheme = "https" if tls else "http"
 
@@ -522,11 +563,25 @@ class SolrSearch(SolrRunner):
 
         body = params.get("body")
         if body is not None:
-            query_val = body.get("query") if isinstance(body, dict) else None
+            if is_opensearch_body(body):
+                # Mode 3: OpenSearch query DSL → translate to Solr classic params.
+                # Covers both "query" dict bodies and aggregation-only bodies
+                # ("aggs"/"aggregations" are OpenSearch-only constructs).
 
-            if isinstance(query_val, dict):
-                # Mode 3: OpenSearch query DSL → translate to Solr classic params
-                if "aggs" in body or "aggregations" in body:
+                # Skip queries that use OS-only features (Painless/expression scripts,
+                # percolate, rank_feature, etc.) that have no Solr equivalent.
+                if is_opensearch_only_query(body):
+                    op_name = params.get("name", params.get("operation-type", "unknown"))
+                    logger.info(
+                        "Skipping OpenSearch-only task '%s' — contains features with no Solr equivalent "
+                        "(e.g. Painless scripts, function_score script_score). Returning 0 hits.",
+                        op_name,
+                    )
+                    elapsed = time.perf_counter() - start
+                    return {"weight": 0, "unit": "ops", "hits": 0,
+                            "hits_relation": "eq", "duration": elapsed, "error_rate": 0}
+
+                if has_opensearch_aggregations(body):
                     logger.warning(
                         "OpenSearch aggregations are not supported in Solr mode and will be "
                         "ignored (collection=%s). Consider rewriting as a native Solr facet query.",
@@ -538,7 +593,9 @@ class SolrSearch(SolrRunner):
                     extract_sort_parameter,
                 )
 
-                q = translate_opensearch_query(body)
+                translated = translate_opensearch_query(body)
+                q = translated["q"]
+                fq_params = translated["fq"]
                 rows = body.get("size", 10) if isinstance(body, dict) else 10
                 sort_param = extract_sort_parameter(body)
 
@@ -546,6 +603,8 @@ class SolrSearch(SolrRunner):
                 solr_params["collection"] = collection
                 client = _solr_client(solr_params)
                 kwargs = {"rows": rows}
+                if fq_params:
+                    kwargs["fq"] = fq_params
                 if sort_param:
                     kwargs["sort"] = sort_param
                 # OSB uses "request_params" (underscore), Solr workloads use "request-params" (hyphen)
@@ -562,9 +621,11 @@ class SolrSearch(SolrRunner):
                 auth = (username, password) if username and password else None
 
                 def _do_json_search():
-                    resp = requests.post(url, json=body,
-                                         headers=req_headers, auth=auth,
-                                         timeout=timeout)
+                    session = requests.Session()
+                    session.trust_env = False  # prevent macOS proxy detection (fork-safety)
+                    resp = session.post(url, json=body,
+                                        headers=req_headers, auth=auth,
+                                        timeout=timeout)
                     resp.raise_for_status()
                     return resp.json()
 

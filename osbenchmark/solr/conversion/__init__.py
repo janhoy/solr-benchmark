@@ -30,6 +30,16 @@ Modules:
 - field: Normalize field names (multi-field patterns)
 """
 
-from .detector import is_opensearch_workload
+from .detector import (
+    is_opensearch_workload,
+    is_opensearch_body,
+    has_opensearch_aggregations,
+    is_opensearch_only_query,
+)
 
-__all__ = ["is_opensearch_workload"]
+__all__ = [
+    "is_opensearch_workload",
+    "is_opensearch_body",
+    "has_opensearch_aggregations",
+    "is_opensearch_only_query",
+]

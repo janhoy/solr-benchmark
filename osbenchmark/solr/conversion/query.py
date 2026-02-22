@@ -33,18 +33,19 @@ from .field import normalize_field_name
 logger = logging.getLogger(__name__)
 
 
-def translate_opensearch_query(body: dict) -> str:
+def translate_opensearch_query(body: dict) -> dict:
     """
-    Translate an OpenSearch query DSL dict to a Solr ``q`` string.
+    Translate an OpenSearch query DSL dict to Solr query parameters.
 
     Supported patterns:
       - ``match_all``             → ``*:*``
       - ``term``                  → ``field:value``
-      - ``terms``                 → ``field:(v1 v2 v3)``
+      - ``terms``                 → ``field:(v1 v2 v3)`` or ``{!terms f=field}v1,v2,...``
       - ``match`` / ``match_phrase`` → ``field:value``
       - ``range``                 → ``field:[lo TO hi]``
       - ``exists``                → ``field:[* TO *]``
-      - ``bool`` (must/filter/should/must_not) → recursive translation
+      - ``bool`` (must/should/must_not) → recursive translation in ``q``
+      - ``bool.filter``           → Solr ``fq`` parameters (supports large term lists)
       - ``ids``                   → ``id:(id1 id2 ...)``
 
     Falls back to ``*:*`` for unrecognised patterns (logs warning).
@@ -53,18 +54,31 @@ def translate_opensearch_query(body: dict) -> str:
         body: OpenSearch query body dict with "query" key
 
     Returns:
-        Solr query string suitable for the q parameter
+        Dict with keys:
+          - ``"q"``: Solr query string for the ``q`` parameter
+          - ``"fq"``: list of Solr filter query strings for the ``fq`` parameter
 
     Examples:
         >>> translate_opensearch_query({"query": {"match_all": {}}})
-        '*:*'
+        {'q': '*:*', 'fq': []}
         >>> translate_opensearch_query({"query": {"term": {"country": "US"}}})
-        'country:US'
+        {'q': 'country:US', 'fq': []}
     """
     if not body or not isinstance(body, dict):
-        return "*:*"
+        return {"q": "*:*", "fq": []}
     query = body.get("query", {})
-    return _translate_query_node(query)
+    fq_list = []
+
+    # Top-level terms queries can be very large (thousands of values).
+    # Route them directly to fq using {!terms f=...} for efficiency.
+    if "terms" in query and len(query) == 1:
+        fq_str = _translate_node_for_fq(query)
+        if fq_str:
+            fq_list.append(fq_str)
+            return {"q": "*:*", "fq": fq_list}
+
+    q = _translate_query_node(query, fq_list=fq_list)
+    return {"q": q, "fq": fq_list}
 
 
 def extract_sort_parameter(body: dict) -> str:
@@ -114,8 +128,14 @@ def extract_sort_parameter(body: dict) -> str:
 # Internal helper functions
 # ---------------------------------------------------------------------------
 
-def _translate_query_node(node: dict) -> str:
-    """Recursively translate a single OpenSearch query node to Solr syntax."""
+def _translate_query_node(node: dict, fq_list: list = None) -> str:
+    """Recursively translate a single OpenSearch query node to Solr syntax.
+
+    Args:
+        node: OpenSearch query node dict
+        fq_list: Optional list to collect Solr fq filter strings. When provided,
+                 bool.filter clauses are appended here instead of inlined in q.
+    """
     if not node or not isinstance(node, dict):
         return "*:*"
 
@@ -136,15 +156,27 @@ def _translate_query_node(node: dict) -> str:
             if field.startswith("_"):
                 continue
             field = normalize_field_name(field)
-            escaped = " ".join(_escape_solr_value(v) for v in values)
-            return f"{field}:({escaped})"
+            return _translate_terms_clause(field, values)
 
     if "match" in node or "match_phrase" in node:
         sub = node.get("match") or node.get("match_phrase")
-        for field, value in sub.items():
-            v = value.get("query", value) if isinstance(value, dict) else value
-            field = normalize_field_name(field)
-            return f"{field}:{_escape_solr_value(v)}"
+        if isinstance(sub, dict):
+            for field, value in sub.items():
+                # Skip empty field names or metadata fields
+                if not field or field.startswith("_"):
+                    continue
+                v = value.get("query", value) if isinstance(value, dict) else value
+                field = normalize_field_name(field)
+                # For phrase queries, wrap in quotes if not already
+                if "match_phrase" in node and not (isinstance(v, str) and v.startswith('"')):
+                    return f'{field}:"{_escape_solr_phrase(v)}"'
+                return f"{field}:{_escape_solr_value(v)}"
+        # If sub is not a dict or has no valid fields, fall back
+        logger.warning(
+            "match/match_phrase query has invalid structure: %s. Using *:*",
+            sub
+        )
+        return "*:*"
 
     if "range" in node:
         for field, bounds in node["range"].items():
@@ -173,24 +205,40 @@ def _translate_query_node(node: dict) -> str:
         bool_q = node["bool"]
         parts = []
 
-        def _add(clauses, prefix):
+        def _add_to_q(clauses, prefix):
             if not clauses:
                 return
             if isinstance(clauses, dict):
                 clauses = [clauses]
             for clause in clauses:
-                sub = _translate_query_node(clause)
+                sub = _translate_query_node(clause, fq_list=fq_list)
                 if sub and sub != "*:*":
                     parts.append(f"{prefix}({sub})")
 
-        _add(bool_q.get("must"), "+")
-        _add(bool_q.get("filter"), "+")
-        _add(bool_q.get("must_not"), "-")
+        def _add_to_fq(clauses):
+            """Translate bool.filter clauses to Solr fq parameters."""
+            if not clauses:
+                return
+            if isinstance(clauses, dict):
+                clauses = [clauses]
+            for clause in clauses:
+                fq_str = _translate_node_for_fq(clause)
+                if fq_str:
+                    fq_list.append(fq_str)
+
+        _add_to_q(bool_q.get("must"), "+")
+        _add_to_q(bool_q.get("must_not"), "-")
+
+        # bool.filter → Solr fq when fq_list is available; otherwise inline in q
+        if fq_list is not None:
+            _add_to_fq(bool_q.get("filter"))
+        else:
+            _add_to_q(bool_q.get("filter"), "+")
 
         shoulds = bool_q.get("should", [])
         if isinstance(shoulds, dict):
             shoulds = [shoulds]
-        should_parts = [_translate_query_node(s) for s in shoulds]
+        should_parts = [_translate_query_node(s, fq_list=fq_list) for s in shoulds]
         should_parts = [s for s in should_parts if s and s != "*:*"]
         if should_parts:
             parts.append("(" + " ".join(should_parts) + ")")
@@ -207,6 +255,50 @@ def _translate_query_node(node: dict) -> str:
     return "*:*"
 
 
+def _translate_terms_clause(field: str, values: list) -> str:
+    """
+    Translate a terms list to the most efficient Solr syntax.
+
+    - Small lists (≤100 terms): ``field:(v1 v2 ...)``  — standard Lucene OR clause
+    - Large lists (>100 terms): ``field:(v1 v2 ...)``  for q context, still works
+      but when used as an fq, callers should prefer ``{!terms f=field}v1,v2,...``
+    """
+    escaped = " ".join(
+        f'"{_escape_solr_phrase(v)}"' if " " in str(v) else _escape_solr_value(v)
+        for v in values
+    )
+    return f"{field}:({escaped})"
+
+
+def _translate_node_for_fq(node: dict) -> str:
+    """
+    Translate a single query node to a Solr fq string.
+
+    For terms clauses, uses the efficient ``{!terms f=field}v1,v2,...`` syntax
+    which Solr handles as a cached bitset — ideal for large term lists in filters.
+
+    For other clause types, delegates to _translate_query_node() without fq_list
+    (filter sub-clauses are flattened into a single fq string).
+    """
+    if not node or not isinstance(node, dict):
+        return None
+
+    # terms → {!terms f=field}v1,v2,...  (Solr's efficient bitset filter)
+    if "terms" in node:
+        for field, values in node["terms"].items():
+            if field.startswith("_"):
+                continue
+            field = normalize_field_name(field)
+            if not values:
+                return None
+            # Join values as comma-separated (Solr {!terms} syntax)
+            joined = ",".join(str(v) for v in values)
+            return f"{{!terms f={field}}}{joined}"
+
+    # range, term, exists, match etc. — translate normally
+    return _translate_query_node(node, fq_list=None)
+
+
 def _escape_solr_value(value) -> str:
     """Escape special Lucene/Solr query characters in a field value."""
     special = r'+-&&||!(){}[]^"~*?:\/'
@@ -217,6 +309,16 @@ def _escape_solr_value(value) -> str:
         else:
             result.append(char)
     return ''.join(result)
+
+
+def _escape_solr_phrase(value) -> str:
+    """
+    Escape a phrase value for Solr phrase queries.
+
+    For phrases, we only need to escape quotes (and backslashes).
+    Other special characters are OK within quotes.
+    """
+    return str(value).replace('\\', '\\\\').replace('"', '\\"')
 
 
 def _convert_date_to_solr_format(date_str, os_format=None) -> str:

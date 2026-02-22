@@ -20,6 +20,14 @@
 - Directive: FR-027 revised — benchmark result output MUST use a pluggable result writer architecture. The local filesystem writer (JSON + CSV files) is the default implementation. The plugin interface must be designed so that additional writers (S3, Solr collection, database, etc.) can be added without modifying core code.
 - Directive: ASF Licensing compliance — the fork is intended to be contributed as a subproject of the Apache Solr PMC. All licensing and attribution MUST comply with ASF policy: (1) the NOTICE file MUST list Apache Solr copyright at the top, followed by attribution to OpenSearch Contributors ("This product includes software developed by OpenSearch Contributors, Copyright 2022"); (2) per-file license headers MUST be updated per ASF source header policy (research https://www.apache.org/legal/src-headers.html for the correct approach to modified vs. retained headers); (3) the LICENSE file MUST reflect the fork's identity as an Apache-licensed project under the Solr PMC.
 
+### Session 2026-02-22
+
+- Q: How should OpenSearch workloads be handled at benchmark run time? → A: The tool MUST auto-detect the workload format at run start. If an OpenSearch Benchmark workload is detected, the tool converts it ONCE to a Solr-native workload on disk (written as `<name>-solr/` adjacent to the source), then runs the converted version. On subsequent runs, if `CONVERTED.md` exists in the output directory, conversion is skipped and the existing converted workload is used.
+- Q: Where should OpenSearch-to-Solr query translation happen? → A: At workload conversion time only — NOT at query execution time. The search runner must execute Solr-native operations only. All OpenSearch DSL translation happens once during workload conversion.
+- Q: What format should converted search operations use? → A: Solr JSON Query DSL (`body` dict with `"query"` as a Lucene string, `"filter"`, `"limit"`, `"sort"`, and `"facet"` keys). This is superior to flat params because it supports Solr JSON facets (translating OpenSearch aggregations) and nested bool queries in a maintainable format. The converted workload uses Mode 2 of the search runner (POST body to `/solr/{collection}/query`).
+- Q: Should bridge runners that map OpenSearch operation types at runtime be kept? → A: No. All operation type mapping happens at workload conversion time. Bridge runner classes must be removed for a clean architecture.
+- Q: What should happen to operations that cannot be converted to Solr format? → A: They MUST be skipped (omitted from the converted workload) with a WARN log message per skipped operation. A `CONVERTED.md` file MUST be written to the output directory listing all skipped operations with their reasons. Silent omission is not acceptable.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Run Benchmarks Against Existing Solr Cluster (Priority: P1)
@@ -88,6 +96,11 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 3. **Given** a workload file with `create-collection` and `delete-collection` operations, **When** run, **Then** the collection is created before and deleted after the benchmark phase.
 4. **Given** a workload file with a `commit` operation, **When** run, **Then** Solr performs a hard commit and the tool waits for acknowledgment before proceeding.
 5. **Given** an OSB workload file, **When** the user runs the migration utility against it, **Then** the utility produces an annotated draft Solr workload file — compatible constructs translated automatically, unsupported operations present with `# TODO` comments — and no operations are silently omitted.
+6. **Given** an OpenSearch Benchmark workload directory, **When** the user runs `solr-benchmark run --workload-path /path/to/os-workload`, **Then** the tool automatically detects the format, converts it to a Solr-native workload at `<name>-solr/` on disk, and runs the benchmark against the converted workload — no manual conversion step required.
+7. **Given** an OpenSearch workload has been previously auto-converted (`CONVERTED.md` exists in `<name>-solr/`), **When** the user runs the benchmark again, **Then** no re-conversion occurs and the existing converted workload is used immediately.
+8. **Given** an OpenSearch workload with aggregations, **When** auto-converted, **Then** the converted search operations contain a Solr JSON Query DSL `body` with `"facet"` definitions mapping the OpenSearch aggregations to Solr JSON facets — the benchmark executes real facet queries against Solr, not stub queries.
+9. **Given** an OpenSearch workload containing operations with no Solr equivalent (e.g., `script_score` queries, `cluster-health`), **When** auto-converted, **Then** those operations are omitted from the converted workload with WARN log messages, and a `CONVERTED.md` file in the output directory lists every skipped operation with its reason.
+10. **Given** the `convert-workload` CLI subcommand, **When** a user runs `solr-benchmark convert-workload --workload-path <src> --output-path <dest>`, **Then** the Solr-native converted workload is written to `<dest>`, a `CONVERTED.md` summary is included, and any skipped operations are printed to the console.
 
 ---
 
@@ -130,6 +143,13 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 - **FR-016**: The tool MUST support a `raw-request` operation for arbitrary HTTP calls to any Solr endpoint, allowing users to target V2 or V1 paths explicitly.
 - **FR-017**: The workload file format MUST use Solr-native terminology throughout: `collection` (not `index`), `configset` (not `mapping` or `template`), and Solr-specific operation names.
 - **FR-018**: The tool MUST include a migration utility (Python script) that reads an OSB workload file and produces an annotated draft Solr-format workload. Compatible constructs are translated automatically; unsupported or ambiguous operations are retained with `# TODO` inline comments explaining what manual action is needed. The utility MUST NOT silently drop any operations.
+- **FR-018a**: When loading a workload for benchmarking, the tool MUST automatically detect whether the workload is in OpenSearch Benchmark format (`"indices"` key present, uses `create-index`/`delete-index` operation types, etc.) or in Solr-native format (`"collections"` key present, uses Solr-native operations). Detection logic lives in `osbenchmark/solr/conversion/detector.py`.
+- **FR-018b**: If an OpenSearch Benchmark workload is detected at run time, the tool MUST convert it to a Solr-native workload stored on disk at `<original-workload-name>-solr/` adjacent to the original directory, then run the converted version. If `CONVERTED.md` already exists in that directory, the tool MUST skip re-conversion and use the existing converted workload. The benchmark runs only against Solr-native workloads.
+- **FR-018c**: The tool MUST provide a `convert-workload` CLI subcommand accepting `--workload-path <source-dir>` and optionally `--output-path <dest-dir>`. It converts the OpenSearch workload to Solr-native format, writes the result to the output directory, and reports any skipped operations to the console.
+- **FR-018d**: During workload conversion, operations that have no Solr equivalent MUST be skipped (omitted from the output) with a WARN-level log message stating the operation name and reason. A `CONVERTED.md` file MUST be written to the output directory recording: the source workload path, conversion timestamp, and a list of all skipped operations with their reasons.
+- **FR-018e**: Converted search operations MUST use Solr JSON Query DSL format (a `"body"` dict with `"query"` as a Lucene string, `"filter"` list, `"limit"`, `"sort"`, and `"facet"` keys). OpenSearch aggregations MUST be translated to Solr JSON facets where possible (terms → terms facet, date_histogram → range facet, stats → stat facets). The converted body is POSTed to `/solr/{collection}/query`. This is superior to flat query params because it preserves facet semantics and supports nested bool queries.
+- **FR-018f**: The search runner MUST NOT perform any OpenSearch DSL translation at query execution time. All translation happens at workload conversion time (pre-run). The runner accepts only: (a) no body — classic Solr params (`q`, `fq`, `sort`, `rows`), or (b) a body with a `"query"` key whose value is a string — Solr JSON Query DSL POSTed to `/query`. If `body["query"]` is a dict (OpenSearch DSL), the runner MUST log a warning that the workload was not pre-converted; it does NOT attempt translation.
+- **FR-018g**: The bridge runner classes that mapped OpenSearch operation types at runtime (`SolrCreateIndexBridge`, `SolrBulkBridge`, `SolrDeleteIndexBridge`) MUST be removed. All operation type mapping (`create-index`→`create-collection`, `bulk`→`bulk-index`, etc.) happens exclusively at workload conversion time.
 
 **Telemetry:**
 - **FR-019**: The tool MUST collect JVM metrics (heap usage, GC pause times, thread counts), collection statistics (document count, index size, segment count), node-level system metrics (CPU, memory, disk), and query handler statistics (request count, error count, average response time) from Solr nodes via the V2 metrics API during benchmarks.
@@ -202,10 +222,13 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 - Provisioner downloads/starts/stops Solr only
 - Result writers store Solr benchmark results only
 
-**5% of code = OpenSearch compatibility (workload import ONLY)**:
-- `osbenchmark/tools/migrate_workload.py` — converts OSB workload files to Solr format
-- Workload loader can parse OSB corpus files (NDJSON bulk format) and translate them at index time
-- Schema auto-generation from OpenSearch mappings (convenience fallback for migrated workloads)
+**5% of code = OpenSearch compatibility (workload conversion ONLY)**:
+- `osbenchmark/solr/conversion/` — workload detection, query DSL → Solr JSON DSL translation, aggregations → Solr facets, schema mapping. Called at workload conversion time, never at runner execution time.
+- `osbenchmark/tools/migrate_workload.py` — standalone CLI migration utility for manual conversion
+- NDJSON bulk format translation in `SolrBulkIndex` — strips action-line metadata, translates doc field formats (dates, geo-points) at index time (data is too large to pre-convert)
+- `osbenchmark/test_run_orchestrator.py` — invokes conversion module once at run start if OpenSearch workload detected; then runs the converted Solr workload
+
+**The key principle**: Runners execute **Solr-native operations only**. The conversion module is a pre-processing layer, not a runtime translation layer. After conversion, the tool is operating entirely in Solr-native mode.
 
 **What must NOT exist**:
 - No `mode` parameter anywhere in configuration, client, runners, or provisioners
@@ -214,6 +237,7 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 - No OpenSearch-specific pipelines (`opensearch-from-distribution`, etc.)
 - No conditional logic switching between OpenSearch and Solr code paths
 - No shim/bridge classes that wrap one client to look like another
+- No runtime OpenSearch DSL translation in the search runner (Mode 3 is removed)
 
 ### Architectural Intent
 

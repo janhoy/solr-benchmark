@@ -43,8 +43,8 @@ def _normalize_field_name(field):
 
 
 def _translate_query_node(node):
-    """Test compatibility wrapper."""
-    return translate_opensearch_query({"query": node})
+    """Test compatibility wrapper — returns only the q string."""
+    return translate_opensearch_query({"query": node})["q"]
 
 
 def _run(coro):
@@ -256,13 +256,15 @@ class TestSolrSearch(unittest.TestCase):
         self.assertEqual(42, result["hits"])
         self.assertEqual(1, result["weight"])
 
-    @patch("osbenchmark.solr.runner.requests.post")
-    def test_json_dsl_mode(self, mock_post):
+    @patch("osbenchmark.solr.runner.requests.Session")
+    def test_json_dsl_mode(self, mock_session_cls):
         """Mode 2: body with a Solr-style string query → POST to /query endpoint."""
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {"response": {"numFound": 7}}
-        mock_post.return_value = mock_resp
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_resp
+        mock_session_cls.return_value = mock_session
 
         # Solr JSON DSL uses a string for the 'query' key, not a dict
         params = {**self._base_params(), "body": {"query": "*:*", "limit": 5}}
@@ -270,7 +272,7 @@ class TestSolrSearch(unittest.TestCase):
         result = _run(runner(None, params))
 
         self.assertEqual(7, result["hits"])
-        mock_post.assert_called_once()
+        mock_session.post.assert_called_once()
 
     @patch("osbenchmark.solr.runner.pysolr.Solr")
     def test_os_dsl_mode_match_all(self, mock_solr_cls):

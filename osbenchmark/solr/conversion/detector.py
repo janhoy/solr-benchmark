@@ -188,3 +188,94 @@ def should_convert_workload(workload) -> bool:
         True if workload needs conversion (is OpenSearch format)
     """
     return is_opensearch_workload(workload)
+
+
+def is_opensearch_only_query(body) -> bool:
+    """
+    Return True when the query body contains OpenSearch-only query features that
+    cannot be meaningfully translated to Solr — such as Painless/Groovy script
+    scoring, percolate, pinned, rank_feature, or intervals queries.
+
+    Queries identified this way should be SKIPPED during a Solr benchmark run
+    rather than silently degraded to ``q=*:*``.
+
+    Args:
+        body: The query body dict (non-dicts always return False)
+
+    Returns:
+        True if the body contains OS-only constructs that Solr cannot execute.
+    """
+    if not isinstance(body, dict):
+        return False
+    query = body.get("query")
+    if not isinstance(query, dict):
+        return False
+    return _contains_os_only_node(query)
+
+
+def _contains_os_only_node(node) -> bool:
+    """Recursively check whether a query node contains OpenSearch-only features."""
+    if not isinstance(node, dict):
+        return False
+    # Script-based scoring (Painless, expression, Groovy, etc.)
+    if "function_score" in node:
+        for fn in node["function_score"].get("functions", []):
+            if "script_score" in fn:
+                return True
+    if "script_score" in node:
+        return True
+    # Other OpenSearch/Elasticsearch-only query types
+    for os_only_type in ("more_like_this", "percolate", "rank_feature", "pinned", "intervals"):
+        if os_only_type in node:
+            return True
+    # Recurse into bool clauses
+    if "bool" in node:
+        for clause_list in node["bool"].values():
+            if isinstance(clause_list, list):
+                for clause in clause_list:
+                    if _contains_os_only_node(clause):
+                        return True
+            elif isinstance(clause_list, dict):
+                if _contains_os_only_node(clause_list):
+                    return True
+    return False
+
+
+def is_opensearch_body(body) -> bool:
+    """
+    Detect whether a query body dict is in OpenSearch DSL format.
+
+    Returns True when the body looks like an OpenSearch query, i.e. it contains
+    a "query" key whose value is a dict (not a plain Solr query string), OR when
+    it contains OpenSearch-specific aggregation keys ("aggs" / "aggregations").
+
+    Args:
+        body: The query body (any type; non-dicts always return False)
+
+    Returns:
+        True if the body is OpenSearch DSL format, False otherwise.
+    """
+    if not isinstance(body, dict):
+        return False
+    query_val = body.get("query")
+    if isinstance(query_val, dict):
+        return True
+    if "aggs" in body or "aggregations" in body:
+        return True
+    return False
+
+
+def has_opensearch_aggregations(body) -> bool:
+    """
+    Return True when the body contains OpenSearch-style aggregation keys
+    ("aggs" or "aggregations") that are not natively understood by Solr.
+
+    Args:
+        body: The query body dict (non-dicts always return False)
+
+    Returns:
+        True if the body contains OpenSearch aggregations.
+    """
+    if not isinstance(body, dict):
+        return False
+    return "aggs" in body or "aggregations" in body
