@@ -14,30 +14,31 @@ itself derived from [Elastic Rally](https://github.com/elastic/rally).
 If you are looking to performance test Apache Solr, this tool can help you with:
 
 * Running performance benchmarks and recording results
-* Setting up and tearing down Solr clusters for benchmarking (local distribution or Docker)
+* Setting up and tearing down Solr clusters for benchmarking (local distribution, build-from-source or Docker, including nightly builds)
 * Managing benchmark workloads (collections, configsets, search operations)
+* Run same workload against multiple Solr versions or multiple cluster-configurations (heap size, GC settings, etc.)
 * Collecting JVM, node, and collection metrics via telemetry devices
-* Track performance regressions over time
-* Run some existing OSB/Rally workloads on Solr through auto conversion
+* Output results for each run in JSON format, suitable for analysis and dashboarding
+* Assist in converting existing OpenSearch Benchmark workloads to Solr format
 
 ## Quick Start
 
 ### Install
 
+**NOTE**: We do not offer the tool as a python package yet
+
 ```bash
 pip install -e .
 ```
 
-**NOTE**: We do not offer the tool as a python package yet 
-
 ### Run a benchmark against a Solr version in Docker
 
 ```bash
-solr-benchmark execute-test \
+solr-benchmark run \
   --pipeline=docker \
   --distribution-version=9.10.1 \
-  --workload=<your-workload> \
-  --challenge=<challenge-name>
+  --workload=geonames \
+  --test-mode
 ```
 
 **Note**: Defaults to cloud mode (SolrCloud with embedded ZooKeeper).
@@ -45,28 +46,28 @@ solr-benchmark execute-test \
 ### Provision Solr locally, then benchmark
 
 ```bash
-solr-benchmark execute-test \
+solr-benchmark run \
   --pipeline=from-distribution \
   --distribution-version=9.7.0 \
-  --workload=<your-workload>
+  --workload=geonames \
+  --test-mode
 ```
 
-**Note**: Defaults to cloud mode (SolrCloud with embedded ZooKeeper).
+**Note**: Always uses cloud mode (SolrCloud with embedded ZooKeeper).
 
 ### Provision Solr via Docker, then benchmark
 
 ```bash
-solr-benchmark execute-test \
-  --pipeline=solr-docker \
+solr-benchmark run \
+  --pipeline=docker \
   --distribution-version=9.7.0 \
-  --workload=<your-workload>
+  --workload=geonames \
+  --test-mode
 ```
 
 ### Migrate an existing OSB workload to Solr format
 
-```bash
-solr-migrate-workload --input workload.json --output solr-workload.json
-```
+TODO: Insert proper command description here
 
 ## Workload format
 
