@@ -28,6 +28,7 @@ import logging
 import os
 import sys
 import tarfile
+import time
 
 import tabulate
 import thespian.actors
@@ -333,7 +334,19 @@ def run_test(cfg, sources=False, distribution=False, external=False, docker=Fals
     logger = logging.getLogger(__name__)
     # at this point an actor system has to run and we should only join
     actor_system = actor.bootstrap_actor_system(try_join=True)
-    benchmark_actor = actor_system.createActor(BenchmarkActor, targetActorRequirements={"coordinator": True})
+    try:
+        benchmark_actor = actor_system.createActor(BenchmarkActor, targetActorRequirements={"coordinator": True})
+    except thespian.actors.ActorSystemRequestTimeout:
+        # The actor system may have gone stale after a long provisioning phase (e.g. Gradle build).
+        # Shut it down and start a fresh one.
+        logger.warning("Actor system became unresponsive (createActor timed out). Restarting actor system.")
+        try:
+            actor_system.shutdown()
+        except Exception:
+            pass
+        time.sleep(3)
+        actor_system = actor.bootstrap_actor_system(try_join=False, prefer_local_only=True)
+        benchmark_actor = actor_system.createActor(BenchmarkActor, targetActorRequirements={"coordinator": True})
     try:
         result = actor_system.ask(benchmark_actor, Setup(cfg, sources, distribution, external, docker))
         if isinstance(result, Success):
