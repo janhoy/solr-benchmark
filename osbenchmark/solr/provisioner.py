@@ -23,6 +23,7 @@ Also provides SolrDockerLauncher for containerised deployments.
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -35,6 +36,21 @@ import requests
 from osbenchmark import exceptions
 
 logger = logging.getLogger(__name__)
+
+
+def _solr_major_version(version_str: str) -> int:
+    """
+    Parse the major version number from a Solr version string.
+
+    Examples:
+        "9.10.1"            → 9
+        "10.0.0"            → 10
+        "11.0.0-SNAPSHOT"   → 11
+        ""                  → 0 (unknown — treated as pre-10 for safety)
+    """
+    m = re.match(r"(\d+)", version_str.strip())
+    return int(m.group(1)) if m else 0
+
 
 # Apache Solr download locations
 # Latest versions available at downloads.apache.org
@@ -145,12 +161,13 @@ class SolrProvisioner:
             mode = "cloud"
 
         bin_solr = self._bin_solr(solr_root)
+        major = _solr_major_version(self._detect_version(solr_root))
 
         cmd = [bin_solr, "start", "-p", str(self.port)]
-        if mode == "cloud":
-            cmd.append("-c")  # SolrCloud mode
-        elif mode == "user-managed":
-            pass  # standalone (default in Solr 10+)
+        if mode == "cloud" and major < 10:
+            cmd.append("-c")  # SolrCloud flag (removed in Solr 10+; cloud is default from 10+)
+        elif mode == "user-managed" and major >= 10:
+            cmd.append("--user-managed")  # standalone mode flag (Solr 10+)
 
         logger.info("Starting Solr with: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -268,7 +285,9 @@ class SolrDockerLauncher:
         else:
             image = f"solr:{version_tag}"
 
-        # Build the command — pass '-c' after the image to start in cloud mode
+        major = _solr_major_version(version_tag)
+
+        # Build the docker run command
         cmd = [
             "docker", "run",
             "--rm",
@@ -277,8 +296,10 @@ class SolrDockerLauncher:
             "-d",
             image,
         ]
-        if mode == "cloud":
-            cmd.append("-c")  # SolrCloud mode
+        # Solr <10: pass '-c' after the image name to enable SolrCloud mode.
+        # Solr 10+: SolrCloud is the default; '-c' is no longer accepted.
+        if mode == "cloud" and major < 10:
+            cmd.append("-c")
 
         # Remove any stale container with the same name before starting
         subprocess.run(["docker", "rm", "-f", self.container_name], capture_output=True, text=True)
