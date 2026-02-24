@@ -347,3 +347,43 @@ After completing all 39 implementation tasks (T001-T039), a fundamental architec
 3. No runtime mode selection between X and Y
 
 If both X and Y are meant to be supported at runtime, that's not a fork — it's a multi-backend tool, and the specification should say so explicitly with different architecture, design patterns, and task breakdown.
+
+---
+
+## Update 2026-02-24: No Auto-Conversion at Run Time
+
+The following research covers the three directives added in the 2026-02-24 spec session.
+
+### R-01: Auto-Conversion Removal (FR-018b)
+
+**Decision**: Replace `_maybe_auto_convert_workload()` in `test_run_orchestrator.py` with `_check_workload_is_solr_native()` that detects OSB format → aborts with a clear error. No conversion logic called from the run path.
+
+**Rationale**: Auto-conversion at runtime is silent, triggers unexpected disk writes, and hides an important user decision. Forcing explicit `convert-workload` makes the process transparent and auditable.
+
+**Implementation boundary**: Only `detector.is_opensearch_workload_path(path)` may be imported from `test_run_orchestrator.py`. The full `workload_converter` MUST NOT be imported from the run path.
+
+**New function needed in `detector.py`**:
+```python
+def is_opensearch_workload_path(workload_path: str) -> bool:
+    """
+    Reads workload.json from disk. Returns True if it contains 'indices' key (OSB format).
+    Returns False for 'collections' key (Solr), missing key, or any parse error.
+    """
+```
+
+### R-02: Bridge Runner Removal (FR-018g)
+
+**Decision**: Remove these five bridge runner classes from `runner.py`:
+`SolrRefreshBridge`, `SolrNoOpBridge`, `SolrDeleteIndexBridge`, `SolrCreateIndexBridge`, `SolrBulkBridge`.
+
+**Rationale**: Bridge runners allowed OSB workloads to run against Solr at runtime. With the new "error-and-abort" policy at workload load time, runtime bridging is never reached. Removing bridges enforces the clean architecture: conversion = `convert-workload` CLI only.
+
+### R-03: Search Runner Hardening (FR-018f)
+
+**Decision**: In `SolrSearch.__call__()`: detect `body["query"]` is a `dict` (OpenSearch DSL) → raise `BenchmarkAssertionError` with message pointing to `convert-workload`.
+
+**Note**: Check whether `_translate_query_node()` helpers in `runner.py` are now fully duplicated by `conversion/query.py` — if so, remove them from `runner.py`.
+
+### R-04: benchmark.ini URL Fix (FR-026)
+
+**Decision**: `osbenchmark/resources/benchmark.ini` line 28: `default.url = https://github.com/janhoy/solr-benchmark-workloads`

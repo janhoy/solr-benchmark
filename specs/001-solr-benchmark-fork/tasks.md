@@ -303,11 +303,39 @@ Two issues discovered:
 
 - [x] T070 Update unit tests in `tests/unit/solr/test_runner.py` — remove any test cases that test Mode 3 (OpenSearch DSL runtime translation) in `SolrSearch`; remove tests for `SolrCreateIndexBridge`, `SolrBulkBridge`, `SolrDeleteIndexBridge`; add test for the defensive Mode 3 warning in `SolrSearch`; add tests for `SolrCreateCollection` without mappings param (verify it requires explicit `configset-path`); add unit tests for `workload_converter.py` in a new `tests/unit/solr/test_workload_converter.py` covering: detect format, already-converted check, operations conversion (rename, skip, search body), CONVERTED.md content
 
-- [ ] T071 [VERIFICATION] End-to-end test of auto-conversion flow — run NYC taxis benchmark (OpenSearch workload) via `python3 -m osbenchmark.benchmark run --pipeline=docker --distribution-version=9.10.1 --workload=nyc_taxis --test-mode --on-error=abort`; verify: (a) `nyc_taxis-solr/` directory created with `workload.json` and `CONVERTED.md`, (b) second run skips conversion, (c) `--pipeline=benchmark-only` with a native Solr workload does NOT trigger conversion, (d) all operations complete with 0% error rate
+- [~] T071 [SUPERSEDED] End-to-end test of auto-conversion flow — SUPERSEDED by 2026-02-24 spec update (FR-018b). Auto-conversion at run time has been removed. T066 (which added auto-conversion to test_run_orchestrator.py) is now incorrect and will be replaced in Phase 11. Do NOT execute this task.
 
 - [x] T072 [P] Test `convert-workload` CLI command standalone — run `solr-benchmark convert-workload --workload-path /path/to/nyc_taxis --output-path /tmp/nyc_taxis-solr`; verify `CONVERTED.md` lists any skipped ops, converted `workload.json` has `"collections"` key and all search operations have Solr JSON DSL `body` dict with string `"query"` key, no OpenSearch DSL dicts remain in any operation body
 
 **Checkpoint**: No runtime OpenSearch DSL translation in any runner. All workload conversion happens pre-run via `workload_converter.py`. Bridge runners removed. `convert-workload` CLI command works standalone. Auto-conversion on `run` with idempotent re-run.
+
+---
+
+---
+
+## Phase 11: Remove Auto-Conversion (2026-02-24 Spec Update)
+
+**Purpose**: Per the 2026-02-24 spec directives (FR-018b, FR-018f, FR-018g, FR-026), replace the auto-conversion run-time behaviour introduced in Phase 10 with an explicit error-and-abort pattern, remove remaining bridge runners, harden the search runner, fix the workload repository URL, and isolate conversion code.
+
+**Background**: Phase 10 (T066) added `_maybe_auto_convert_workload()` to `test_run_orchestrator.py` — it silently converts OSB workloads at run time. The 2026-02-24 clarification mandates instead: detect OSB format → abort with a clear ERROR telling the user to run `convert-workload` first. The `convert-workload` CLI subcommand (T065) is the correct workflow; it remains unchanged. T071 is superseded.
+
+**Starting state**: T066 added auto-convert to `test_run_orchestrator.py`; T068 removed `SolrCreateIndexBridge`/`SolrBulkBridge`/`SolrDeleteIndexBridge` but `SolrRefreshBridge` and `SolrNoOpBridge` still exist; T067 added a "defensive warning" for Mode 3 in SolrSearch (FR-018f now requires a hard error); `benchmark.ini` still points to the OpenSearch workloads repo.
+
+- [ ] T073 [US4] Fix `osbenchmark/resources/benchmark.ini` — change `default.url` in the `[workloads]` section from `https://github.com/opensearch-project/opensearch-benchmark-workloads` to `https://github.com/janhoy/solr-benchmark-workloads` (FR-026)
+
+- [ ] T074 [US4] Add `is_opensearch_workload_path(workload_path: str) -> bool` to `osbenchmark/solr/conversion/detector.py` — reads `workload.json` (or `workload.jsonnet`) from `workload_path` directory as raw JSON; returns `True` if `"indices"` key is present (OSB format); returns `False` for `"collections"` key (Solr format), missing key, missing file, or any parse/IO error. This function is the ONLY piece of conversion code allowed to be imported from the run path.
+
+- [ ] T075 [US4] Replace `_maybe_auto_convert_workload()` in `osbenchmark/test_run_orchestrator.py` — rename method to `_check_workload_is_solr_native()` and replace its body: (1) resolve `workload_path` from config (same logic as before), (2) call `from osbenchmark.solr.conversion.detector import is_opensearch_workload_path`, (3) if `is_opensearch_workload_path(workload_path)` returns True → call `console.error(...)` with the message: `"This workload is in OpenSearch Benchmark format. Run: solr-benchmark convert-workload --workload-path <src> --output-path <dest>"` → raise `exceptions.SystemSetupError("OSB workload detected — convert it first with convert-workload")`, (4) if False → return (no-op). Update the call site at line ~265 to call `_check_workload_is_solr_native()`. Remove all imports of `workload_converter` from this file.
+
+- [ ] T076 [P] [US4] Remove remaining bridge runners from `osbenchmark/solr/runner.py` — delete `SolrRefreshBridge` class and its `register_runner("refresh", ...)` call; delete `SolrNoOpBridge` class and all its `register_runner(...)` calls for OpenSearch operation types (FR-018g). Leave `SolrCreateCollection`, `SolrDeleteCollection`, `SolrBulkIndex`, `SolrSearch`, `SolrCommit`, `SolrOptimize`, and `SolrRawRequest` unchanged.
+
+- [ ] T077 [P] [US4] Update `SolrSearch.__call__()` in `osbenchmark/solr/runner.py` to raise error on OpenSearch DSL (FR-018f) — replace the existing `elif isinstance(body.get("query"), dict): logger.warning(...)` with `raise exceptions.BenchmarkAssertionError("Query body contains OpenSearch DSL (query is a dict). Convert this workload first: solr-benchmark convert-workload --workload-path <src> --output-path <dest>")`. Remove any remaining import of `is_opensearch_body`, `has_opensearch_aggregations`, or `is_opensearch_only_query` from runner.py if they are no longer used after Mode 3 removal (T067) and this change.
+
+- [ ] T078 [P] Write/update unit tests — (a) add `tests/unit/solr/conversion/test_detector.py`: test `is_opensearch_workload_path()` with a mock dir containing workload.json with `"indices"` key (→ True), `"collections"` key (→ False), missing file (→ False), invalid JSON (→ False); (b) update `tests/unit/solr/test_runner.py`: add test that `SolrSearch.__call__()` raises `BenchmarkAssertionError` when body has a dict `"query"` value; (c) confirm no test references `SolrRefreshBridge` or `SolrNoOpBridge`
+
+- [ ] T079 [VERIFICATION] End-to-end validation of the new detection+error flow — run `solr-benchmark run --pipeline=benchmark-only --target-hosts=localhost:8983 --workload-path=/path/to/nyc_taxis` (original OSB workload, not converted); verify the tool exits with a clear ERROR message containing `convert-workload`; verify no conversion files are created; then run `solr-benchmark convert-workload --workload-path=/path/to/nyc_taxis --output-path=/tmp/nyc_taxis-solr` followed by `solr-benchmark run ... --workload-path=/tmp/nyc_taxis-solr`; verify the converted workload runs successfully with 0% error rate.
+
+**Checkpoint**: `solr-benchmark run` aborts with a clear error for OSB workloads. `convert-workload` is the explicit conversion path. No bridge runners remain. SolrSearch raises an error on OpenSearch DSL. `benchmark.ini` points to the Solr workloads repo.
 
 ---
 
@@ -325,4 +353,5 @@ Two issues discovered:
 | **Phase 8: Corrections** | **T040–T053** | **T043, T046, T048, T052** | — |
 | **Phase 9: Results Consolidation** | **T054–T062** | **T054, T059, T060, T062** | — |
 | **Phase 10: Workload Conversion Refactor** | **T063–T072** | **T068, T069, T070, T072** | US4 |
-| **Total** | **72 tasks** | **34 parallelizable** | |
+| **Phase 11: Remove Auto-Conversion** | **T073–T079** | **T076, T077, T078** | US4 |
+| **Total** | **79 tasks** | **37 parallelizable** | |
