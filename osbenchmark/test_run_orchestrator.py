@@ -23,9 +23,11 @@
 # under the License.
 
 import collections
+import glob
 import logging
 import os
 import sys
+import tarfile
 
 import tabulate
 import thespian.actors
@@ -33,6 +35,7 @@ import thespian.actors
 from osbenchmark import actor, config, doc_link, \
     worker_coordinator, exceptions, builder, metrics, \
         publisher, workload, version, PROGRAM_NAME
+from osbenchmark.builder.supplier import SourceRepository, Builder
 from osbenchmark.solr.provisioner import SolrProvisioner, SolrDockerLauncher
 from osbenchmark.utils import console, opts, versions
 
@@ -365,18 +368,6 @@ def set_default_hosts(cfg, host="127.0.0.1", port=9200):
 
 
 # Poor man's curry
-def from_sources(cfg):
-    port = cfg.opts("provisioning", "node.http.port")
-    set_default_hosts(cfg, port=port)
-    return run_test(cfg, sources=True)
-
-
-def from_distribution(cfg):
-    port = cfg.opts("provisioning", "node.http.port")
-    set_default_hosts(cfg, port=port)
-    return run_test(cfg, distribution=True)
-
-
 def benchmark_only(cfg):
     set_default_hosts(cfg)
     # We'll use a special cluster_config name for external benchmarks.
@@ -384,28 +375,87 @@ def benchmark_only(cfg):
     return run_test(cfg, external=True)
 
 
-def docker(cfg):
-    set_default_hosts(cfg)
-    return run_test(cfg, docker=True)
-
-
-Pipeline("from-sources",
-         "Builds Solr from source, provisions it locally, runs a benchmark, and tears down.", from_sources)
-
-Pipeline("from-distribution",
-         "Downloads a Solr distribution, provisions it locally, runs a benchmark, and tears down.", from_distribution)
-
 Pipeline("benchmark-only",
          "Assumes an already running search engine instance, runs a benchmark and publishes results", benchmark_only)
-
-# Docker pipeline for containerized Solr deployments
-Pipeline("docker",
-         "Starts Solr via Docker, runs a benchmark, and removes the container on teardown.", docker, stable=False)
 
 
 # ---------------------------------------------------------------------------
 # Solr-specific pipelines
 # ---------------------------------------------------------------------------
+
+def solr_from_sources(cfg):
+    """
+    Clone/update the Solr source tree, build a distribution with Gradle, provision
+    it locally, run the benchmark, then tear down.
+
+    Config keys read:
+      - builder.source.revision  — git revision to build: "latest" (default), "current",
+                                   a branch name, a tag, or a commit SHA.
+      - source.remote.repo.url   — Solr git remote (default: https://github.com/apache/solr.git)
+      - solr.port                — Solr port (default: 8983)
+      - solr.install_dir         — where to extract the built tarball (default: ~/.solr-benchmark/builds)
+    """
+    logger = logging.getLogger(__name__)
+    base_dir = os.path.expanduser("~/.solr-benchmark")
+
+    revision = cfg.opts("builder", "source.revision", mandatory=False, default_value="latest")
+    port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
+    src_dir = os.path.join(base_dir, "sources", "solr")
+    install_dir = cfg.opts("solr", "install_dir", mandatory=False,
+                           default_value=os.path.join(base_dir, "builds", revision or "latest"))
+    log_dir = os.path.join(base_dir, "logs")
+    remote_url = cfg.opts("source", "remote.repo.url", mandatory=False,
+                          default_value="https://github.com/apache/solr.git")
+
+    # Step 1: Clone / update source tree
+    logger.info("Fetching Solr sources at revision [%s] from [%s].", revision, remote_url)
+    git_revision = SourceRepository("Solr", remote_url, src_dir).fetch(revision)
+    logger.info("Building from git revision [%s].", git_revision)
+
+    # Step 2: Build with Gradle (produces tgz in solr/packaging/build/distributions/)
+    logger.info("Building Solr from source in [%s].", src_dir)
+    bldr = Builder(src_dir, build_jdk=21, log_dir=log_dir)
+    bldr.build(["./gradlew clean", "./gradlew assemble"])
+
+    # Step 3: Locate the built tarball
+    pattern = os.path.join(src_dir, "solr", "packaging", "build", "distributions", "solr-*.tgz")
+    tarballs = glob.glob(pattern)
+    if not tarballs:
+        raise exceptions.SystemSetupError(
+            f"No Solr tarball found matching {pattern}. "
+            f"Check the Gradle build log at {os.path.join(log_dir, 'build.log')}."
+        )
+    tarball_path = sorted(tarballs)[-1]  # pick the newest if multiple
+    logger.info("Using built Solr tarball: %s", tarball_path)
+
+    # Step 4: Extract tarball and start Solr
+    os.makedirs(install_dir, exist_ok=True)
+    with tarfile.open(tarball_path, "r:gz") as tf:
+        top_level = tf.getnames()[0].split("/")[0]
+        tf.extractall(install_dir)
+    solr_root = os.path.join(install_dir, top_level)
+
+    provisioner = SolrProvisioner(cache_dir=os.path.join(base_dir, "cache"), port=port)
+    try:
+        provisioner.start(solr_root, mode="cloud")
+        set_default_hosts(cfg, host="127.0.0.1", port=port)
+        cfg.add(config.Scope.benchmark, "builder", "cluster_config.names", ["external"])
+        run_test(cfg, external=True)
+    finally:
+        try:
+            provisioner.stop(solr_root)
+        except Exception as exc:
+            logger.warning("Solr stop failed during teardown: %s", exc)
+        try:
+            provisioner.clean(install_dir)
+        except Exception as exc:
+            logger.warning("Solr clean failed during teardown: %s", exc)
+
+
+Pipeline("from-sources",
+         "Builds Solr from source (git clone + Gradle assemble), provisions it locally, "
+         "runs a benchmark, and tears down.", solr_from_sources)
+
 
 def solr_from_distribution(cfg):
     """
