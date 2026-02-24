@@ -338,14 +338,19 @@ def run_test(cfg, sources=False, distribution=False, external=False, docker=Fals
         benchmark_actor = actor_system.createActor(BenchmarkActor, targetActorRequirements={"coordinator": True})
     except thespian.actors.ActorSystemRequestTimeout:
         # The actor system may have gone stale after a long provisioning phase (e.g. Gradle build).
-        # Shut it down and start a fresh one.
+        # Shut it down and start a fresh one, falling back to offline mode if TCP fails.
         logger.warning("Actor system became unresponsive (createActor timed out). Restarting actor system.")
         try:
             actor_system.shutdown()
         except Exception:
             pass
-        time.sleep(3)
-        actor_system = actor.bootstrap_actor_system(try_join=False, prefer_local_only=True)
+        time.sleep(5)
+        try:
+            actor_system = actor.bootstrap_actor_system(try_join=False, prefer_local_only=True)
+        except Exception:
+            logger.warning("Could not restart TCP actor system. Falling back to offline actor system.")
+            actor.use_offline_actor_system()
+            actor_system = actor.bootstrap_actor_system(try_join=False, prefer_local_only=True)
         benchmark_actor = actor_system.createActor(BenchmarkActor, targetActorRequirements={"coordinator": True})
     try:
         result = actor_system.ask(benchmark_actor, Setup(cfg, sources, distribution, external, docker))
