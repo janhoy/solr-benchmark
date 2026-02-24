@@ -61,7 +61,11 @@ def param_source_for_operation(op_type, workload, params, task_name):
         # we know that this can only be a OSB core parameter source
         return __PARAM_SOURCES_BY_OP[op_type](workload, params, operation_name=task_name)
     except KeyError:
-        return ParamSource(workload, params, operation_name=task_name)
+        pass
+    # Also check name-based registry for user-defined operation types (e.g., "bulk-index")
+    if isinstance(op_type, str) and op_type in __PARAM_SOURCES_BY_NAME:
+        return param_source_for_name(op_type, workload, params)
+    return ParamSource(workload, params, operation_name=task_name)
 
 
 def param_source_for_name(name, workload, params):
@@ -2136,14 +2140,14 @@ class SolrSearchParamSource(ParamSource):
       ``POST /solr/{collection}/query``.
 
     Common params:
-      - ``collection`` — target Solr collection (required)
+      - ``collection`` — target Solr collection (resolved via get_target() if not explicit)
       - ``host``, ``port``, ``username``, ``password``, ``tls``, ``timeout``
       - ``cache``      — ignored for Solr (kept for API compatibility)
     """
 
     def __init__(self, workload, params, **kwargs):
         super().__init__(workload, params, **kwargs)
-        collection = params.get("collection")
+        collection = params.get("collection") or get_target(workload, params)
         if not collection:
             raise exceptions.InvalidSyntax(
                 f"'collection' is mandatory and is missing for operation '{kwargs.get('operation_name')}'"
@@ -2176,5 +2180,44 @@ class SolrSearchParamSource(ParamSource):
         return self.query_params
 
 
+class SolrBulkIndexParamSource(BulkIndexParamSource):
+    """
+    Extends BulkIndexParamSource to inject a default ``collection`` from the workload
+    when the operation does not specify one explicitly.
+
+    This mirrors OSB's own get_target() mechanism used by SearchParamSource, ensuring
+    that bulk-index operations work without an explicit ``collection`` param as long as
+    the workload has exactly one collection defined.
+    """
+
+    def __init__(self, workload, params, **kwargs):
+        if not params.get("collection") and not params.get("index"):
+            target = get_target(workload, params)
+            if target:
+                params = dict(params)
+                params["collection"] = target
+        super().__init__(workload, params, **kwargs)
+
+
+class SolrOptimizeParamSource(ParamSource):
+    """
+    Param source for Solr optimize operations.
+
+    Resolves the target collection via get_target() when not explicitly specified,
+    mirroring OSB's default-index mechanism.
+    """
+
+    def __init__(self, workload, params, **kwargs):
+        super().__init__(workload, params, **kwargs)
+        collection = params.get("collection") or get_target(workload, params)
+        self._resolved_params = dict(params)
+        if collection:
+            self._resolved_params["collection"] = collection
+
+    def params(self):
+        return self._resolved_params
+
+
 register_param_source_for_name("solr-search", SolrSearchParamSource)
-register_param_source_for_name("bulk-index", BulkIndexParamSource)
+register_param_source_for_name("bulk-index", SolrBulkIndexParamSource)
+register_param_source_for_name("optimize", SolrOptimizeParamSource)

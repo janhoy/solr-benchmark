@@ -34,6 +34,7 @@ import requests
 
 from osbenchmark import exceptions as benchmark_exceptions
 from osbenchmark.solr.client import SolrAdminClient, CollectionAlreadyExistsError, CollectionNotFoundError
+from osbenchmark.solr.telemetry import _parse_prometheus_text
 
 logger = logging.getLogger(__name__)
 
@@ -113,10 +114,16 @@ def _solr_client(params):
     collection = params.get("collection") or params.get("index") or None
     tls = params.get("tls", False)
     if not collection:
-        raise exceptions.DataError(
+        raise benchmark_exceptions.DataError(
             "Operation parameter 'collection' is missing. "
             "Make sure your Solr workload specifies a 'collection' name in the operation params or param source. "
             "If you are running an OpenSearch workload, convert it first with 'solr-benchmark convert-workload'."
+        )
+    if collection == "_all":
+        raise benchmark_exceptions.DataError(
+            "Operation targets collection '_all' which is an OpenSearch concept. "
+            "Solr does not support querying all collections simultaneously. "
+            "Remove or replace this operation in your Solr workload."
         )
     timeout = params.get("timeout", 30)
     scheme = "https" if tls else "http"
@@ -430,7 +437,16 @@ class SolrBulkIndex(SolrRunner):
     """
 
     async def __call__(self, solr_not_used, params):
-        corpus_lines = params.get("corpus", [])
+        # OSB's bulk_generator puts data in "body" as a bytes blob (b"".join(bulk_lines)).
+        # Workloads that provide raw NDJSON lines may use "corpus" instead.
+        body = params.get("body", params.get("corpus", []))
+        if isinstance(body, bytes):
+            corpus_lines = [line.decode("utf-8") for line in body.split(b"\n") if line]
+        elif isinstance(body, str):
+            corpus_lines = [line for line in body.split("\n") if line]
+        else:
+            corpus_lines = body
+
         batch_size = params.get("bulk-size", 500)
         do_commit = params.get("commit", False)
 
@@ -522,7 +538,7 @@ class SolrSearch(SolrRunner):
         # Accept 'index' as alias for 'collection' (standard OSB workload format).
         collection = params.get("collection") or params.get("index") or None
         if not collection:
-            raise exceptions.DataError(
+            raise benchmark_exceptions.DataError(
                 "Operation parameter 'collection' is missing. "
                 "Make sure your Solr workload specifies a 'collection' name in the operation params or param source. "
                 "If you are running an OpenSearch workload, convert it first with 'solr-benchmark convert-workload'."
@@ -648,6 +664,67 @@ class SolrOptimize(SolrRunner):
 
     def __str__(self):
         return "solr-optimize"
+
+
+# ---------------------------------------------------------------------------
+# Runner: wait-for-merges
+# ---------------------------------------------------------------------------
+
+class SolrWaitForMerges(SolrRunner):
+    """
+    Poll Solr node metrics until no active merge operations remain across any core.
+
+    Supports Solr 9.x (JSON format from /solr/admin/metrics) and Solr 10.x
+    (Prometheus text format from /api/node/metrics) — format is auto-detected
+    by SolrAdminClient.get_node_metrics().
+
+    Params:
+      - ``retry-wait-period`` — seconds between polls (default: 2.0)
+      - ``max-wait-seconds``  — hard timeout before giving up (default: 3600)
+      - standard connection params: host, port, tls, username, password, timeout
+    """
+
+    async def __call__(self, solr_not_used, params):
+        admin = _admin_client(params)
+        retry_wait = float(params.get("retry-wait-period", 2.0))
+        max_wait = float(params.get("max-wait-seconds", 3600))
+        start = time.perf_counter()
+        total_running = 0
+
+        while True:
+            raw = await _run_in_executor(admin.get_node_metrics)
+            total_running = 0
+
+            if isinstance(raw, str):
+                # Solr 10.x Prometheus text format
+                m = _parse_prometheus_text(raw)
+                for key, val in m.items():
+                    if "merge" in key and "running" in key:
+                        total_running += int(val)
+            elif isinstance(raw, dict):
+                # Solr 9.x custom JSON format
+                for core_metrics in raw.get("metrics", {}).values():
+                    for key in ("INDEX.merge.major.running",
+                                "INDEX.merge.minor.running"):
+                        val = core_metrics.get(key, 0)
+                        if isinstance(val, dict):
+                            val = val.get("value", 0)
+                        total_running += int(val)
+
+            elapsed = time.perf_counter() - start
+            if total_running == 0 or elapsed >= max_wait:
+                break
+            await asyncio.sleep(retry_wait)
+
+        return {
+            "weight": 1,
+            "unit": "ops",
+            "took": time.perf_counter() - start,
+            "success": total_running == 0,
+        }
+
+    def __str__(self):
+        return "solr-wait-for-merges"
 
 
 # ---------------------------------------------------------------------------
@@ -821,7 +898,9 @@ def register_solr_runners(register_runner):
     register_runner("bulk-index", SolrBulkIndex(), async_runner=True)
     register_runner("search", SolrSearch(), async_runner=True)
     register_runner("commit", SolrCommit(), async_runner=True)
+    register_runner("refresh", SolrCommit(), async_runner=True)
     register_runner("optimize", SolrOptimize(), async_runner=True)
+    register_runner("wait-for-merges", SolrWaitForMerges(), async_runner=True)
     register_runner("create-collection", SolrCreateCollection(), async_runner=True)
     register_runner("delete-collection", SolrDeleteCollection(), async_runner=True)
     register_runner("raw-request", SolrRawRequest(), async_runner=True)
