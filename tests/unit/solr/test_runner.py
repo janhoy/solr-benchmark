@@ -274,30 +274,27 @@ class TestSolrSearch(unittest.TestCase):
         self.assertEqual(7, result["hits"])
         mock_session.post.assert_called_once()
 
-    def test_unconverted_os_dsl_body_returns_zero_hits(self):
-        """Un-converted OpenSearch DSL body (query is a dict) returns 0 hits with a warning."""
+    def test_unconverted_os_dsl_body_raises_error(self):
+        """Un-converted OpenSearch DSL body (query is a dict) raises BenchmarkAssertionError (FR-018f)."""
+        from osbenchmark.exceptions import BenchmarkAssertionError
         params = {**self._base_params(), "body": {"query": {"match_all": {}}, "size": 20}}
         runner = SolrSearch()
-        with self.assertLogs("osbenchmark.solr.runner", level="WARNING") as log:
-            result = _run(runner(None, params))
+        with self.assertRaises(BenchmarkAssertionError) as ctx:
+            _run(runner(None, params))
+        self.assertIn("convert-workload", str(ctx.exception))
 
-        self.assertEqual(0, result["hits"])
-        self.assertEqual(0, result["hits-total"])
-        self.assertTrue(any("un-converted OpenSearch" in msg for msg in log.output))
-
-    def test_unconverted_os_dsl_body_with_term_query_returns_zero_hits(self):
-        """Un-converted OpenSearch term query body returns 0 hits with a warning."""
+    def test_unconverted_os_dsl_body_with_term_query_raises_error(self):
+        """Un-converted OpenSearch term query body raises BenchmarkAssertionError (FR-018f)."""
+        from osbenchmark.exceptions import BenchmarkAssertionError
         params = {
             "host": "localhost", "port": 8983,
             "index": "nyc_taxis",
             "body": {"query": {"term": {"vendor_id": "1"}}},
         }
         runner = SolrSearch()
-        with self.assertLogs("osbenchmark.solr.runner", level="WARNING") as log:
-            result = _run(runner(None, params))
-
-        self.assertEqual(0, result["hits"])
-        self.assertTrue(any("un-converted OpenSearch" in msg for msg in log.output))
+        with self.assertRaises(BenchmarkAssertionError) as ctx:
+            _run(runner(None, params))
+        self.assertIn("convert-workload", str(ctx.exception))
 
 
 class TestSolrCreateCollection(unittest.TestCase):

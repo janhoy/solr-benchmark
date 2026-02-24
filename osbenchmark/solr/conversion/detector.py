@@ -22,7 +22,9 @@ Determines whether a workload is OpenSearch Benchmark format (requiring conversi
 or native Solr Benchmark format (no conversion needed).
 """
 
+import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -279,3 +281,41 @@ def has_opensearch_aggregations(body) -> bool:
     if not isinstance(body, dict):
         return False
     return "aggs" in body or "aggregations" in body
+
+
+def is_opensearch_workload_path(workload_path: str) -> bool:
+    """
+    Detect whether a workload directory contains an OpenSearch Benchmark workload.
+
+    Reads ``workload.json`` (or ``workload.jsonnet``) from the given directory as
+    raw JSON and checks for the presence of the ``"indices"`` key, which is the
+    definitive marker of an OSB workload. A ``"collections"`` key indicates a
+    Solr-native workload.
+
+    This function is the ONLY piece of conversion code that may be imported from
+    the benchmark run path (``test_run_orchestrator.py``). It does not import any
+    heavy conversion dependencies.
+
+    Args:
+        workload_path: Path to the workload directory.
+
+    Returns:
+        True if the workload is in OpenSearch Benchmark format (needs conversion).
+        False for Solr-native format, missing file, or any parse/IO error.
+    """
+    for filename in ("workload.json", "workload.jsonnet"):
+        candidate = os.path.join(workload_path, filename)
+        if os.path.isfile(candidate):
+            try:
+                with open(candidate, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                if "indices" in data:
+                    logger.debug("Detected OSB workload at '%s' (contains 'indices' key)", workload_path)
+                    return True
+                if "collections" in data:
+                    logger.debug("Detected Solr workload at '%s' (contains 'collections' key)", workload_path)
+                return False
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.debug("Could not parse workload file '%s': %s — treating as Solr format", candidate, exc)
+                return False
+    return False

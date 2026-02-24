@@ -17,9 +17,12 @@
 
 """Unit tests for osbenchmark/solr/conversion/detector.py"""
 
+import json
+import os
+import tempfile
 import unittest
 
-from osbenchmark.solr.conversion.detector import is_opensearch_workload
+from osbenchmark.solr.conversion.detector import is_opensearch_workload, is_opensearch_workload_path
 
 
 class TestWorkloadDetection(unittest.TestCase):
@@ -140,6 +143,42 @@ class TestWorkloadDetection(unittest.TestCase):
             ]
         }
         self.assertFalse(is_opensearch_workload(workload))
+
+
+class TestIsOpensearchWorkloadPath(unittest.TestCase):
+    """Tests for the file-based workload format detector (FR-018a, T074)."""
+
+    def _write_workload(self, tmp_dir, data):
+        path = os.path.join(tmp_dir, "workload.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        return tmp_dir
+
+    def test_osb_workload_with_indices_key_returns_true(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_workload(tmp, {"name": "nyc_taxis", "indices": [{"name": "nyc_taxis"}]})
+            self.assertTrue(is_opensearch_workload_path(tmp))
+
+    def test_solr_workload_with_collections_key_returns_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_workload(tmp, {"name": "geonames-solr", "collections": [{"name": "geonames"}]})
+            self.assertFalse(is_opensearch_workload_path(tmp))
+
+    def test_missing_workload_file_returns_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # No workload.json written
+            self.assertFalse(is_opensearch_workload_path(tmp))
+
+    def test_invalid_json_returns_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "workload.json"), "w") as fh:
+                fh.write("{not valid json")
+            self.assertFalse(is_opensearch_workload_path(tmp))
+
+    def test_workload_without_indices_or_collections_returns_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_workload(tmp, {"name": "mystery-workload", "challenges": []})
+            self.assertFalse(is_opensearch_workload_path(tmp))
 
 
 if __name__ == "__main__":

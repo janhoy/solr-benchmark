@@ -95,34 +95,6 @@ def solr_runner(fn):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _fetch_first_collection(host: str, port: int, tls: bool = False) -> str:
-    """
-    Query Solr admin API and return the first available collection name.
-
-    Used as a fallback when a param source returns ``index: None`` (common in
-    standard OSB workloads designed for OpenSearch where the index is resolved
-    from the document routing, not the request URL).
-
-    Returns None if no collections exist or the request fails.
-    """
-    scheme = "https" if tls else "http"
-    try:
-        session = requests.Session()
-        session.trust_env = False
-        resp = session.get(
-            f"{scheme}://{host}:{port}/solr/admin/collections",
-            params={"action": "LIST"},
-            timeout=5
-        )
-        if resp.ok:
-            cols = resp.json().get("collections", [])
-            if cols:
-                return sorted(cols)[0]   # deterministic: alphabetically first
-    except Exception as exc:
-        logger.warning("Could not fetch collection list from Solr (%s:%s): %s", host, port, exc)
-    return None
-
-
 def _solr_client(params):
     """
     Build a pysolr.Solr instance from runner params.
@@ -141,9 +113,11 @@ def _solr_client(params):
     collection = params.get("collection") or params.get("index") or None
     tls = params.get("tls", False)
     if not collection:
-        collection = _fetch_first_collection(host, port, tls)
-    if not collection:
-        raise KeyError("collection")
+        raise exceptions.DataError(
+            "Operation parameter 'collection' is missing. "
+            "Make sure your Solr workload specifies a 'collection' name in the operation params or param source. "
+            "If you are running an OpenSearch workload, convert it first with 'solr-benchmark convert-workload'."
+        )
     timeout = params.get("timeout", 30)
     scheme = "https" if tls else "http"
     url = f"{scheme}://{host}:{port}/solr/{collection}"
@@ -546,15 +520,13 @@ class SolrSearch(SolrRunner):
         port = params.get("port", 8983)
         tls = params.get("tls", False)
         # Accept 'index' as alias for 'collection' (standard OSB workload format).
-        # When a param source returns index=None (OSB workloads that rely on OpenSearch
-        # routing), fall back to the first available Solr collection.
         collection = params.get("collection") or params.get("index") or None
         if not collection:
-            collection = _fetch_first_collection(host, port, tls)
-            if collection:
-                logger.debug("No collection in params; using first Solr collection: %s", collection)
-            else:
-                collection = "default"
+            raise exceptions.DataError(
+                "Operation parameter 'collection' is missing. "
+                "Make sure your Solr workload specifies a 'collection' name in the operation params or param source. "
+                "If you are running an OpenSearch workload, convert it first with 'solr-benchmark convert-workload'."
+            )
         timeout = params.get("timeout", 30)
         scheme = "https" if tls else "http"
 
@@ -563,20 +535,16 @@ class SolrSearch(SolrRunner):
         body = params.get("body")
         if body is not None:
             if isinstance(body, dict) and isinstance(body.get("query"), dict):
-                # Defensive warning: un-converted OpenSearch DSL body detected.
-                # This should not happen if the workload was properly converted.
-                # The auto-conversion in BenchmarkCoordinator.setup() will have
-                # translated these bodies to Solr JSON DSL before the run.
+                # Hard error: un-converted OpenSearch DSL body detected.
+                # FR-018b ensures OSB workloads are rejected at load time, so this
+                # should never happen in practice. If it does, the workload was not
+                # properly converted — raise a clear error rather than silently degrading.
                 op_name = params.get("name", params.get("operation-type", "unknown"))
-                logger.warning(
-                    "Task '%s' has an un-converted OpenSearch query DSL body (body['query'] is a dict). "
-                    "Run 'solr-benchmark convert-workload --workload-path <path>' to convert the workload, "
-                    "or use a local workload path to trigger auto-conversion. "
-                    "Returning 0 hits for this task.",
-                    op_name,
+                raise benchmark_exceptions.BenchmarkAssertionError(
+                    f"Task '{op_name}' has a query body with an OpenSearch DSL dict (body['query'] is a dict). "
+                    f"This workload must be converted to Solr format first. Run: "
+                    f"solr-benchmark convert-workload --workload-path <src> --output-path <dest>"
                 )
-                elapsed = time.perf_counter() - start
-                return {"weight": 0, "unit": "ops", "hits": 0, "hits-total": 0, "took": elapsed}
             else:
                 # Mode 2: Solr JSON Query DSL → POST /solr/{collection}/query
                 url = f"{scheme}://{host}:{port}/solr/{collection}/query"
@@ -680,44 +648,6 @@ class SolrOptimize(SolrRunner):
 
     def __str__(self):
         return "solr-optimize"
-
-
-class SolrRefreshBridge(SolrRunner):
-    """
-    Bridge: maps OSB 'refresh' operation to Solr commit.
-
-    Translates the `index` parameter from OSB to `collection` for Solr.
-    If no index is specified, commits are skipped (returns success).
-    """
-
-    async def __call__(self, solr_not_used, params):
-        # Map index to collection if not already set
-        index = params.get("index")
-        collection = params.get("collection")
-
-        # If neither index nor collection is specified, skip the commit
-        if not index and not collection:
-            logger.info("Refresh operation has no index/collection specified - skipping commit")
-            return {"weight": 0, "unit": "ops", "took": 0}
-
-        solr_params = dict(params)
-        if not collection:
-            solr_params["collection"] = index
-
-        client = _solr_client(solr_params)
-        soft = params.get("soft-commit", False)
-
-        start = time.perf_counter()
-        if soft:
-            await _run_in_executor(client.commit, softCommit=True)
-        else:
-            await _run_in_executor(client.commit)
-        elapsed = time.perf_counter() - start
-
-        return {"weight": 1, "unit": "ops", "took": elapsed}
-
-    def __str__(self):
-        return "refresh"
 
 
 # ---------------------------------------------------------------------------
@@ -874,112 +804,6 @@ class SolrRawRequest(SolrRunner):
         return "solr-raw-request"
 
 
-class SolrNoOpBridge(SolrRunner):
-    """
-    Silently skips OpenSearch-specific operations that have no Solr equivalent
-    (e.g. cluster-health, refresh, force-merge, put-pipeline).
-    """
-
-    def __init__(self, op_name):
-        self._op_name = op_name
-
-    async def __call__(self, solr_not_used, params):
-        logger.debug("Skipping OpenSearch-specific operation '%s' in Solr mode.", self._op_name)
-        return {"weight": 0, "unit": "ops", "success": True}
-
-    def __str__(self):
-        return self._op_name
-
-
-# ---------------------------------------------------------------------------
-# Bridge runners: map OSB index operations to Solr collection operations
-# ---------------------------------------------------------------------------
-
-class SolrDeleteIndexBridge(SolrRunner):
-    """
-    Bridge: maps OSB 'delete-index' operation to Solr delete-collection.
-
-    Accepts params from DeleteIndexParamSource:
-      - ``indices``       — list of collection names to delete
-      - ``only-if-exists``— bool (default: True); ignore missing collections
-    """
-
-    async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
-        indices = params.get("indices", [])
-        only_if_exists = params.get("only-if-exists", True)
-
-        start = time.perf_counter()
-        for name in indices:
-            try:
-                await _run_in_executor(admin.delete_collection, name)
-            except CollectionNotFoundError:
-                if not only_if_exists:
-                    raise
-                logger.info("Collection '%s' not found, skipping delete.", name)
-            try:
-                await _run_in_executor(admin.delete_configset, name)
-            except Exception as exc:
-                logger.debug("Could not delete configset '%s': %s", name, exc)
-
-        elapsed = time.perf_counter() - start
-        return {"weight": max(1, len(indices)), "unit": "ops", "took": elapsed}
-
-    def __str__(self):
-        return "solr-delete-index-bridge"
-
-
-class SolrCreateIndexBridge(SolrRunner):
-    """
-    Bridge: maps OSB 'create-index' operation to Solr create-collection.
-
-    Accepts params from CreateIndexParamSource (Solr path):
-      - ``indices`` — list of ``(name, configset_path)`` tuples
-      - ``num-shards``, ``replication-factor``
-    """
-
-    async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
-        indices = params.get("indices", [])
-        num_shards = params.get("num-shards", 1)
-        replication_factor = params.get("replication-factor", 1)
-
-        start = time.perf_counter()
-        for entry in indices:
-            if isinstance(entry, (list, tuple)) and len(entry) >= 2:
-                col_name, configset_path = entry[0], entry[1]
-            elif isinstance(entry, (list, tuple)):
-                col_name, configset_path = entry[0], None
-            else:
-                col_name, configset_path = str(entry), None
-
-            configset = col_name  # configset name == collection name
-
-            if configset_path and os.path.isdir(configset_path):
-                await _run_in_executor(admin.upload_configset, configset, configset_path)
-                logger.info("Uploaded configset '%s' from '%s'", configset, configset_path)
-
-            try:
-                await _run_in_executor(
-                    admin.create_collection, col_name, configset, num_shards, replication_factor
-                )
-            except CollectionAlreadyExistsError:
-                logger.warning("Collection '%s' already exists, skipping creation.", col_name)
-            except Exception:
-                if configset_path:
-                    try:
-                        await _run_in_executor(admin.delete_configset, configset)
-                    except Exception as cleanup_exc:
-                        logger.warning("Failed to clean up configset '%s': %s", configset, cleanup_exc)
-                raise
-
-        elapsed = time.perf_counter() - start
-        return {"weight": max(1, len(indices)), "unit": "ops", "took": elapsed}
-
-    def __str__(self):
-        return "solr-create-index-bridge"
-
-
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -1006,70 +830,3 @@ def register_solr_runners(register_runner):
     _search_runner = SolrSearch()
     register_runner("paginated-search", _search_runner, async_runner=True)
     register_runner("scroll-search", _search_runner, async_runner=True)
-
-    # refresh → commit (reuse SolrCommit runner)
-    register_runner("refresh", SolrRefreshBridge(), async_runner=True)
-
-    # No-op bridges for OpenSearch-specific operations that have no Solr equivalent.
-    # Covering every OperationType from workload.py so that any standard OSB
-    # workload can be run against Solr without raising "unknown operation" errors.
-    for _op in (
-        # Index/shard admin — no direct Solr equivalent
-        "cluster-health",
-        "force-merge",
-        "index-stats",
-        "node-stats",
-        "put-settings",
-        "shrink-index",
-        "wait-for-recovery",
-        # Ingest pipelines (Solr has no concept of ingest pipelines)
-        "put-pipeline",
-        "delete-pipeline",
-        # Index/data-stream templates
-        "create-index-template",
-        "delete-index-template",
-        "create-composable-template",
-        "delete-composable-template",
-        "create-component-template",
-        "delete-component-template",
-        "create-data-stream",
-        "delete-data-stream",
-        # Snapshot / restore
-        "create-snapshot-repository",
-        "delete-snapshot-repository",
-        "create-snapshot",
-        "restore-snapshot",
-        "wait-for-snapshot-create",
-        # Transforms
-        "create-transform",
-        "start-transform",
-        "wait-for-transform",
-        "delete-transform",
-        # Async search (Solr has no async search API)
-        "submit-async-search",
-        "get-async-search",
-        "delete-async-search",
-        # Point-in-time (Solr has no PIT concept)
-        "create-point-in-time",
-        "delete-point-in-time",
-        "list-all-point-in-time",
-        # Search pipeline (OpenSearch-specific)
-        "create-search-pipeline",
-        # Vector / KNN (Solr has its own dense-vector support but separate ops)
-        "vector-search",
-        "bulk-vector-data-set",
-        "train-knn-model",
-        "delete-knn-model",
-        # ML model operations (OpenSearch ML Commons — no Solr equivalent)
-        "register-ml-model",
-        "deploy-ml-model",
-        "delete-ml-model",
-        "create-ml-connector",
-        "register-remote-ml-model",
-        "delete-ml-connector",
-        # Streaming ingestion (Kafka-based, not applicable to Solr)
-        "produce-stream-message",
-        # Concurrent segment search settings
-        "update-concurrent-segment-search-settings",
-    ):
-        register_runner(_op, SolrNoOpBridge(_op), async_runner=True)
