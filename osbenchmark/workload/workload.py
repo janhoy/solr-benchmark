@@ -459,7 +459,8 @@ class Workload:
     """
 
     def __init__(self, name, description=None, meta_data=None, test_procedures=None, indices=None, data_streams=None,
-                 templates=None, composable_templates=None, component_templates=None, corpora=None, has_plugins=False):
+                 templates=None, composable_templates=None, component_templates=None, corpora=None, has_plugins=False,
+                 collections=None):
         """
 
         Creates a new workload.
@@ -482,6 +483,7 @@ class Workload:
         self.test_procedures = test_procedures if test_procedures else []
         self.indices = indices if indices else []
         self.data_streams = data_streams if data_streams else []
+        self.collections = collections if collections else []
         self.corpora = corpora if corpora else []
         self.templates = templates if templates else []
         self.composable_templates = composable_templates if composable_templates else []

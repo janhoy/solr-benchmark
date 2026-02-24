@@ -77,11 +77,14 @@ class TestLocalFilesystemResultWriter(unittest.TestCase):
 
         run_dir = os.path.join(self.tmpdir, self._run_id())
         self.assertTrue(os.path.isdir(run_dir))
-        self.assertTrue(os.path.isfile(os.path.join(run_dir, "results.json")))
+        # test_run.json is copied from the test-runs store (may not exist in unit test env)
         self.assertTrue(os.path.isfile(os.path.join(run_dir, "results.csv")))
         self.assertTrue(os.path.isfile(os.path.join(run_dir, "summary.txt")))
+        # No custom results.json is generated (test_run.json is the canonical format)
+        self.assertFalse(os.path.isfile(os.path.join(run_dir, "results.json")))
 
-    def test_json_output_contains_metrics(self):
+    def test_csv_output_contains_metrics(self):
+        """CSV file contains at least one data row for each non-warmup metric."""
         metadata = self._metadata()
         metrics = self._metrics()
 
@@ -89,20 +92,20 @@ class TestLocalFilesystemResultWriter(unittest.TestCase):
         self.writer.write(metrics)
         self.writer.close()
 
-        with open(os.path.join(self.tmpdir, self._run_id(), "results.json")) as f:
-            data = json.load(f)
+        csv_path = os.path.join(self.tmpdir, self._run_id(), "results.csv")
+        with open(csv_path) as f:
+            content = f.read()
 
-        self.assertEqual("test-workload", data["workload"])
-        self.assertEqual(2, len(data["metrics"]))
-        self.assertEqual("throughput", data["metrics"][0]["name"])
+        # The throughput metric (sample_type: normal) should appear in CSV
+        self.assertIn("throughput", content)
 
     def test_csv_output_skipped_when_no_metrics(self):
         self.writer.open(self._metadata())
         # No write() call
         self.writer.close()
         run_dir = os.path.join(self.tmpdir, self._run_id())
-        # JSON is always written, CSV is skipped when empty
-        self.assertTrue(os.path.isfile(os.path.join(run_dir, "results.json")))
+        # CSV is skipped when empty; no custom results.json is generated
+        self.assertFalse(os.path.isfile(os.path.join(run_dir, "results.json")))
         self.assertFalse(os.path.isfile(os.path.join(run_dir, "results.csv")))
 
     def test_close_is_idempotent(self):

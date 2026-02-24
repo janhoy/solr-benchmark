@@ -1479,7 +1479,7 @@ class WorkloadSpecificationReader:
                    for idx in self._r(workload_specification, "indices", mandatory=False, default_value=[])]
         data_streams = [self._create_data_stream(idx)
                         for idx in self._r(workload_specification, "data-streams", mandatory=False, default_value=[])]
-        collections = [self._create_collection(col)
+        collections = [self._create_collection(col, mapping_dir)
                        for col in self._r(workload_specification, "collections", mandatory=False, default_value=[])]
         if len(indices) > 0 and len(data_streams) > 0:
             # we guard against this early and support either or
@@ -1491,14 +1491,14 @@ class WorkloadSpecificationReader:
         component_templates = [self._create_component_template(tpl, mapping_dir)
                      for tpl in self._r(workload_specification, "component-templates", mandatory=False, default_value=[])]
         corpora = self._create_corpora(self._r(workload_specification, "corpora", mandatory=False, default_value=[]),
-                                       indices, data_streams)
+                                       indices, data_streams, collections=collections)
         test_procedures = self._create_test_procedures(workload_specification)
         # at this point, *all* workload params must have been referenced in the templates
         return workload.Workload(name=self.name, meta_data=meta_data,
         description=description, test_procedures=test_procedures,
         indices=indices,
                            data_streams=data_streams, templates=templates, composable_templates=composable_templates,
-                           component_templates=component_templates, corpora=corpora)
+                           component_templates=component_templates, corpora=corpora, collections=collections)
 
     def _error(self, msg):
         raise WorkloadSyntaxError("Workload '%s' is invalid. %s" % (self.name, msg))
@@ -1539,11 +1539,14 @@ class WorkloadSpecificationReader:
     def _create_data_stream(self, data_stream_spec):
         return workload.DataStream(name=self._r(data_stream_spec, "name"))
 
-    def _create_collection(self, col_spec):
+    def _create_collection(self, col_spec, mapping_dir=None):
         """Create a Solr Collection from a workload spec dict."""
         name = self._r(col_spec, "name")
         configset = self._r(col_spec, "configset", mandatory=False, default_value=name)
         configset_path = self._r(col_spec, "configset-path", mandatory=False, default_value=None)
+        # Resolve relative configset_path against mapping_dir (the workload directory)
+        if configset_path and mapping_dir and not os.path.isabs(configset_path):
+            configset_path = os.path.join(mapping_dir, configset_path)
         num_shards = int(self._r(col_spec, "num-shards", mandatory=False, default_value=1))
         replication_factor = int(self._r(col_spec, "replication-factor", mandatory=False, default_value=1))
         return workload.Collection(
@@ -1591,9 +1594,10 @@ class WorkloadSpecificationReader:
             self.logger.exception("Could not load file template for %s.", description)
             raise WorkloadSyntaxError("Could not load file template for '%s'" % description, str(e))
 
-    def _create_corpora(self, corpora_specs, indices, data_streams):
+    def _create_corpora(self, corpora_specs, indices, data_streams, collections=None):
         if len(indices) > 0 and len(data_streams) > 0:
             raise WorkloadSyntaxError("indices and data-streams cannot both be specified")
+        collections = collections or []
         document_corpora = []
         known_corpora_names = set()
         for corpus_spec in corpora_specs:
@@ -1620,6 +1624,10 @@ class WorkloadSpecificationReader:
             if len(indices) == 1:
                 corpus_target_idx = self._r(corpus_spec, "target-index", mandatory=False, default_value=indices[0].name)
             elif len(indices) > 0:
+                corpus_target_idx = self._r(corpus_spec, "target-index", mandatory=False)
+            elif len(collections) == 1:
+                corpus_target_idx = self._r(corpus_spec, "target-index", mandatory=False, default_value=collections[0].name)
+            elif len(collections) > 1:
                 corpus_target_idx = self._r(corpus_spec, "target-index", mandatory=False)
 
             if len(data_streams) == 1:

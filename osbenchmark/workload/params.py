@@ -281,6 +281,14 @@ class CreateIndexParamSource(ParamSource):
                             "settings": settings
                         }
                     self.index_definitions.append((idx.name, body))
+        elif hasattr(workload, "collections") and workload.collections:
+            # Solr workload: use collection name + configset_path (no OpenSearch index body)
+            filter_idx = params.get("index")
+            if isinstance(filter_idx, str):
+                filter_idx = [filter_idx]
+            for col in workload.collections:
+                if not filter_idx or col.name in filter_idx:
+                    self.index_definitions.append((col.name, col.configset_path))
         else:
             try:
                 # only 'index' is mandatory, the body is optional (may be ok to create an index without a body)
@@ -389,6 +397,10 @@ class DeleteIndexParamSource(ParamSource):
         elif workload.indices:
             for idx in workload.indices:
                 self.index_definitions.append(idx.name)
+        elif hasattr(workload, "collections") and workload.collections:
+            # Solr workload: use collection names as fallback
+            for col in workload.collections:
+                self.index_definitions.append(col.name)
         else:
             raise exceptions.InvalidSyntax("delete-index operation targets no index")
 
@@ -401,6 +413,80 @@ class DeleteIndexParamSource(ParamSource):
             "request-params": self.request_params,
             "only-if-exists": self.only_if_exists
         })
+        return p
+
+
+class DeleteCollectionParamSource(ParamSource):
+    """
+    Param source for the Solr ``delete-collection`` operation.
+
+    Reads collection names from ``workload.collections`` and returns them as
+    ``{"collection": name}`` so that ``SolrDeleteCollection`` knows what to delete.
+    When an explicit ``"collection"`` is in the operation params it is used as-is.
+    """
+
+    def __init__(self, workload, params, **kwargs):
+        super().__init__(workload, params, **kwargs)
+        self.collection_names = []
+        target = params.get("collection") or params.get("index")
+        if target:
+            self.collection_names = [target] if isinstance(target, str) else list(target)
+        elif getattr(workload, "collections", []):
+            self.collection_names = [c.name for c in workload.collections]
+        else:
+            raise exceptions.InvalidSyntax("delete-collection operation targets no collection")
+
+    def params(self):
+        p = {}
+        p.update(self._params)
+        # Pass only the first collection; if multiple are needed the workload should
+        # run separate delete-collection tasks or use an explicit "collection" param.
+        p["collection"] = self.collection_names[0] if self.collection_names else None
+        return p
+
+
+class CreateCollectionParamSource(ParamSource):
+    """
+    Param source for the Solr ``create-collection`` operation.
+
+    Reads collection definitions from ``workload.collections`` and returns them
+    as ``{"collection": name, "configset": name, "configset-path": path, ...}``
+    so that ``SolrCreateCollection`` can create and upload the collection.
+    """
+
+    def __init__(self, workload, params, **kwargs):
+        super().__init__(workload, params, **kwargs)
+        self.collection_def = {}
+        target = params.get("collection") or params.get("index")
+        collections = getattr(workload, "collections", [])
+        if target:
+            col = next((c for c in collections if c.name == target), None)
+            if col:
+                self.collection_def = {
+                    "collection": col.name,
+                    "configset": col.configset,
+                    "configset-path": col.configset_path,
+                    "num-shards": col.num_shards,
+                    "replication-factor": col.replication_factor,
+                }
+            else:
+                self.collection_def = {"collection": target}
+        elif collections:
+            col = collections[0]
+            self.collection_def = {
+                "collection": col.name,
+                "configset": col.configset,
+                "configset-path": col.configset_path,
+                "num-shards": col.num_shards,
+                "replication-factor": col.replication_factor,
+            }
+        else:
+            raise exceptions.InvalidSyntax("create-collection operation targets no collection")
+
+    def params(self):
+        p = {}
+        p.update(self._params)
+        p.update(self.collection_def)
         return p
 
 
@@ -1514,10 +1600,12 @@ def get_target(workload, params):
         default_target = workload.indices[0].name
     elif len(workload.data_streams) == 1:
         default_target = workload.data_streams[0].name
+    elif len(getattr(workload, "collections", [])) == 1:
+        default_target = workload.collections[0].name
     else:
         default_target = None
     # indices are preferred but data streams can also be queried the same way
-    target_name = params.get("index")
+    target_name = params.get("index") or params.get("collection")
     if not target_name:
         target_name = params.get("data-stream", default_target)
     return target_name
@@ -2023,6 +2111,11 @@ register_param_source_for_operation(workload.OperationType.ProduceStreamMessage,
 
 # Also register by name, so users can use it too
 register_param_source_for_name("file-reader", BulkIndexParamSource)
+
+# Solr collection param sources — registered by op-type string directly
+# (avoids adding CreateCollection/DeleteCollection to the OperationType enum)
+__PARAM_SOURCES_BY_OP["create-collection"] = CreateCollectionParamSource
+__PARAM_SOURCES_BY_OP["delete-collection"] = DeleteCollectionParamSource
 
 
 # ---------------------------------------------------------------------------

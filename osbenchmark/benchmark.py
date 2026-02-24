@@ -265,6 +265,28 @@ def create_arg_parser():
         "Ensure that index name also exists in --indices parameter. " +
         "To specify several indices and doc counts, use format: <index1>:<sample-frequency-1> <index2>:<sample-frequency-2> ...")
 
+    convert_workload_parser = subparsers.add_parser(
+        "convert-workload",
+        help="Convert an OpenSearch Benchmark workload to Solr-native format"
+    )
+    convert_workload_parser.add_argument(
+        "--workload-path",
+        required=True,
+        help="Path to the source OpenSearch Benchmark workload directory (must contain workload.json)."
+    )
+    convert_workload_parser.add_argument(
+        "--output-path",
+        default=None,
+        help="Path where the converted Solr workload will be written "
+             "(default: <workload-path>-solr)."
+    )
+    convert_workload_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite an existing converted workload directory."
+    )
+
     compare_parser = subparsers.add_parser("compare", help="Compare two test_runs")
     compare_parser.add_argument(
         "--baseline",
@@ -823,7 +845,8 @@ def create_arg_parser():
 
     for p in [list_parser, test_run_parser, compare_parser, aggregate_parser,
               download_parser, install_parser, start_parser, stop_parser, info_parser,
-              synthetic_data_generator_parser, create_workload_parser, visualize_parser]:
+              synthetic_data_generator_parser, create_workload_parser, visualize_parser,
+              convert_workload_parser]:
         # This option is needed to support a separate configuration for the integration tests on the same machine
         p.add_argument(
             "--configuration-name",
@@ -1273,6 +1296,30 @@ def dispatch_sub_command(arg_parser, args, cfg):
             # Always set visualize to true for the visualize command
             cfg.add(config.Scope.applicationOverride, "workload", "visualize", True)
             dispatch_visualize(cfg)
+        elif sub_command == "convert-workload":
+            from osbenchmark.solr.conversion import workload_converter
+            source_dir = os.path.abspath(args.workload_path)
+            output_dir = os.path.abspath(args.output_path) if args.output_path else source_dir.rstrip("/") + "-solr"
+            force = getattr(args, "force", False)
+
+            if workload_converter.is_already_converted(output_dir) and not force:
+                console.info(
+                    f"Workload already converted at: {output_dir}\n"
+                    "Use --force to overwrite."
+                )
+                return True
+
+            console.info(f"Converting workload: {source_dir} → {output_dir}")
+            result = workload_converter.convert_opensearch_workload(source_dir, output_dir)
+
+            console.println(f"\nConversion complete: {result['output_dir']}")
+            if result["skipped"]:
+                console.println(f"  Skipped operations ({len(result['skipped'])}): {', '.join(result['skipped'])}")
+            if result["issues"]:
+                console.println(f"  Issues ({len(result['issues'])}):")
+                for issue in result["issues"]:
+                    console.println(f"    - {issue}")
+            console.println(f"  See {os.path.join(result['output_dir'], workload_converter.CONVERTED_MARKER)} for details.")
         elif sub_command == "info":
             configure_workload_params(arg_parser, args, cfg)
             workload.workload_info(cfg)

@@ -321,6 +321,201 @@ def _escape_solr_phrase(value) -> str:
     return str(value).replace('\\', '\\\\').replace('"', '\\"')
 
 
+def translate_to_solr_json_dsl(body: dict) -> dict:
+    """
+    Translate an OpenSearch query body to Solr JSON Query DSL format.
+
+    Output is a valid Solr JSON Query DSL body for POSTing to the
+    ``/solr/{collection}/query`` endpoint (Mode 2 of SolrSearch runner).
+    The ``"query"`` value is always a string, making it Mode 2 compatible.
+
+    Args:
+        body: OpenSearch query body dict (may contain "query", "aggs", "size", "sort")
+
+    Returns:
+        Solr JSON Query DSL dict with keys:
+          - ``query``: Lucene query string
+          - ``filter``: list of filter query strings (omitted if empty)
+          - ``limit``: number of results (omitted if not specified)
+          - ``sort``: sort string (omitted if not specified)
+          - ``facet``: Solr JSON Facet API dict (omitted if no aggregations)
+    """
+    if not body or not isinstance(body, dict):
+        return {"query": "*:*"}
+
+    fq_list = []
+    query_val = body.get("query")
+    if isinstance(query_val, dict):
+        translated = translate_opensearch_query(body)
+        q = translated["q"]
+        fq_list = translated["fq"]
+    else:
+        q = "*:*"
+
+    result = {"query": q}
+
+    if fq_list:
+        result["filter"] = fq_list
+
+    if "size" in body:
+        result["limit"] = body["size"]
+
+    sort_str = extract_sort_parameter(body)
+    if sort_str:
+        result["sort"] = sort_str
+
+    aggs = body.get("aggs") or body.get("aggregations")
+    if aggs and isinstance(aggs, dict):
+        facets = _convert_aggregations_to_facets(aggs)
+        if facets:
+            result["facet"] = facets
+
+    return result
+
+
+def _convert_aggregations_to_facets(aggs: dict) -> dict:
+    """
+    Convert OpenSearch aggregations to Solr JSON Facet API format.
+
+    Supported aggregation types:
+      - ``terms``          → ``{"type":"terms","field":...,"limit":n}``
+      - ``date_histogram`` → ``{"type":"range","field":...,"gap":"..."}``
+      - ``histogram``      → ``{"type":"range","field":...,"gap":n}``
+      - ``avg``            → ``"avg(field)"`` function expression
+      - ``sum``            → ``"sum(field)"`` function expression
+      - ``min``            → ``"min(field)"`` function expression
+      - ``max``            → ``"max(field)"`` function expression
+      - ``value_count``    → ``"countvals(field)"`` function expression
+
+    Nested aggregations within bucket aggs are recursively converted.
+    Unsupported aggregation types are skipped with a WARN log.
+
+    Args:
+        aggs: OpenSearch aggregations dict (the value of "aggs" or "aggregations")
+
+    Returns:
+        Solr JSON Facet API dict suitable for the ``"facet"`` key in JSON Query DSL
+    """
+    if not aggs or not isinstance(aggs, dict):
+        return {}
+
+    result = {}
+    for agg_name, agg_def in aggs.items():
+        if not isinstance(agg_def, dict):
+            continue
+        entry = _convert_single_agg(agg_name, agg_def)
+        if entry is not None:
+            result[agg_name] = entry
+
+    return result
+
+
+def _convert_single_agg(agg_name: str, agg_def: dict):
+    """Convert a single named OpenSearch aggregation to a Solr facet entry."""
+    # --- bucket aggregations ---
+    if "terms" in agg_def:
+        terms_conf = agg_def["terms"]
+        field = normalize_field_name(terms_conf.get("field", ""))
+        if not field:
+            logger.warning("terms agg '%s' has no field — skipping", agg_name)
+            return None
+        facet_def = {
+            "type": "terms",
+            "field": field,
+            "limit": terms_conf.get("size", 10),
+        }
+        nested = agg_def.get("aggs") or agg_def.get("aggregations")
+        if nested:
+            sub = _convert_aggregations_to_facets(nested)
+            if sub:
+                facet_def["facet"] = sub
+        return facet_def
+
+    if "date_histogram" in agg_def:
+        dh_conf = agg_def["date_histogram"]
+        field = normalize_field_name(dh_conf.get("field", ""))
+        if not field:
+            logger.warning("date_histogram agg '%s' has no field — skipping", agg_name)
+            return None
+        interval = (
+            dh_conf.get("calendar_interval")
+            or dh_conf.get("fixed_interval")
+            or dh_conf.get("interval", "month")
+        )
+        gap = _calendar_interval_to_solr_gap(interval)
+        facet_def = {
+            "type": "range",
+            "field": field,
+            "gap": gap,
+            "start": "NOW/YEAR-10YEAR",
+            "end": "NOW/YEAR+1YEAR",
+        }
+        nested = agg_def.get("aggs") or agg_def.get("aggregations")
+        if nested:
+            sub = _convert_aggregations_to_facets(nested)
+            if sub:
+                facet_def["facet"] = sub
+        return facet_def
+
+    if "histogram" in agg_def:
+        h_conf = agg_def["histogram"]
+        field = normalize_field_name(h_conf.get("field", ""))
+        if not field:
+            logger.warning("histogram agg '%s' has no field — skipping", agg_name)
+            return None
+        return {
+            "type": "range",
+            "field": field,
+            "gap": h_conf.get("interval", 1),
+            "start": 0,
+            "end": 1000000,
+        }
+
+    # --- metric aggregations (function expressions) ---
+    for metric_type in ("avg", "sum", "min", "max"):
+        if metric_type in agg_def:
+            field = normalize_field_name(agg_def[metric_type].get("field", ""))
+            if not field:
+                logger.warning("%s agg '%s' has no field — skipping", metric_type, agg_name)
+                return None
+            return f"{metric_type}({field})"
+
+    if "value_count" in agg_def:
+        field = normalize_field_name(agg_def["value_count"].get("field", ""))
+        if not field:
+            logger.warning("value_count agg '%s' has no field — skipping", agg_name)
+            return None
+        return f"countvals({field})"
+
+    agg_type = next(iter(agg_def), "unknown")
+    logger.warning(
+        "Unsupported aggregation type '%s' (name='%s') — skipping in Solr conversion.",
+        agg_type, agg_name,
+    )
+    return None
+
+
+def _calendar_interval_to_solr_gap(interval: str) -> str:
+    """Convert an OpenSearch calendar_interval or fixed_interval to a Solr range gap string."""
+    mapping = {
+        "minute": "+1MINUTE",
+        "1m": "+1MINUTE",
+        "hour": "+1HOUR",
+        "1h": "+1HOUR",
+        "day": "+1DAY",
+        "1d": "+1DAY",
+        "week": "+7DAYS",
+        "1w": "+7DAYS",
+        "month": "+1MONTH",
+        "1m_month": "+1MONTH",  # avoid conflict with 1m (minute)
+        "quarter": "+3MONTHS",
+        "1q": "+3MONTHS",
+        "year": "+1YEAR",
+        "1y": "+1YEAR",
+    }
+    return mapping.get(str(interval).lower(), "+1MONTH")
+
+
 def _convert_date_to_solr_format(date_str, os_format=None) -> str:
     """
     Convert an OpenSearch date string to Solr ISO 8601 format.

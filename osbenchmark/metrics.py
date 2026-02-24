@@ -440,7 +440,7 @@ class MetricsStore:
 
         self.logger.info("Opening metrics store for test run timestamp=[%s], workload=[%s],"
         "test_procedure=[%s], cluster_config=[%s]",
-                         self._test_run_timestamp, self._workload, self._test_procedure, self._cluster_config)
+                         self._test_run_timestamp, self._workload, self._test_procedure, self._cluster_config_name)
 
         user_tags = extract_user_tags_from_config(self._config)
         for k, v in user_tags.items():

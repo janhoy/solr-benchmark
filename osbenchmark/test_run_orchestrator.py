@@ -180,6 +180,64 @@ class BenchmarkCoordinator:
         self.current_workload = None
         self.current_test_procedure = None
 
+    def _maybe_auto_convert_workload(self):
+        """
+        Detect whether the workload is in OpenSearch format and, if so, convert it to
+        Solr-native format in a ``<name>-solr/`` sibling directory.
+
+        Works for both --workload-path (explicit local path) and --workload (repository
+        workload, where the local cache path is derived from config).
+
+        Idempotent: if the output directory already contains ``CONVERTED.md``, the
+        conversion step is skipped and the existing output is used.
+
+        Updates ``cfg["workload"]["workload.path"]`` to the converted directory so that
+        ``workload.load_workload()`` picks up the Solr-native workload.
+        """
+        workload_path = self.cfg.opts("workload", "workload.path", mandatory=False)
+
+        # For repository workloads (--workload=name without --workload-path), derive
+        # the local cache path from the standard repository directory layout.
+        if not workload_path:
+            workload_name = self.cfg.opts("workload", "workload.name", mandatory=False)
+            if workload_name:
+                root_dir = self.cfg.opts("node", "root.dir")
+                repo_dir_name = self.cfg.opts("benchmarks", "workload.repository.dir")
+                repo_name = self.cfg.opts("workload", "repository.name", mandatory=False) or "default"
+                workload_path = os.path.join(root_dir, repo_dir_name, repo_name, workload_name)
+
+        if not workload_path or not os.path.isdir(workload_path):
+            return
+
+        try:
+            from osbenchmark.solr.conversion import workload_converter
+            if not workload_converter.detect_workload_format_from_file(workload_path):
+                console.info(f"Workload at {workload_path} is already Solr-native — skipping conversion.")
+                return
+
+            output_dir = workload_path.rstrip("/").rstrip(os.sep) + "-solr"
+
+            if workload_converter.is_already_converted(output_dir):
+                console.info(f"Using existing converted Solr workload at: {output_dir}")
+            else:
+                console.info(f"Auto-converting OpenSearch workload to Solr format: {workload_path} → {output_dir}")
+                result = workload_converter.convert_opensearch_workload(workload_path, output_dir)
+                console.info("Workload conversion complete.")
+                if result["skipped"]:
+                    console.info(f"  Skipped operations: {', '.join(result['skipped'])}")
+                if result["issues"]:
+                    for issue in result["issues"]:
+                        self.logger.warning("Conversion issue: %s", issue)
+
+            # Update config so the workload loader uses the converted directory
+            self.cfg.add(config.Scope.benchmark, "workload", "workload.path", output_dir)
+            self.logger.info("Workload path updated to converted directory: %s", output_dir)
+        except Exception as exc:
+            self.logger.warning(
+                "Auto-conversion of workload at '%s' failed (%s) — proceeding with original workload.",
+                workload_path, exc,
+            )
+
     def setup(self, sources=False):
         # to load the workload we need to know the correct cluster distribution version. Usually, this value should be set
         # but there are rare cases (external pipeline and user did not specify the distribution version) where we need
@@ -202,6 +260,9 @@ class BenchmarkCoordinator:
             specified_version = versions.Version.from_string(distribution_version)
             if specified_version < min_os_version:
                 raise exceptions.SystemSetupError(f"Cluster version must be at least [{min_os_version}] but was [{distribution_version}]")
+
+        # Auto-convert OpenSearch workloads to Solr-native format before loading
+        self._maybe_auto_convert_workload()
 
         self.current_workload = workload.load_workload(self.cfg)
         self.workload_revision = self.cfg.opts("workload", "repository.revision", mandatory=False)

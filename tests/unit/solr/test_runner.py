@@ -274,41 +274,30 @@ class TestSolrSearch(unittest.TestCase):
         self.assertEqual(7, result["hits"])
         mock_session.post.assert_called_once()
 
-    @patch("osbenchmark.solr.runner.pysolr.Solr")
-    def test_os_dsl_mode_match_all(self, mock_solr_cls):
-        """Mode 3: body with OpenSearch match_all → translated to Solr q=*:*."""
-        mock_results = MagicMock()
-        mock_results.hits = 99
-        mock_solr = MagicMock()
-        mock_solr.search.return_value = mock_results
-        mock_solr_cls.return_value = mock_solr
-
+    def test_unconverted_os_dsl_body_returns_zero_hits(self):
+        """Un-converted OpenSearch DSL body (query is a dict) returns 0 hits with a warning."""
         params = {**self._base_params(), "body": {"query": {"match_all": {}}, "size": 20}}
         runner = SolrSearch()
-        result = _run(runner(None, params))
+        with self.assertLogs("osbenchmark.solr.runner", level="WARNING") as log:
+            result = _run(runner(None, params))
 
-        self.assertEqual(99, result["hits"])
-        mock_solr.search.assert_called_once_with("*:*", rows=20)
+        self.assertEqual(0, result["hits"])
+        self.assertEqual(0, result["hits-total"])
+        self.assertTrue(any("un-converted OpenSearch" in msg for msg in log.output))
 
-    @patch("osbenchmark.solr.runner.pysolr.Solr")
-    def test_os_dsl_mode_index_alias(self, mock_solr_cls):
-        """Mode 3: 'index' param accepted as alias for 'collection'."""
-        mock_results = MagicMock()
-        mock_results.hits = 5
-        mock_solr = MagicMock()
-        mock_solr.search.return_value = mock_results
-        mock_solr_cls.return_value = mock_solr
-
+    def test_unconverted_os_dsl_body_with_term_query_returns_zero_hits(self):
+        """Un-converted OpenSearch term query body returns 0 hits with a warning."""
         params = {
             "host": "localhost", "port": 8983,
             "index": "nyc_taxis",
             "body": {"query": {"term": {"vendor_id": "1"}}},
         }
         runner = SolrSearch()
-        result = _run(runner(None, params))
+        with self.assertLogs("osbenchmark.solr.runner", level="WARNING") as log:
+            result = _run(runner(None, params))
 
-        self.assertEqual(5, result["hits"])
-        mock_solr.search.assert_called_once_with("vendor_id:1", rows=10)
+        self.assertEqual(0, result["hits"])
+        self.assertTrue(any("un-converted OpenSearch" in msg for msg in log.output))
 
 
 class TestSolrCreateCollection(unittest.TestCase):

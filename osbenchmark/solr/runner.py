@@ -34,11 +34,6 @@ import requests
 
 from osbenchmark import exceptions as benchmark_exceptions
 from osbenchmark.solr.client import SolrAdminClient, CollectionAlreadyExistsError, CollectionNotFoundError
-from osbenchmark.solr.conversion.detector import (
-    is_opensearch_body,
-    has_opensearch_aggregations,
-    is_opensearch_only_query,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -143,8 +138,12 @@ def _solr_client(params):
     """
     host = params.get("host", "localhost")
     port = params.get("port", 8983)
-    collection = params["collection"]
+    collection = params.get("collection") or params.get("index") or None
     tls = params.get("tls", False)
+    if not collection:
+        collection = _fetch_first_collection(host, port, tls)
+    if not collection:
+        raise KeyError("collection")
     timeout = params.get("timeout", 30)
     scheme = "https" if tls else "http"
     url = f"{scheme}://{host}:{port}/solr/{collection}"
@@ -563,55 +562,21 @@ class SolrSearch(SolrRunner):
 
         body = params.get("body")
         if body is not None:
-            if is_opensearch_body(body):
-                # Mode 3: OpenSearch query DSL → translate to Solr classic params.
-                # Covers both "query" dict bodies and aggregation-only bodies
-                # ("aggs"/"aggregations" are OpenSearch-only constructs).
-
-                # Skip queries that use OS-only features (Painless/expression scripts,
-                # percolate, rank_feature, etc.) that have no Solr equivalent.
-                if is_opensearch_only_query(body):
-                    op_name = params.get("name", params.get("operation-type", "unknown"))
-                    logger.info(
-                        "Skipping OpenSearch-only task '%s' — contains features with no Solr equivalent "
-                        "(e.g. Painless scripts, function_score script_score). Returning 0 hits.",
-                        op_name,
-                    )
-                    elapsed = time.perf_counter() - start
-                    return {"weight": 0, "unit": "ops", "hits": 0,
-                            "hits_relation": "eq", "duration": elapsed, "error_rate": 0}
-
-                if has_opensearch_aggregations(body):
-                    logger.warning(
-                        "OpenSearch aggregations are not supported in Solr mode and will be "
-                        "ignored (collection=%s). Consider rewriting as a native Solr facet query.",
-                        collection,
-                    )
-                # Import conversion modules (only used for OpenSearch workloads)
-                from osbenchmark.solr.conversion.query import (
-                    translate_opensearch_query,
-                    extract_sort_parameter,
+            if isinstance(body, dict) and isinstance(body.get("query"), dict):
+                # Defensive warning: un-converted OpenSearch DSL body detected.
+                # This should not happen if the workload was properly converted.
+                # The auto-conversion in BenchmarkCoordinator.setup() will have
+                # translated these bodies to Solr JSON DSL before the run.
+                op_name = params.get("name", params.get("operation-type", "unknown"))
+                logger.warning(
+                    "Task '%s' has an un-converted OpenSearch query DSL body (body['query'] is a dict). "
+                    "Run 'solr-benchmark convert-workload --workload-path <path>' to convert the workload, "
+                    "or use a local workload path to trigger auto-conversion. "
+                    "Returning 0 hits for this task.",
+                    op_name,
                 )
-
-                translated = translate_opensearch_query(body)
-                q = translated["q"]
-                fq_params = translated["fq"]
-                rows = body.get("size", 10) if isinstance(body, dict) else 10
-                sort_param = extract_sort_parameter(body)
-
-                solr_params = dict(params)
-                solr_params["collection"] = collection
-                client = _solr_client(solr_params)
-                kwargs = {"rows": rows}
-                if fq_params:
-                    kwargs["fq"] = fq_params
-                if sort_param:
-                    kwargs["sort"] = sort_param
-                # OSB uses "request_params" (underscore), Solr workloads use "request-params" (hyphen)
-                kwargs.update(params.get("request_params", params.get("request-params", {})))
-
-                results = await _run_in_executor(client.search, q, **kwargs)
-                num_hits = results.hits
+                elapsed = time.perf_counter() - start
+                return {"weight": 0, "unit": "ops", "hits": 0, "hits-total": 0, "took": elapsed}
             else:
                 # Mode 2: Solr JSON Query DSL → POST /solr/{collection}/query
                 url = f"{scheme}://{host}:{port}/solr/{collection}/query"
@@ -792,48 +757,6 @@ class SolrCreateCollection(SolrRunner):
         num_shards = params.get("num-shards", 1)
         replication_factor = params.get("replication-factor", 1)
 
-        # Auto-generate schema from OpenSearch mappings (fallback convenience)
-        auto_generated_configset = None
-        mappings = params.get("mappings")
-
-        if mappings and not configset_path:
-            logger.info(
-                "Auto-generating Solr schema from OpenSearch mappings "
-                "(convenience fallback - native Solr workloads are recommended)"
-            )
-            try:
-                # Import conversion modules (only used for OpenSearch workloads)
-                from osbenchmark.solr.conversion.schema import (
-                    translate_opensearch_mapping,
-                    generate_schema_xml,
-                    create_configset_from_schema,
-                )
-
-                # Extract field definitions from mappings
-                properties = mappings.get("properties", {})
-                if properties:
-                    # Translate OpenSearch types to Solr types (including multi-fields)
-                    field_defs, copy_fields = translate_opensearch_mapping(properties)
-
-                    # Generate schema.xml with copyField directives for multi-fields
-                    schema_xml = generate_schema_xml(field_defs, copy_fields=copy_fields, unique_key="id")
-
-                    # Create temporary configset directory
-                    auto_generated_configset = create_configset_from_schema(
-                        schema_xml, configset_name=collection
-                    )
-                    configset_path = auto_generated_configset
-                    logger.info("Generated temporary configset at: %s", configset_path)
-                else:
-                    logger.warning("Mappings present but no properties found, using default configset")
-
-            except Exception as e:
-                logger.warning(
-                    "Failed to auto-generate schema from mappings: %s. "
-                    "Falling back to _default configset.", e
-                )
-                configset = "_default"
-
         start = time.perf_counter()
 
         # Step 1: upload configset (only if a local path is supplied)
@@ -859,11 +782,6 @@ class SolrCreateCollection(SolrRunner):
                 except Exception as cleanup_exc:
                     logger.warning("Failed to clean up configset '%s': %s", configset, cleanup_exc)
             raise
-        finally:
-            # Clean up auto-generated configset
-            if auto_generated_configset:
-                from osbenchmark.solr.conversion.schema import cleanup_configset
-                cleanup_configset(auto_generated_configset)
 
         elapsed = time.perf_counter() - start
         return {"weight": 1, "unit": "ops", "took": elapsed}
@@ -956,227 +874,6 @@ class SolrRawRequest(SolrRunner):
         return "solr-raw-request"
 
 
-# ---------------------------------------------------------------------------
-# Bridge runners: map standard OSB operation types to Solr equivalents
-#
-# These are registered in register_solr_runners() to override the default
-# OpenSearch-specific runners, allowing standard OSB workloads (e.g. nyc_taxis)
-# to run against Solr without modification.
-# ---------------------------------------------------------------------------
-
-def _normalize_bulk_body(body):
-    """Convert bulk body items (string or dict) to JSON strings (generator)."""
-    for item in body:
-        if isinstance(item, dict):
-            yield json.dumps(item)
-        elif isinstance(item, bytes):
-            yield item.decode('utf-8')  # Decode bytes to string
-        elif item:
-            yield str(item)
-
-
-class SolrDeleteIndexBridge(SolrRunner):
-    """
-    Bridge: maps OSB 'delete-index' to Solr collection deletion.
-
-    Accepts the same params as the standard delete-index operation:
-      - ``indices`` — list of index/collection names to delete
-      - ``only-if-exists`` — bool (default: False); errors are always silenced
-    Plus Solr connection params (``host``, ``port``, ...) defaulting to localhost:8983.
-    """
-
-    async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
-        indices = params.get("indices", [])
-
-        ops = 0
-        for name in indices:
-            try:
-                await _run_in_executor(admin.delete_collection, name)
-                ops += 1
-            except CollectionNotFoundError:
-                pass  # silently skip missing collections (mirrors ES behaviour)
-
-        return {"weight": ops, "unit": "ops", "success": True}
-
-    def __str__(self):
-        return "delete-index"
-
-
-class SolrCreateIndexBridge(SolrRunner):
-    """
-    Bridge: maps OSB 'create-index' to Solr collection creation.
-
-    For convenience, automatically generates Solr schema.xml from OpenSearch
-    mappings when present in the index body. This is a fallback mechanism;
-    native Solr workloads with explicit configset-path are recommended.
-
-    Params:
-      - ``indices``           — list of (name, body) tuples from the workload
-      - ``configset``         — Solr configset name (default: auto-generated from mappings
-                                or ``_default`` if no mappings)
-      - ``num-shards``        — int (default: 1)
-      - ``replication-factor``— int (default: 1)
-    Plus Solr connection params (``host``, ``port``, ...) defaulting to localhost:8983.
-    """
-
-    async def __call__(self, solr_not_used, params):
-        indices = params.get("indices", [])
-        base_configset = params.get("configset", "_default")
-        num_shards = params.get("num-shards", 1)
-        replication_factor = params.get("replication-factor", 1)
-
-        ops = 0
-        for entry in indices:
-            # indices is a list of (name, body) tuples
-            if isinstance(entry, (list, tuple)):
-                name = entry[0]
-                body = entry[1] if len(entry) > 1 else None
-            else:
-                name = entry
-                body = None
-
-            # Extract mappings from body (if present)
-            mappings = None
-            if body and isinstance(body, dict):
-                mappings = body.get("mappings")
-
-            # If we have mappings and will auto-generate schema, use a unique configset name
-            # (not _default, which is a built-in and can't be uploaded)
-            if mappings and mappings.get("properties"):
-                configset_for_collection = name  # Use collection name as configset name
-            else:
-                configset_for_collection = base_configset
-
-            # Delegate to SolrCreateCollection with mappings
-            collection_params = {
-                "collection": name,
-                "configset": configset_for_collection,
-                "num-shards": num_shards,
-                "replication-factor": replication_factor,
-                "mappings": mappings,  # Pass mappings for auto-schema generation
-            }
-            # Preserve connection params
-            for key in ("host", "port", "username", "password", "tls", "timeout"):
-                if key in params:
-                    collection_params[key] = params[key]
-
-            # Call SolrCreateCollection
-            create_runner = SolrCreateCollection()
-            try:
-                await create_runner(solr_not_used, collection_params)
-                ops += 1
-            except CollectionAlreadyExistsError:
-                logger.warning("Collection '%s' already exists, skipping creation.", name)
-                ops += 1
-
-        return {"weight": ops, "unit": "ops", "success": True}
-
-    def __str__(self):
-        return "create-index"
-
-
-class SolrBulkBridge(SolrRunner):
-    """
-    Bridge: maps OSB 'bulk' to Solr document indexing.
-
-    Translates the NDJSON ``body`` from the standard bulk operation into Solr
-    documents and indexes them. The target collection is derived from:
-      1. ``params["collection"]`` if explicitly set
-      2. ``params["index"]`` (standard OSB bulk param)
-      3. The ``_index`` field in the first action-metadata line
-
-    Params mirror the standard OSB bulk operation (``body``, ``index``,
-    ``bulk-size``, ``unit``, ``action-metadata-present``) plus Solr connection
-    params (``host``, ``port``, ...) defaulting to localhost:8983.
-    """
-
-    async def __call__(self, solr_not_used, params):
-        body = params.get("body", [])
-        index = params.get("index", "")
-        bulk_size = params.get("bulk-size", 0)
-        unit = params.get("unit", "docs")
-        batch_size = 500
-
-        # Handle different body formats:
-        # - bytes/str: NDJSON data as single blob (split into lines)
-        # - list/iterator: already split lines
-        if isinstance(body, bytes):
-            # Split bytes NDJSON into lines
-            lines = body.split(b'\n')
-            lines = [line for line in lines if line.strip()]  # Remove empty lines
-        elif isinstance(body, str):
-            # Split string NDJSON into lines
-            lines = body.split('\n')
-            lines = [line for line in lines if line.strip()]
-        else:
-            # Assume it's already an iterable of lines
-            lines = body
-
-        if not lines:
-            return {"weight": 0, "unit": unit, "success": True, "error-count": 0}
-
-        # Build Solr client params — inject collection from index if not set
-        solr_params = dict(params)
-        if not solr_params.get("collection"):
-            solr_params["collection"] = index or "default"
-
-        client = _solr_client(solr_params)
-
-        # lines is already prepared above (split from bytes/str or passed as iterable)
-        # Now normalize each line (convert dicts to JSON strings, etc.)
-        normalized_lines = _normalize_bulk_body(lines)
-
-        # Stream-process documents in batches to avoid loading all into memory
-        total_docs = 0
-        errors = 0
-        start = time.perf_counter()
-
-        logger.info("SolrBulkBridge starting - processing %d lines, bulk_size=%d", len(lines) if hasattr(lines, '__len__') else -1, bulk_size)
-
-        batch = []
-        doc_count = 0
-
-        for doc in _translate_ndjson_stream(normalized_lines):
-            batch.append(doc)
-            doc_count += 1
-            if len(batch) >= batch_size:
-                try:
-                    # Use commitWithin=1000ms to make docs visible quickly without explicit commits
-                    await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
-                    total_docs += len(batch)
-                    if total_docs % 5000 == 0:
-                        logger.info("SolrBulkBridge: indexed %d docs so far", total_docs)
-                except pysolr.SolrError as exc:
-                    logger.error("Bulk bridge error on batch: %s", exc)
-                    errors += len(batch)
-                batch = []
-
-        # Index remaining documents in partial batch
-        if batch:
-            try:
-                await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
-                total_docs += len(batch)
-            except pysolr.SolrError as exc:
-                logger.error("Bulk bridge error on final batch: %s", exc)
-                errors += len(batch)
-
-        elapsed = time.perf_counter() - start
-        weight = total_docs - errors
-
-        return {
-            "weight": weight,
-            "unit": unit,
-            "bulk-size": bulk_size or total_docs,
-            "success": errors == 0,
-            "error-count": errors,
-            "took": elapsed,
-        }
-
-    def __str__(self):
-        return "bulk"
-
-
 class SolrNoOpBridge(SolrRunner):
     """
     Silently skips OpenSearch-specific operations that have no Solr equivalent
@@ -1192,6 +889,95 @@ class SolrNoOpBridge(SolrRunner):
 
     def __str__(self):
         return self._op_name
+
+
+# ---------------------------------------------------------------------------
+# Bridge runners: map OSB index operations to Solr collection operations
+# ---------------------------------------------------------------------------
+
+class SolrDeleteIndexBridge(SolrRunner):
+    """
+    Bridge: maps OSB 'delete-index' operation to Solr delete-collection.
+
+    Accepts params from DeleteIndexParamSource:
+      - ``indices``       — list of collection names to delete
+      - ``only-if-exists``— bool (default: True); ignore missing collections
+    """
+
+    async def __call__(self, solr_not_used, params):
+        admin = _admin_client(params)
+        indices = params.get("indices", [])
+        only_if_exists = params.get("only-if-exists", True)
+
+        start = time.perf_counter()
+        for name in indices:
+            try:
+                await _run_in_executor(admin.delete_collection, name)
+            except CollectionNotFoundError:
+                if not only_if_exists:
+                    raise
+                logger.info("Collection '%s' not found, skipping delete.", name)
+            try:
+                await _run_in_executor(admin.delete_configset, name)
+            except Exception as exc:
+                logger.debug("Could not delete configset '%s': %s", name, exc)
+
+        elapsed = time.perf_counter() - start
+        return {"weight": max(1, len(indices)), "unit": "ops", "took": elapsed}
+
+    def __str__(self):
+        return "solr-delete-index-bridge"
+
+
+class SolrCreateIndexBridge(SolrRunner):
+    """
+    Bridge: maps OSB 'create-index' operation to Solr create-collection.
+
+    Accepts params from CreateIndexParamSource (Solr path):
+      - ``indices`` — list of ``(name, configset_path)`` tuples
+      - ``num-shards``, ``replication-factor``
+    """
+
+    async def __call__(self, solr_not_used, params):
+        admin = _admin_client(params)
+        indices = params.get("indices", [])
+        num_shards = params.get("num-shards", 1)
+        replication_factor = params.get("replication-factor", 1)
+
+        start = time.perf_counter()
+        for entry in indices:
+            if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                col_name, configset_path = entry[0], entry[1]
+            elif isinstance(entry, (list, tuple)):
+                col_name, configset_path = entry[0], None
+            else:
+                col_name, configset_path = str(entry), None
+
+            configset = col_name  # configset name == collection name
+
+            if configset_path and os.path.isdir(configset_path):
+                await _run_in_executor(admin.upload_configset, configset, configset_path)
+                logger.info("Uploaded configset '%s' from '%s'", configset, configset_path)
+
+            try:
+                await _run_in_executor(
+                    admin.create_collection, col_name, configset, num_shards, replication_factor
+                )
+            except CollectionAlreadyExistsError:
+                logger.warning("Collection '%s' already exists, skipping creation.", col_name)
+            except Exception:
+                if configset_path:
+                    try:
+                        await _run_in_executor(admin.delete_configset, configset)
+                    except Exception as cleanup_exc:
+                        logger.warning("Failed to clean up configset '%s': %s", configset, cleanup_exc)
+                raise
+
+        elapsed = time.perf_counter() - start
+        return {"weight": max(1, len(indices)), "unit": "ops", "took": elapsed}
+
+    def __str__(self):
+        return "solr-create-index-bridge"
 
 
 # ---------------------------------------------------------------------------
@@ -1215,13 +1001,6 @@ def register_solr_runners(register_runner):
     register_runner("create-collection", SolrCreateCollection(), async_runner=True)
     register_runner("delete-collection", SolrDeleteCollection(), async_runner=True)
     register_runner("raw-request", SolrRawRequest(), async_runner=True)
-
-    # Bridge runners: override OSB's default OpenSearch runners so that standard
-    # workloads (e.g. nyc_taxis) work against Solr without modification.
-    # create-index == create-collection, delete-index == delete-collection, etc.
-    register_runner("delete-index", SolrDeleteIndexBridge(), async_runner=True)
-    register_runner("create-index", SolrCreateIndexBridge(), async_runner=True)
-    register_runner("bulk", SolrBulkBridge(), async_runner=True)
 
     # paginated-search and scroll-search → same runner as search
     _search_runner = SolrSearch()

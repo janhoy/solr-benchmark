@@ -31,7 +31,7 @@ Apache Solr Benchmark.
   brew install pyenv jq zlib xz
   ```
 
-- **Docker** (optional): required for the `solr-docker` pipeline.
+- **Docker** (optional): required for the `docker` pipeline.
   Install Docker and confirm `docker ps` works.
 
 - **Git 1.9+**
