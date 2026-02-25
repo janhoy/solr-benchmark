@@ -500,6 +500,5 @@ The `_includes/footer_custom.html` is the correct mechanism for a Jekyll site. T
 `about.md` page is the single authoritative location for the full attribution chain
 (OpenSearch Contributors, Elasticsearch bv/Rally) and trademark notices.
 
-OpenSearch trademark notice (where referenced): "OpenSearch is a registered trademark
-of Amazon Web Services, Inc. or its affiliates."
+OpenSearch trademark notice (where referenced): "OpenSearch® is a registered trademark of the OpenSearch Software Foundation."
 Apache Solr trademark notice: "Apache Solr is a trademark of The Apache Software Foundation."

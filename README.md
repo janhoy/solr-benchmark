@@ -7,7 +7,13 @@ itself derived from [Elastic Rally](https://github.com/elastic/rally).
 
 **DISCLAIMER**: Work in progress
 
-**NOTE**: This is a pure Solr benchmarking tool. It does NOT support benchmarking OpenSearch or Elasticsearch clusters. OpenSearch compatibility is limited to workload import — you can convert existing OpenSearch Benchmark workloads to Solr format using the included migration utility.
+**NOTE**: This is a pure Solr benchmarking tool. It does NOT support benchmarking OpenSearch or Elasticsearch clusters. OpenSearch compatibility is limited to workload import — you can convert existing OpenSearch Benchmark workloads to Solr format using the included `convert-workload` command.
+
+## Documentation
+
+Full documentation is available at **[https://janhoy.github.io/solr-benchmark/](https://janhoy.github.io/solr-benchmark/)**.
+
+The documentation source lives in the [`docs/`](docs/) folder of this repository.
 
 ## What is Apache Solr Benchmark?
 
@@ -65,61 +71,31 @@ solr-benchmark run \
   --test-mode
 ```
 
-### Migrate an existing OSB workload to Solr format
+### Convert an existing OSB workload to Solr format
 
-TODO: Insert proper command description here
+```bash
+solr-benchmark convert-workload \
+  --workload-path /path/to/osb-workload \
+  --output-path /path/to/solr-workload
+```
+
+See the [Converter Tool documentation](https://janhoy.github.io/solr-benchmark/converter/) for details on what is converted automatically and what requires manual review.
 
 ## Workload format
 
-A Solr workload is a JSON file with the following top-level keys:
+See [Workload Reference](https://janhoy.github.io/solr-benchmark/reference/workloads/) in the documentation for the full `workload.json` format, including `collections`, `corpora`, `operations`, and `test-procedures`.
 
-```json
-{
-  "name": "my-workload",
-  "description": "...",
-  "collections": [
-    {
-      "name": "my-collection",
-      "configset": "my-configset",
-      "configset-path": "/path/to/configset/dir",
-      "num-shards": 1,
-      "replication-factor": 1
-    }
-  ],
-  "challenges": [
-    {
-      "name": "default",
-      "schedule": [
-        {"operation": {"operation-type": "create-collection"}},
-        {"operation": {"operation-type": "bulk-index", "bulk-size": 500}},
-        {"operation": {"operation-type": "search", "q": "*:*", "rows": 10}},
-        {"operation": {"operation-type": "optimize"}},
-        {"operation": {"operation-type": "delete-collection"}}
-      ]
-    }
-  ]
-}
-```
-
-### Supported operation types
-
-| Operation type | Description |
-|---|---|
-| `bulk-index` | Index documents from an NDJSON corpus |
-| `search` | Run a Solr search (classic params or JSON DSL `body`) |
-| `commit` | Issue a hard or soft commit |
-| `optimize` | Merge segments (`/update?optimize=true`) |
-| `create-collection` | Upload a configset then create a collection |
-| `delete-collection` | Delete a collection (and optionally its configset) |
-| `raw-request` | Issue an arbitrary HTTP request to the Solr V2 API |
+Pre-built workloads are available at [https://github.com/janhoy/solr-benchmark-workloads](https://github.com/janhoy/solr-benchmark-workloads).
 
 ## Telemetry devices
 
 | Device | Metrics collected |
 |---|---|
-| `solr-jvm` | JVM heap used/max, GC count/time |
-| `solr-node` | CPU load, free OS memory, query handler counts |
-| `solr-collection` | Document count per collection |
+| `solr-jvm-stats` | JVM heap used/max, GC count/time |
+| `solr-node-stats` | CPU load, free OS memory, query handler counts |
+| `solr-collection-stats` | Document count, index size, segment count per collection |
+
+See [Telemetry Devices](https://janhoy.github.io/solr-benchmark/reference/telemetry) for full device documentation.
 
 ## Result output
 

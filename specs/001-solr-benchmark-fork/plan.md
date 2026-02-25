@@ -297,7 +297,7 @@ for full attribution.</p>
    (Copyright 2022 OpenSearch Contributors, licensed under Apache 2.0), which in turn
    derives from Elasticsearch Rally (Copyright Elasticsearch bv)."
 3. **Trademarks** — "Apache Solr is a trademark of The Apache Software Foundation.
-   OpenSearch is a registered trademark of Amazon Web Services, Inc. or its affiliates."
+   OpenSearch® is a registered trademark of the OpenSearch Software Foundation."
 4. **Links** — apache.org, solr.apache.org, opensearch.org
 
 ### Content Adaptation Rules (applied to every migrated page)
