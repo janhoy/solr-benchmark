@@ -35,6 +35,7 @@
 - Q: What happens when cluster_config is specified with the benchmark-only pipeline (external cluster)? → A: The tool MUST abort with a clear ERROR: cluster_config is only valid for provisioning pipelines (from-distribution, docker, from-sources). Specifying it with benchmark-only is a user error.
 - Q: Which Solr env vars should cluster_config control? → A: Three variables: `SOLR_HEAP` (e.g. `4g`), `GC_TUNE` (GC algorithm flags, e.g. `-XX:+UseG1GC`), and `SOLR_OPTS` (extra arbitrary JVM options). No operational vars (port, home, ZK).
 - Q: What is the correct log format for cluster_config? → A: Plain name without nested brackets: `cluster_config [external]` — consistent with how pipeline, workload, and test_procedure appear in the same log line.
+- Q: Which Jekyll theme should the documentation site use? → A: `just-the-docs` gem theme — clean sidebar navigation, built-in search, same family as OSB docs.
 
 ### Session 2026-02-24
 
@@ -115,6 +116,25 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 8. **Given** an OpenSearch workload with aggregations, **When** auto-converted, **Then** the converted search operations contain a Solr JSON Query DSL `body` with `"facet"` definitions mapping the OpenSearch aggregations to Solr JSON facets — the benchmark executes real facet queries against Solr, not stub queries.
 9. **Given** an OpenSearch workload containing operations with no Solr equivalent (e.g., `script_score` queries, `cluster-health`), **When** auto-converted, **Then** those operations are omitted from the converted workload with WARN log messages, and a `CONVERTED.md` file in the output directory lists every skipped operation with its reason.
 10. **Given** the `convert-workload` CLI subcommand, **When** a user runs `solr-benchmark convert-workload --workload-path <src> --output-path <dest>`, **Then** the Solr-native converted workload is written to `<dest>`, a `CONVERTED.md` summary is included, and any skipped operations are printed to the console.
+
+---
+
+### User Story 5 - Self-Contained Documentation Site (Priority: P5)
+
+A contributor or user of Apache Solr Benchmark wants to read comprehensive, Solr-specific documentation for the tool — covering installation, running benchmarks, workload format, configuration options, telemetry, and the workload converter — without having to navigate the OpenSearch documentation site.
+
+**Why this priority**: Discoverable documentation is essential for adoption. The OSB documentation serves as the source material; migrating it into a self-contained Jekyll site in this repository makes the tool usable without external dependencies.
+
+**Independent Test**: Can be verified by running `bundle exec jekyll serve` in `documentation/` and confirming all pages render without broken links and that search returns relevant results.
+
+**Acceptance Scenarios**:
+
+1. **Given** a clone of the repository, **When** the user runs `cd documentation && bundle exec jekyll serve`, **Then** a local documentation site starts and all pages are accessible at `http://localhost:4000`.
+2. **Given** the documentation site, **When** a user searches for "workload", **Then** relevant workload-format and converter pages appear in the results.
+3. **Given** the documentation content, **When** a page references terminology or features, **Then** it uses Solr terminology throughout (collection, configset, commit, optimize) — no OpenSearch-only terminology remains.
+4. **Given** a page that previously referenced OSB-only workloads (percolator, etc.), **Then** that workload is not listed; only workloads compatible with this tool are documented.
+5. **Given** a page about workload format, **Then** it documents the Solr-native workload format (collections, configset-path, Solr operation names) rather than the OSB index-based format.
+6. **Given** a page about workload migration, **Then** it documents the `convert-workload` CLI subcommand and the `migrate_workload.py` utility, with examples.
 
 ---
 
@@ -200,6 +220,14 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 - **FR-032**: The tool MUST support a `--cluster-config` option for provisioning pipelines (`from-distribution`, `docker`, `from-sources`) that selects a named Solr cluster configuration. cluster_config definitions MUST be stored as Jinja2 template files in `osbenchmark/builder/configs/` (same structure as original OSB). Each template renders a shell script that exports Solr environment variables: `SOLR_HEAP` (heap size, e.g. `4g`), `GC_TUNE` (GC flags, e.g. `-XX:+UseG1GC`), and `SOLR_OPTS` (extra JVM options). The provisioner sources this script before starting Solr. cluster_config does NOT control node count, port, ZooKeeper address, or other operational parameters.
 - **FR-033**: Specifying `--cluster-config` with the `benchmark-only` pipeline MUST cause the tool to abort immediately with a clear ERROR message explaining that cluster_config is only applicable to provisioning pipelines. No benchmark is run.
 - **FR-034**: cluster_config covers single-node JVM and GC tuning only. Multi-node topology (e.g., 3-node SolrCloud) is out of scope for cluster_config and is not controlled by this mechanism.
+
+**Documentation Site:**
+- **FR-035**: The repository MUST include a self-contained Jekyll documentation site in a `documentation/` folder at the repository root. The site MUST use the `just-the-docs` gem theme (sidebar navigation, built-in search). A `Gemfile` and `_config.yml` MUST be included so the site can be served locally with `bundle exec jekyll serve` without any external dependency on the opensearch-project documentation infrastructure.
+- **FR-036**: The documentation content MUST be migrated from the OSB `_benchmark/` section of the opensearch documentation-website repository and adapted for Apache Solr Benchmark. All Solr-incompatible content MUST be removed or replaced; all terminology MUST be updated to use Solr concepts (collection, configset, shards, replicas, commit, optimize).
+- **FR-037**: The documentation MUST NOT include: (a) the "Contribute to workloads" section (OSB-specific contribution workflow), (b) workload listings for OSB-only workloads (percolator, etc.), (c) links to other opensearch.org documentation, (d) documentation for features deleted in this fork (OpenSearch client, gRPC/protobuf operations, OpenSearch telemetry devices).
+- **FR-038**: The documentation MUST include a dedicated section for the Solr-native workload format, covering: workload.json structure with `"collections"` key, operation types (bulk-index, search, commit, optimize, create-collection, delete-collection, raw-request), collection topology parameters (shards, nrt_replicas, pull_replicas, tlog_replicas), and the configset-path field.
+- **FR-039**: The documentation MUST include a section for the `convert-workload` subcommand and `migrate_workload.py` utility, explaining how to convert an OSB workload to Solr format, what gets converted automatically, what requires manual review (`# TODO` comments), and the `CONVERTED.md` summary file.
+- **FR-040**: Any reference to an external workloads repository MUST point to `https://github.com/janhoy/solr-benchmark-workloads` (not the opensearch-benchmark-workloads repository).
 
 ### Key Entities
 
