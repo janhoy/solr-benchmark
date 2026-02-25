@@ -101,6 +101,8 @@ Workloads can be loaded from a git repository (`--workload-repository`), local p
 - Local filesystem (JSON + CSV result files, configurable path). No external store required. (001-solr-benchmark-fork)
 - Python 3.10+ + pysolr 3.x (data operations), requests (admin HTTP), thespian (actor model), pytest (tests), tabulate (console tables) (001-solr-benchmark-fork)
 - Local filesystem — JSON/CSV result files at `~/.solr-benchmark/`, SQLite test-runs store (001-solr-benchmark-fork)
+- Python 3.10+ + pysolr 3.x, requests, thespian (actor model), pytes (001-solr-benchmark-fork)
+- Local filesystem — JSON/CSV result files, SQLite test-runs store (001-solr-benchmark-fork)
 
 ## Recent Changes
 - 001-solr-benchmark-fork: Added Python 3.10+

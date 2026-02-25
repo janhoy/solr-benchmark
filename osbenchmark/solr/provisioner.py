@@ -80,10 +80,11 @@ class SolrProvisioner:
     """
 
     def __init__(self, cache_dir: str = None, port: int = 8983,
-                 startup_timeout: int = 120):
+                 startup_timeout: int = 120, cluster_config=None):
         self.cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".solr-benchmark", "cache")
         self.port = port
         self.startup_timeout = startup_timeout
+        self.cluster_config = cluster_config
         os.makedirs(self.cache_dir, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -170,7 +171,7 @@ class SolrProvisioner:
             cmd.append("--user-managed")  # standalone mode flag (Solr 10+)
 
         logger.info("Starting Solr with: %s", " ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, env=self._build_env())
         if result.returncode != 0:
             raise SolrProvisionerError(
                 f"Solr failed to start: {result.stderr or result.stdout}"
@@ -201,6 +202,18 @@ class SolrProvisioner:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _build_env(self) -> dict:
+        """Build subprocess environment with Solr env vars from cluster_config."""
+        env = os.environ.copy()
+        if self.cluster_config:
+            vars_ = self.cluster_config.variables
+            mapping = {"heap_size": "SOLR_HEAP", "gc_tune": "GC_TUNE", "solr_opts": "SOLR_OPTS"}
+            for ini_key, env_key in mapping.items():
+                if ini_key in vars_:
+                    env[env_key] = vars_[ini_key]
+                    logger.info("Applying cluster_config: %s=%s", env_key, vars_[ini_key])
+        return env
 
     def _bin_solr(self, solr_root: str) -> str:
         script = os.path.join(solr_root, "bin", "solr")
@@ -261,10 +274,11 @@ class SolrDockerLauncher:
     DEFAULT_CONTAINER_NAME = "solr-benchmark"
 
     def __init__(self, port: int = 8983, startup_timeout: int = 60,
-                 container_name: str = None):
+                 container_name: str = None, cluster_config=None):
         self.port = port
         self.startup_timeout = startup_timeout
         self.container_name = container_name or self.DEFAULT_CONTAINER_NAME
+        self.cluster_config = cluster_config
 
     def start(self, version_tag: str = "9", mode: str = None) -> None:
         """
@@ -294,8 +308,9 @@ class SolrDockerLauncher:
             "--name", self.container_name,
             "-p", f"{self.port}:8983",
             "-d",
-            image,
         ]
+        cmd += self._cluster_config_env_flags()
+        cmd.append(image)
         # Solr <10: pass '-c' after the image name to enable SolrCloud mode.
         # Solr 10+: SolrCloud is the default; '-c' is no longer accepted.
         if mode == "cloud" and major < 10:
@@ -313,6 +328,18 @@ class SolrDockerLauncher:
 
         self._wait_for_ready()
         logger.info("Solr Docker container '%s' ready on port %d", self.container_name, self.port)
+
+    def _cluster_config_env_flags(self) -> list:
+        """Return ``-e KEY=VALUE`` flags for docker run from cluster_config variables."""
+        flags = []
+        if self.cluster_config:
+            vars_ = self.cluster_config.variables
+            mapping = {"heap_size": "SOLR_HEAP", "gc_tune": "GC_TUNE", "solr_opts": "SOLR_OPTS"}
+            for ini_key, env_key in mapping.items():
+                if ini_key in vars_:
+                    flags += ["-e", f"{env_key}={vars_[ini_key]}"]
+                    logger.info("Applying cluster_config: %s=%s", env_key, vars_[ini_key])
+        return flags
 
     def stop(self) -> None:
         """Stop and remove the Solr container."""

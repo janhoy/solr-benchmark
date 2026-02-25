@@ -28,6 +28,14 @@
 - Q: Should bridge runners that map OpenSearch operation types at runtime be kept? → A: No. All operation type mapping happens at workload conversion time. Bridge runner classes must be removed for a clean architecture.
 - Q: What should happen to operations that cannot be converted to Solr format? → A: They MUST be skipped (omitted from the converted workload) with a WARN log message per skipped operation. A `CONVERTED.md` file MUST be written to the output directory listing all skipped operations with their reasons. Silent omission is not acceptable.
 
+### Session 2026-02-25
+
+- Q: Does cluster_config include node count / cluster topology (e.g., 3-node SolrCloud)? → A: No — same behaviour as original OSB main branch. cluster_config covers single-node JVM and GC tuning only. Node topology is out of scope for cluster_config.
+- Q: How are cluster_config definitions stored? → A: Named Jinja2 templates in `osbenchmark/builder/configs/` — same directory structure as original OSB. Each config is a `.j2` file that renders a shell env-var export script applied before starting Solr.
+- Q: What happens when cluster_config is specified with the benchmark-only pipeline (external cluster)? → A: The tool MUST abort with a clear ERROR: cluster_config is only valid for provisioning pipelines (from-distribution, docker, from-sources). Specifying it with benchmark-only is a user error.
+- Q: Which Solr env vars should cluster_config control? → A: Three variables: `SOLR_HEAP` (e.g. `4g`), `GC_TUNE` (GC algorithm flags, e.g. `-XX:+UseG1GC`), and `SOLR_OPTS` (extra arbitrary JVM options). No operational vars (port, home, ZK).
+- Q: What is the correct log format for cluster_config? → A: Plain name without nested brackets: `cluster_config [external]` — consistent with how pipeline, workload, and test_procedure appear in the same log line.
+
 ### Session 2026-02-24
 
 - Directive: Auto-conversion at run time is REMOVED. Instead of silently converting an OSB workload during `solr-benchmark run`, the tool MUST detect the OSB format and EXIT with a clear ERROR message instructing the user to run `solr-benchmark convert-workload` first. No automatic conversion happens during a benchmark run.
@@ -137,6 +145,7 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
 - **FR-007**: The tool MUST be able to unpack, configure, and start a Solr instance in either user-managed (standalone) or cloud (embedded ZooKeeper) mode, selectable via a pipeline parameter. For Solr 9.x, user-managed is the default and cloud mode is enabled via `--cloud`; for Solr 10.x, cloud is the default and user-managed is enabled via `--user-managed`. The provisioner MUST apply the correct flag based on the detected Solr version.
 - **FR-008**: The tool MUST support launching Solr 9.x in a Docker container as part of a Docker-based pipeline, with the same user-managed/cloud mode selection as the local provisioner.
 - **FR-009**: The tool MUST create a Solr collection before benchmarking begins when provisioning is managed by the tool. Collection creation is a two-step process: (1) upload the configset as a ZIP archive (`PUT /api/cluster/configs/{name}`) containing at minimum `conf/schema.xml` and `conf/solrconfig.xml`, then (2) create the collection referencing that configset name (`POST /api/collections`). The workload definition must specify the path to the configset directory; the tool builds the ZIP at setup time. The configset must be deleted as part of teardown.
+- **FR-009a**: The `"collections"` entry in `workload.json` MUST support the following optional topology parameters for collection creation, in addition to `"name"` and `"configset-path"`: `"shards"` (integer, default 1), `"nrt_replicas"` (integer, default 1), `"pull_replicas"` (integer, default 0), `"tlog_replicas"` (integer, default 0). These map directly to the corresponding parameters of the Solr Collections API `POST /api/collections` call.
 - **FR-010**: The tool MUST stop and clean up any Solr instances it provisioned after the benchmark completes, whether it succeeded or failed.
 
 **Workload Operations:**
@@ -187,10 +196,15 @@ A benchmark author wants to define workloads using Solr-native concepts — coll
   - Correlate configuration changes with performance changes
   - Filter and group results by configuration in a results portal/dashboard
   - Reproduce benchmark runs with identical cluster settings
+- **FR-027c**: The benchmark run log line MUST display the cluster_config name as a plain identifier without nested list brackets. The correct format is: `Running benchmark with pipeline [X], workload [Y], test_procedure [Z], cluster_config [external], version [9.10.1]`. The current double-bracket form `[['external']]` is a bug and MUST be fixed.
+- **FR-032**: The tool MUST support a `--cluster-config` option for provisioning pipelines (`from-distribution`, `docker`, `from-sources`) that selects a named Solr cluster configuration. cluster_config definitions MUST be stored as Jinja2 template files in `osbenchmark/builder/configs/` (same structure as original OSB). Each template renders a shell script that exports Solr environment variables: `SOLR_HEAP` (heap size, e.g. `4g`), `GC_TUNE` (GC flags, e.g. `-XX:+UseG1GC`), and `SOLR_OPTS` (extra JVM options). The provisioner sources this script before starting Solr. cluster_config does NOT control node count, port, ZooKeeper address, or other operational parameters.
+- **FR-033**: Specifying `--cluster-config` with the `benchmark-only` pipeline MUST cause the tool to abort immediately with a clear ERROR message explaining that cluster_config is only applicable to provisioning pipelines. No benchmark is run.
+- **FR-034**: cluster_config covers single-node JVM and GC tuning only. Multi-node topology (e.g., 3-node SolrCloud) is out of scope for cluster_config and is not controlled by this mechanism.
 
 ### Key Entities
 
-- **Solr Collection**: The primary data container in Solr. Has a name, configset, shard/replica topology, and is the target of all indexing and query operations.
+- **Solr Collection**: The primary data container in Solr. Has a name, configset, and shard/replica topology (`shards`, `nrt_replicas`, `pull_replicas`, `tlog_replicas`). Topology parameters are defined in `workload.json` under `"collections"` with defaults of shards=1, nrt_replicas=1, pull_replicas=0, tlog_replicas=0.
+- **Cluster Config**: A named Jinja2 template in `osbenchmark/builder/configs/` that renders a shell env-var export script setting `SOLR_HEAP`, `GC_TUNE`, and/or `SOLR_OPTS` before Solr starts. Applies to provisioning pipelines only. Examples: `defaults`, `1gheap`, `4gheap`, `g1gc`. Selected via `--cluster-config` CLI option.
 - **Configset**: A reusable Solr configuration bundle (solrconfig.xml + schema.xml) referenced when creating a collection. Required for collection creation during provisioning.
 - **Solr Node**: A running Solr process in standalone or SolrCloud mode. Exposes the admin API for health checks, metrics retrieval, and management operations.
 - **Workload**: A Solr-native benchmark definition describing operations (bulk-index, search, commit, etc.), their parameters, scheduling, and challenges. Not back-compatible with OSB workloads; use the migration utility to convert.

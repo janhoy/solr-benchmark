@@ -339,6 +339,52 @@ Two issues discovered:
 
 ---
 
+## Phase 12: cluster_config + Collection Settings + Logging Fix (2026-02-25)
+
+**Purpose**: Three targeted improvements from FR-009a, FR-027c, FR-032, FR-033, FR-034 — logging display fix, full Solr replica-type support in collection definitions, and cluster_config integration with Solr provisioners.
+
+**Prerequisite**: Phase 11 complete.
+
+### Krav 1 — Logging Fix (FR-027c)
+
+- [x] T080 Fix cluster_config log display in `osbenchmark/test_run_orchestrator.py` — in both `console.info(...)` format calls that emit the "Running benchmark with..." line (~lines 297 and 305), replace `self.test_run.cluster_config` (a raw list) with `", ".join(self.test_run.cluster_config or ["none"])` so the output reads `cluster_config [external]` instead of `cluster_config [['external']]`
+
+**Checkpoint Krav 1**: Running any pipeline now logs `cluster_config [external]` (or the actual config name) without double brackets.
+
+### Krav 2 — Collection Replica Settings (FR-009a)
+
+Field naming convention: keep existing hyphen-style names throughout (`num-shards`, `replication-factor`). `replication-factor` is treated as an alias for nrt-replicas. Only ADD the two new fields: `pull-replicas` and `tlog-replicas`. No renaming of existing fields anywhere.
+
+- [x] T081 Add `pull_replicas` and `tlog_replicas` to `Collection` class in `osbenchmark/workload/workload.py` — add two new `__init__` parameters `pull_replicas: int = 0` and `tlog_replicas: int = 0` after `replication_factor`; add corresponding `self.pull_replicas` and `self.tlog_replicas` assignments; update `__repr__` to include the new fields; keep `num_shards` and `replication_factor` unchanged
+
+- [x] T082 [P] Add `pull-replicas` and `tlog-replicas` to `_create_collection()` in `osbenchmark/workload/loader.py` — add two new reads after the existing `replication_factor` read: `pull_replicas = int(self._r(col_spec, "pull-replicas", mandatory=False, default_value=0))` and `tlog_replicas = int(self._r(col_spec, "tlog-replicas", mandatory=False, default_value=0))`; add both to the `workload.Collection(...)` call; keep `num-shards` and `replication-factor` reads unchanged
+
+- [x] T083 [P] Update `SolrAdminClient.create_collection()` in `osbenchmark/solr/client.py` — add `tlog_replicas: int = 0` and `pull_replicas: int = 0` parameters after `replication_factor`; in the JSON payload replace `"replicationFactor": replication_factor` with `"nrtReplicas": replication_factor` (semantically identical; `replication-factor` has always meant nrt replicas in SolrCloud) and add `"tlogReplicas": tlog_replicas, "pullReplicas": pull_replicas`; update the log line accordingly
+
+- [x] T084 Update `SolrCreateCollection.__call__()` in `osbenchmark/solr/runner.py` and `CreateCollectionParamSource` in `osbenchmark/workload/params.py` — in runner: add `pull_replicas = params.get("pull-replicas", 0)` and `tlog_replicas = params.get("tlog-replicas", 0)` after existing `replication_factor` read; pass both to `admin.create_collection()`; keep `num-shards` and `replication-factor` reads unchanged; in params.py: add `"pull-replicas": col.pull_replicas` and `"tlog-replicas": col.tlog_replicas` to the `collection_def` dicts at both the `if col:` and `elif collections:` branches (lines ~469–485)
+
+**Checkpoint Krav 2**: A workload.json collection with `"num-shards": 2, "replication-factor": 2, "tlog-replicas": 1, "pull-replicas": 0` creates a Solr collection with `numShards=2, nrtReplicas=2, tlogReplicas=1, pullReplicas=0`. Existing workloads without the new fields continue to work with defaults (pull-replicas=0, tlog-replicas=0).
+
+### Krav 3 — cluster_config for Solr (FR-032, FR-033, FR-034)
+
+- [x] T085 Update GC cluster_config INI files — in `osbenchmark/resources/cluster_configs/main/cluster_configs/v1/g1gc.ini`, replace `use_cms_gc`, `use_parallel_gc`, `use_g1_gc` variables with `gc_tune=-XX:+UseG1GC -XX:+UseStringDeduplication`; do the same for `parallelgc.ini` replacing with `gc_tune=-XX:+UseParallelGC`; leave heap INI files (`1gheap.ini` etc.) unchanged (they already have `heap_size` which maps correctly)
+
+- [x] T086 Add `_build_env()` to `SolrProvisioner` in `osbenchmark/solr/provisioner.py` — add `cluster_config=None` parameter to `__init__`; add private method `_build_env(self) -> dict` that copies `os.environ`, then for each of `heap_size`→`SOLR_HEAP`, `gc_tune`→`GC_TUNE`, `solr_opts`→`SOLR_OPTS`: if the key is present in `self.cluster_config.variables`, set it in the env dict; return the dict; update `start()` to pass `env=self._build_env()` to `subprocess.run()`
+
+- [x] T087 [P] Add `_cluster_config_env_flags()` to `SolrDockerLauncher` in `osbenchmark/solr/provisioner.py` — add `cluster_config=None` parameter to `__init__`; add method that returns a list of `-e KEY=VALUE` strings for the same three mappings (`heap_size`→`SOLR_HEAP`, `gc_tune`→`GC_TUNE`, `solr_opts`→`SOLR_OPTS`); insert the returned flags into the `docker run` command list in `start()` before the image name
+
+- [x] T088 Wire cluster_config loading into Solr provisioner instantiation — find where `SolrProvisioner` and `SolrDockerLauncher` are constructed in `osbenchmark/test_run_orchestrator.py` (or `osbenchmark/builder/`); load the cluster_config instance using `osbenchmark.builder.cluster_config.load_cluster_config()` with the name from `cfg.opts("builder", "cluster_config.names")[0]` and params from `cfg.opts("builder", "cluster_config.params")`; pass the loaded instance as `cluster_config=` kwarg to both provisioner constructors
+
+- [x] T089 Add benchmark-only pipeline guard for `--cluster-config` in `osbenchmark/benchmark.py` — in `configure_builder_params()`, after `cluster_config_names` is computed, check if `cfg.opts("test_execution", "pipeline") == "benchmark-only"` and `args.cluster_config != "defaults"`; if so, raise `SystemExit("ERROR: --cluster-config is only valid for provisioning pipelines (from-distribution, docker, from-sources). It cannot be used with the 'benchmark-only' pipeline.")`
+
+- [x] T090 [P] Write unit tests for Phase 12 changes in `tests/unit/solr/test_provisioner.py` and `tests/unit/solr/test_runner.py` — (a) `test_provisioner_heap_env`: mock a cluster_config with `variables={"heap_size": "4g"}`; assert `SolrProvisioner._build_env()["SOLR_HEAP"] == "4g"`; (b) `test_provisioner_gc_env`: mock cluster_config with `variables={"gc_tune": "-XX:+UseG1GC"}`; assert `GC_TUNE` set; (c) `test_provisioner_no_config`: `cluster_config=None`; assert `SOLR_HEAP` not in returned env; (d) `test_docker_env_flags`: mock cluster_config `{"heap_size": "4g"}`; assert `["-e", "SOLR_HEAP=4g"]` in flags; (e) `test_create_collection_tlog_pull_params`: mock `SolrAdminClient`; call runner with `{"num-shards": 2, "replication-factor": 1, "tlog-replicas": 1, "pull-replicas": 0}`; assert `create_collection()` called with `num_shards=2, replication_factor=1, tlog_replicas=1, pull_replicas=0` and payload contains `"nrtReplicas": 1, "tlogReplicas": 1, "pullReplicas": 0`; (f) `test_create_collection_defaults`: call runner without new params; assert `tlog_replicas=0, pull_replicas=0`; (g) `test_cluster_config_log_format`: mock `test_run.cluster_config = ["external"]`; assert log line contains `cluster_config [external]` not `[['external']]`
+
+**Checkpoint Krav 3**: Running `solr-benchmark run --cluster-config 4gheap --pipeline from-distribution --distribution-version 9.10.1 ...` starts Solr with `SOLR_HEAP=4g` in its environment. Running `solr-benchmark run --cluster-config 4gheap --pipeline benchmark-only ...` exits immediately with a clear error. `g1gc` config sets `GC_TUNE=-XX:+UseG1GC -XX:+UseStringDeduplication` in the Solr process env.
+
+- [ ] T091 [VERIFICATION] End-to-end validation of Phase 12 — (1) run `solr-benchmark run --pipeline=docker --distribution-version=9.10.1 --workload=nyc_taxis --cluster-config=4gheap --test-mode`; verify log line reads `cluster_config [4gheap]` (no double brackets); verify Docker container started with `-e SOLR_HEAP=4g` (check `docker inspect`); (2) run same with `--cluster-config=g1gc`; verify `GC_TUNE=-XX:+UseG1GC -XX:+UseStringDeduplication` in container env; (3) run with `--cluster-config=4gheap --pipeline=benchmark-only`; verify immediate error exit with message containing `benchmark-only`; (4) run a workload with `"num-shards": 2, "replication-factor": 2, "tlog-replicas": 1` in the collection; verify Solr collection created with `nrtReplicas=2, tlogReplicas=1, pullReplicas=0` via Solr Admin UI or `GET /solr/admin/collections?action=CLUSTERSTATUS`
+
+---
+
 ## Summary
 
 | Phase | Tasks | Parallelizable | Story |
@@ -354,4 +400,5 @@ Two issues discovered:
 | **Phase 9: Results Consolidation** | **T054–T062** | **T054, T059, T060, T062** | — |
 | **Phase 10: Workload Conversion Refactor** | **T063–T072** | **T068, T069, T070, T072** | US4 |
 | **Phase 11: Remove Auto-Conversion** | **T073–T079** | **T076, T077, T078** | US4 |
-| **Total** | **79 tasks** | **37 parallelizable** | |
+| **Phase 12: cluster_config + Collection Settings + Logging** | **T080–T091** | **T082, T083, T087, T090** | — |
+| **Total** | **91 tasks** | **40 parallelizable** | |

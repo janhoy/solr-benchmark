@@ -762,6 +762,8 @@ class SolrCreateCollection(SolrRunner):
         configset_path = params.get("configset-path")
         num_shards = params.get("num-shards", 1)
         replication_factor = params.get("replication-factor", 1)
+        tlog_replicas = params.get("tlog-replicas", 0)
+        pull_replicas = params.get("pull-replicas", 0)
 
         start = time.perf_counter()
 
@@ -778,6 +780,8 @@ class SolrCreateCollection(SolrRunner):
                 configset,
                 num_shards,
                 replication_factor,
+                tlog_replicas,
+                pull_replicas,
             )
         except CollectionAlreadyExistsError:
             logger.warning("Collection '%s' already exists, skipping creation.", collection)

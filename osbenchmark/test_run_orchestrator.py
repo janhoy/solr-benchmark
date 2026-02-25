@@ -36,6 +36,7 @@ import thespian.actors
 from osbenchmark import actor, config, doc_link, \
     worker_coordinator, exceptions, builder, metrics, \
         publisher, workload, version, PROGRAM_NAME
+from osbenchmark.builder import cluster_config as cc_module
 from osbenchmark.builder.supplier import SourceRepository, Builder
 from osbenchmark.solr.provisioner import SolrProvisioner, SolrDockerLauncher
 from osbenchmark.utils import console, opts, versions
@@ -293,11 +294,12 @@ class BenchmarkCoordinator:
         # test_procedure = the specific benchmark scenario within a workload (e.g., "append-no-conflicts")
         # cluster_config = the cluster configuration variant (e.g., "vanilla", "4gheap")
         # pipeline = how the cluster is provisioned (e.g., "docker", "from-sources", "benchmark-only")
+        cluster_cfg_display = ", ".join(self.test_run.cluster_config or ["none"])
         if self.test_run.test_procedure.auto_generated:
             console.info("Running benchmark with pipeline [{}], workload [{}], cluster_config [{}], version [{}].\n"
                          .format(self.test_run.pipeline,
                          self.test_run.workload_name,
-                         self.test_run.cluster_config,
+                         cluster_cfg_display,
                          self.test_run.distribution_version or "unknown"))
         else:
             console.info("Running benchmark with pipeline [{}], workload [{}], test_procedure [{}], cluster_config [{}], version [{}].\n"
@@ -305,7 +307,7 @@ class BenchmarkCoordinator:
                              self.test_run.pipeline,
                              self.test_run.workload_name,
                              self.test_run.test_procedure_name,
-                             self.test_run.cluster_config,
+                             cluster_cfg_display,
                              self.test_run.distribution_version or "unknown"
                              ))
 
@@ -388,8 +390,6 @@ def set_default_hosts(cfg, host="127.0.0.1", port=9200):
 # Poor man's curry
 def benchmark_only(cfg):
     set_default_hosts(cfg)
-    # We'll use a special cluster_config name for external benchmarks.
-    cfg.add(config.Scope.benchmark, "builder", "cluster_config.names", ["external"])
     return run_test(cfg, external=True)
 
 
@@ -400,6 +400,34 @@ Pipeline("benchmark-only",
 # ---------------------------------------------------------------------------
 # Solr-specific pipelines
 # ---------------------------------------------------------------------------
+
+def _load_cluster_config(cfg):
+    """
+    Load the cluster_config instance from the configured INI repository.
+
+    Returns a ClusterConfigInstance whose ``.variables`` dict contains the
+    JVM/GC settings (``heap_size``, ``gc_tune``, ``solr_opts``), or ``None``
+    if the config path cannot be determined (infrastructure failure) — in which
+    case Solr uses its own defaults.
+
+    Raises ``SystemSetupError`` if the user-specified config name is unknown
+    (e.g. ``--cluster-config foo`` where ``foo.ini`` does not exist).  This
+    error is intentionally NOT caught so the benchmark fails fast with a clear
+    message rather than silently proceeding with the wrong configuration.
+    """
+    _logger = logging.getLogger(__name__)
+    names = cfg.opts("builder", "cluster_config.names")
+    params = cfg.opts("builder", "cluster_config.params", mandatory=False, default_value={})
+    try:
+        repo_path = cc_module.cluster_config_path(cfg)
+    except Exception as exc:  # pylint: disable=broad-except
+        _logger.warning("Could not determine cluster_config path: %s — proceeding without JVM/GC tuning.", exc)
+        return None
+    # Do NOT catch SystemSetupError here — an unknown config name must fail loudly.
+    instance = cc_module.load_cluster_config(repo_path, names, params)
+    _logger.info("Loaded cluster_config '%s' with variables: %s", "+".join(names), instance.variables)
+    return instance
+
 
 def solr_from_sources(cfg):
     """
@@ -453,11 +481,12 @@ def solr_from_sources(cfg):
         tf.extractall(install_dir)
     solr_root = os.path.join(install_dir, top_level)
 
-    provisioner = SolrProvisioner(cache_dir=os.path.join(base_dir, "cache"), port=port)
+    cc_instance = _load_cluster_config(cfg)
+    provisioner = SolrProvisioner(cache_dir=os.path.join(base_dir, "cache"), port=port,
+                                  cluster_config=cc_instance)
     try:
         provisioner.start(solr_root, mode="cloud")
         set_default_hosts(cfg, host="127.0.0.1", port=port)
-        cfg.add(config.Scope.benchmark, "builder", "cluster_config.names", ["external"])
         run_test(cfg, external=True)
     finally:
         try:
@@ -496,14 +525,14 @@ def solr_from_distribution(cfg):
     cache_dir = cfg.opts("solr", "cache_dir", mandatory=False,
                          default_value=os.path.join(base_dir, "cache"))
 
-    provisioner = SolrProvisioner(cache_dir=cache_dir, port=port)
+    cc_instance = _load_cluster_config(cfg)
+    provisioner = SolrProvisioner(cache_dir=cache_dir, port=port, cluster_config=cc_instance)
     tarball = provisioner.download(version_str)
     solr_root = provisioner.install(version_str, install_dir)
 
     try:
         provisioner.start(solr_root, mode="cloud")
         set_default_hosts(cfg, host="127.0.0.1", port=port)
-        cfg.add(config.Scope.benchmark, "builder", "cluster_config.names", ["external"])
         run_test(cfg, external=True)
     finally:
         try:
@@ -540,11 +569,11 @@ def solr_docker(cfg):
     version_tag = _normalize_solr_docker_tag(raw_version)
     port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
 
-    launcher = SolrDockerLauncher(port=port)
+    cc_instance = _load_cluster_config(cfg)
+    launcher = SolrDockerLauncher(port=port, cluster_config=cc_instance)
     try:
         launcher.start(version_tag=version_tag, mode="cloud")
         set_default_hosts(cfg, host="127.0.0.1", port=port)
-        cfg.add(config.Scope.benchmark, "builder", "cluster_config.names", ["external"])
         run_test(cfg, external=True)
     finally:
         try:

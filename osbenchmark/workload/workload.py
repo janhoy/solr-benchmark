@@ -83,21 +83,26 @@ class Collection:
     Defines a Solr collection (Solr-native equivalent of Index).
 
     Attributes:
-        name:           Collection name.
-        configset:      Configset name registered on the cluster.
-        configset_path: Local path to the configset directory (containing conf/).
-        num_shards:     Number of shards (default: 1).
-        replication_factor: Replication factor (default: 1).
+        name:               Collection name.
+        configset:          Configset name registered on the cluster.
+        configset_path:     Local path to the configset directory (containing conf/).
+        num_shards:         Number of shards (default: 1).
+        replication_factor: NRT replicas per shard — alias for ``nrtReplicas`` in Solr V2 API (default: 1).
+        pull_replicas:      Pull (read-only) replicas per shard (default: 0).
+        tlog_replicas:      TLOG replicas per shard (default: 0).
     """
 
     def __init__(self, name: str, configset: str = None,
                  configset_path: str = None,
-                 num_shards: int = 1, replication_factor: int = 1):
+                 num_shards: int = 1, replication_factor: int = 1,
+                 pull_replicas: int = 0, tlog_replicas: int = 0):
         self.name = name
         self.configset = configset or name
         self.configset_path = configset_path
         self.num_shards = num_shards
         self.replication_factor = replication_factor
+        self.pull_replicas = pull_replicas
+        self.tlog_replicas = tlog_replicas
 
     def matches(self, pattern):
         if pattern is None:

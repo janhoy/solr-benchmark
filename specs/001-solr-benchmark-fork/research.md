@@ -387,3 +387,56 @@ def is_opensearch_workload_path(workload_path: str) -> bool:
 ### R-04: benchmark.ini URL Fix (FR-026)
 
 **Decision**: `osbenchmark/resources/benchmark.ini` line 28: `default.url = https://github.com/janhoy/solr-benchmark-workloads`
+
+---
+
+## Update 2026-02-25: cluster_config + Collection Settings + Logging Fix
+
+### R-05: cluster_config Mechanism (Krav 3)
+
+**Decision**: Reuse the existing `ClusterConfigInstanceLoader` in `osbenchmark/builder/cluster_config.py`. Solr uses only the `[variables]` section from INI files. The Solr provisioner reads `cluster_config.variables` and translates three keys to Solr environment variables: `heap_size` → `SOLR_HEAP`, `gc_tune` → `GC_TUNE`, `solr_opts` → `SOLR_OPTS`. These are passed as subprocess env overrides to `bin/solr start` (local) or `-e KEY=VALUE` flags to `docker run`.
+
+**Existing INI files**: `osbenchmark/resources/cluster_configs/main/cluster_configs/v1/` — files `1gheap.ini`, `4gheap.ini`, `g1gc.ini`, etc. already exist. They need their variables aligned to the Solr naming: `heap_size` (already correct) + add `gc_tune` to the GC configs.
+
+**No template file rendering needed**: Unlike OSB's OpenSearch provisioner which renders `jvm.options.j2` to a file, Solr reads JVM settings from environment variables (`SOLR_HEAP`, `GC_TUNE`). The `config_paths` / `_apply_config()` mechanism is OSB's OpenSearch-specific path and must NOT be called for Solr provisioning.
+
+**cluster_config.names storage**: Stored as a list (from `opts.csv_to_list()`). Currently `test_run_orchestrator.py` renders this list directly in a format string producing `[['external']]`. Fix: use `", ".join(cluster_config_names)` before formatting.
+
+**benchmark-only validation**: In `benchmark.py` `configure_builder_params()`, when `pipeline == "benchmark-only"`, check if `args.cluster_config != "defaults"` and raise `SystemExit` with message: `"--cluster-config is only valid for provisioning pipelines (from-distribution, docker, from-sources). It cannot be used with the 'benchmark-only' pipeline."`.
+
+### R-06: Collection Replica Types (Krav 2)
+
+**Current state**: `Collection` class has `num_shards` (from `num-shards`) and `replication_factor` (from `replication-factor`). `SolrAdminClient.create_collection()` sends `numShards` + `replicationFactor` to Solr V2 API.
+
+**Required additions**: The Solr V2 Collections API (`POST /api/collections`) natively supports three replica type counts: `nrtReplicas`, `tlogReplicas`, `pullReplicas`. Total replicas = sum of all three. The `replicationFactor` param is a shortcut that sets `nrtReplicas` only.
+
+**Migration**: Replace `replication-factor` with `nrt-replicas` in workload.json (with backward-compat fallback). Rename field in `Collection` class. Add `pull_replicas` and `tlog_replicas`.
+
+**Workload.json new field names** (snake_case as specified in FR-009a):
+- `shards` (int, default=1) — replaces `num-shards`
+- `nrt_replicas` (int, default=1) — replaces `replication-factor`
+- `pull_replicas` (int, default=0) — new
+- `tlog_replicas` (int, default=0) — new
+
+**Backward compat**: Loader reads `shards` first, falls back to `num-shards`; reads `nrt_replicas` first, falls back to `replication-factor`.
+
+**`create_collection()` API payload** (new):
+```json
+{
+  "name": "my-coll",
+  "config": "my-cfg",
+  "numShards": 2,
+  "nrtReplicas": 1,
+  "tlogReplicas": 0,
+  "pullReplicas": 0,
+  "waitForFinalState": true
+}
+```
+
+### R-07: Logging Bug (Krav 1)
+
+**Root cause**: `self.test_run.cluster_config` is a Python list `['external']`. The format string `"cluster_config [{}]"` renders it as `[['external']]`.
+
+**Fix location**: `osbenchmark/test_run_orchestrator.py` — two `console.info(...)` call sites (lines ~297 and ~305). Change `self.test_run.cluster_config` to `", ".join(self.test_run.cluster_config or ["none"])` in both format calls.
+
+**Expected output after fix**: `cluster_config [external]`

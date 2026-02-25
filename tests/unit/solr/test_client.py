@@ -133,6 +133,41 @@ class TestSolrAdminClientCreateCollection(unittest.TestCase):
         with self.assertRaises(CollectionAlreadyExistsError):
             client.create_collection("my-coll", "my-config")
 
+    def test_create_collection_sends_nrt_replicas(self):
+        """replication_factor should be sent as nrtReplicas, not replicationFactor."""
+        client = self._make_client_with_mock_session()
+        resp = _make_response(status_code=200, json_data={"responseHeader": {"status": 0}})
+        client._session.post.return_value = resp
+        client.create_collection("my-coll", "my-config", num_shards=2, replication_factor=3)
+        _, kwargs = client._session.post.call_args
+        payload = kwargs["json"]
+        self.assertEqual(2, payload["numShards"])
+        self.assertEqual(3, payload["nrtReplicas"])
+        self.assertNotIn("replicationFactor", payload)
+
+    def test_create_collection_tlog_and_pull_replicas(self):
+        """tlog_replicas and pull_replicas should be sent in the payload."""
+        client = self._make_client_with_mock_session()
+        resp = _make_response(status_code=200, json_data={"responseHeader": {"status": 0}})
+        client._session.post.return_value = resp
+        client.create_collection("my-coll", "my-config",
+                                 tlog_replicas=2, pull_replicas=1)
+        _, kwargs = client._session.post.call_args
+        payload = kwargs["json"]
+        self.assertEqual(2, payload["tlogReplicas"])
+        self.assertEqual(1, payload["pullReplicas"])
+
+    def test_create_collection_defaults_zero_tlog_pull(self):
+        """tlog_replicas and pull_replicas default to 0."""
+        client = self._make_client_with_mock_session()
+        resp = _make_response(status_code=200, json_data={"responseHeader": {"status": 0}})
+        client._session.post.return_value = resp
+        client.create_collection("my-coll", "my-config")
+        _, kwargs = client._session.post.call_args
+        payload = kwargs["json"]
+        self.assertEqual(0, payload["tlogReplicas"])
+        self.assertEqual(0, payload["pullReplicas"])
+
 
 class TestSolrAdminClientDeleteCollection(unittest.TestCase):
     def _make_client_with_mock_session(self):

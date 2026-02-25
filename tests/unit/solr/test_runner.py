@@ -321,6 +321,50 @@ class TestSolrCreateCollection(unittest.TestCase):
         mock_admin.upload_configset.assert_called_once_with("my-config", tmpdir)
         mock_admin.create_collection.assert_called_once()
 
+    @patch("osbenchmark.solr.runner.SolrAdminClient")
+    def test_create_collection_passes_tlog_pull_replicas(self, mock_admin_cls):
+        """Runner should pass tlog-replicas and pull-replicas to create_collection."""
+        mock_admin = MagicMock()
+        mock_admin.create_collection = MagicMock()
+        mock_admin_cls.return_value = mock_admin
+
+        params = {
+            "host": "localhost",
+            "port": 8983,
+            "collection": "my-coll",
+            "configset": "my-config",
+            "num-shards": 2,
+            "replication-factor": 1,
+            "tlog-replicas": 2,
+            "pull-replicas": 1,
+        }
+        runner = SolrCreateCollection()
+        _run(runner(None, params))
+
+        mock_admin.create_collection.assert_called_once_with(
+            "my-coll", "my-config", 2, 1, 2, 1
+        )
+
+    @patch("osbenchmark.solr.runner.SolrAdminClient")
+    def test_create_collection_defaults_tlog_pull_to_zero(self, mock_admin_cls):
+        """Runner defaults tlog-replicas and pull-replicas to 0 when omitted."""
+        mock_admin = MagicMock()
+        mock_admin.create_collection = MagicMock()
+        mock_admin_cls.return_value = mock_admin
+
+        params = {
+            "host": "localhost",
+            "port": 8983,
+            "collection": "my-coll",
+            "configset": "my-config",
+        }
+        runner = SolrCreateCollection()
+        _run(runner(None, params))
+
+        mock_admin.create_collection.assert_called_once_with(
+            "my-coll", "my-config", 1, 1, 0, 0
+        )
+
 
 class TestSolrDeleteCollection(unittest.TestCase):
     @patch("osbenchmark.solr.runner.SolrAdminClient")

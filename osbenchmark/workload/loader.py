@@ -1549,12 +1549,16 @@ class WorkloadSpecificationReader:
             configset_path = os.path.join(mapping_dir, configset_path)
         num_shards = int(self._r(col_spec, "num-shards", mandatory=False, default_value=1))
         replication_factor = int(self._r(col_spec, "replication-factor", mandatory=False, default_value=1))
+        pull_replicas = int(self._r(col_spec, "pull-replicas", mandatory=False, default_value=0))
+        tlog_replicas = int(self._r(col_spec, "tlog-replicas", mandatory=False, default_value=0))
         return workload.Collection(
             name=name,
             configset=configset,
             configset_path=configset_path,
             num_shards=num_shards,
             replication_factor=replication_factor,
+            pull_replicas=pull_replicas,
+            tlog_replicas=tlog_replicas,
         )
 
     def _create_component_template(self, tpl_spec, mapping_dir):

@@ -1,44 +1,46 @@
-# Implementation Plan: Solr Benchmark Fork
+# Implementation Plan: cluster_config + Collection Settings + Logging Fix
 
-**Branch**: `001-solr-benchmark-fork` | **Date**: 2026-02-24 | **Spec**: `specs/001-solr-benchmark-fork/spec.md`
+**Branch**: `001-solr-benchmark-fork` | **Date**: 2026-02-25 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification from `/specs/001-solr-benchmark-fork/spec.md`
+**Scope**: Three focused requirements (Krav 1–3) from 2026-02-25 clarification session.
+
+---
 
 ## Summary
 
-Fork OpenSearch Benchmark into a standalone Apache Solr benchmarking tool (`solr-benchmark`). The fork retains >75% of the original framework code (actor-based concurrency, scheduling engine, metrics aggregation, report generation) while replacing all OpenSearch-specific components with Solr equivalents: HTTP client via pysolr/requests, Solr V2 API admin operations, Solr-native runners (bulk-index, search, commit, optimize, create/delete-collection), Solr telemetry probes, a local filesystem result writer, and a Solr provisioner for both distribution-based and Docker-based workflows.
+Three targeted improvements to the Solr Benchmark fork:
 
-**Current state (as of 2026-02-24)**: The original 39-task implementation is complete and the tool runs end-to-end against Solr 9.x. The remaining work focuses on three directives from the 2026-02-24 spec update:
+1. **Krav 1 — Logging fix**: `cluster_config [['external']]` → `cluster_config [external]` (double-bracket rendering bug in `test_run_orchestrator.py`).
+2. **Krav 2 — Collection settings**: Add `shards`, `nrt_replicas`, `pull_replicas`, `tlog_replicas` fields to `workload.json` collections (with backward-compat aliases). Thread the values through `Collection` class → `SolrCreateCollection` runner → `SolrAdminClient.create_collection()` → Solr V2 API.
+3. **Krav 3 — cluster_config for Solr**: Integrate the existing `ClusterConfigInstanceLoader` mechanism with `SolrProvisioner` and `SolrDockerLauncher`. Translate INI variables (`heap_size`, `gc_tune`, `solr_opts`) to Solr env vars (`SOLR_HEAP`, `GC_TUNE`, `SOLR_OPTS`) at provisioner startup. Validate that `--cluster-config` is not used with `benchmark-only` pipeline.
 
-1. **No auto-conversion at run time**: Replace `_maybe_auto_convert_workload()` with detection → hard error
-2. **Isolated conversion module**: Verify `osbenchmark/solr/conversion/` has no circular imports from the run path; remove bridge runners
-3. **Workload repository URL**: Fix `benchmark.ini` `default.url` → `https://github.com/janhoy/solr-benchmark-workloads`
+---
 
 ## Technical Context
 
 **Language/Version**: Python 3.10+
-**Primary Dependencies**: pysolr 3.x (data operations), requests (admin HTTP), thespian (actor model), pytest (tests), tabulate (console tables)
-**Storage**: Local filesystem — JSON/CSV result files at `~/.solr-benchmark/`, SQLite test-runs store
-**Testing**: pytest (`tests/unit/solr/`); run: `python -m pytest tests/unit/solr/ -q`
-**Target Platform**: Linux/macOS server with Python 3.10+, Java 21 for provisioning
-**Project Type**: Single Python package (`osbenchmark/` + thin `solrbenchmark/` entry-point wrapper)
-**Performance Goals**: Support indexing 10k–165M document corpora; benchmark throughput measured in docs/s and ops/s
-**Constraints**: macOS fork-safety (`OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES`; `session.trust_env = False` in all post-fork sessions); no external metrics store
-**Scale/Scope**: Single-node and SolrCloud topologies; Solr 9.x primary, Solr 10.x secondary
+**Primary Dependencies**: pysolr 3.x, requests, thespian (actor model), pytest
+**Storage**: Local filesystem — JSON/CSV result files, SQLite test-runs store
+**Testing**: pytest — tests under `tests/unit/solr/`
+**Target Platform**: Linux/macOS server, Docker
+**Project Type**: Single Python package (`osbenchmark/`)
+**Performance Goals**: N/A for this change (infrastructure/config only)
+**Constraints**: macOS fork-safety (`trust_env=False` on all sessions in forked processes); no external deps added
+
+---
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+Constitution file is a placeholder (unfilled). Using project conventions derived from CLAUDE.md:
 
-No constitution file has been configured for this project. All design decisions are governed by the spec clarifications. The following gates are applied from the spec:
+- ✅ Solr-only execution path (no OpenSearch/dual-mode introduced)
+- ✅ No new external dependencies
+- ✅ Unit tests required for all new logic
+- ✅ `requests.Session.trust_env = False` on all sessions created post-fork
+- ✅ Runners remain `async_runner=True`
+- ✅ Admin ops use V2 API (V1 configset upload allowed as known exception per R&D)
 
-| Gate | Status |
-|------|--------|
-| ASF licensing compliance | ✓ PASS — NOTICE, LICENSE, per-file headers completed |
-| No OpenSearch branding in user-facing output | ✓ PASS — all CLI, banners, help text updated |
-| ≥75% original code retained | ✓ PASS — only Solr-incompatible modules replaced |
-| Generic framework (actor, scheduling, metrics agg) unchanged | ✓ PASS — `worker_coordinator`, `metrics.py` framework code retained |
-| Conversion code isolated from run path | ⚠ IN PROGRESS — bridge runners still exist in `runner.py`; `_maybe_auto_convert_workload` still does auto-convert |
-| `benchmark.ini` default.url points to Solr workloads repo | ✗ FAIL — still points to opensearch-project repo |
+---
 
 ## Project Structure
 
@@ -46,202 +48,295 @@ No constitution file has been configured for this project. All design decisions 
 
 ```text
 specs/001-solr-benchmark-fork/
-├── plan.md              # This file
-├── research.md          # Phase 0 output (see below)
-├── data-model.md        # Phase 1 output (see below)
-├── quickstart.md        # Phase 1 output (see below)
-├── contracts/           # Phase 1 output (see below)
-└── tasks.md             # Phase 2 output (/speckit.tasks command)
+├── plan.md              ← This file
+├── research.md          ← Phase 0 output (updated 2026-02-25)
+├── data-model.md        ← Phase 1 output (updated 2026-02-25)
+├── quickstart.md        ← Phase 1 output
+├── contracts/           ← Phase 1 output
+└── tasks.md             ← Phase 2 output (/speckit.tasks)
 ```
 
-### Source Code (repository root)
+### Source Code (affected files)
 
 ```text
 osbenchmark/
-├── benchmark.py                    # CLI entry point — convert-workload subcommand, run subcommand
-├── test_run_orchestrator.py        # Run pipeline — _maybe_auto_convert_workload() → replace with detection+error
-├── resources/
-│   └── benchmark.ini               # default.url — MUST be updated to Solr workloads repo
+├── test_run_orchestrator.py     ← Krav 1: fix cluster_config log format
+│                                   Krav 3: add benchmark-only guard
+├── benchmark.py                 ← Krav 3: --cluster-config validation
+├── workload/
+│   ├── workload.py              ← Krav 2: Collection class new fields
+│   └── loader.py                ← Krav 2: parse new workload.json fields
 ├── solr/
-│   ├── __init__.py
-│   ├── client.py                   # SolrAdminClient + SolrClientShim
-│   ├── runner.py                   # Solr runners — bridge runners to be REMOVED
-│   ├── provisioner.py              # SolrProvisioner + SolrDockerLauncher
-│   ├── telemetry.py                # SolrJvmStats, SolrNodeStats, SolrCollectionStats
-│   ├── result_writer.py            # ResultWriter ABC + LocalFilesystemResultWriter
-│   ├── schema_generator.py         # Auto-schema generation (convenience fallback)
-│   └── conversion/                 # ISOLATED conversion utility — no imports from run path
-│       ├── __init__.py
-│       ├── detector.py             # OSB vs Solr workload format detection
-│       ├── query.py                # OpenSearch DSL → Solr JSON Query translation
-│       ├── schema.py               # OpenSearch mapping → Solr schema.xml
-│       ├── field.py                # Field type mapping helpers
-│       └── workload_converter.py   # Top-level converter orchestrating the above
-└── tools/
-    └── migrate_workload.py         # Legacy migration helper (distinct from conversion/)
-
-solrbenchmark/
-├── __init__.py
-└── main.py                         # Thin entry-point wrapper
+│   ├── runner.py                ← Krav 2: SolrCreateCollection reads new params
+│   ├── client.py                ← Krav 2: create_collection() new signature
+│   └── provisioner.py          ← Krav 3: SolrProvisioner + SolrDockerLauncher
+│                                          accept & apply cluster_config
+└── resources/cluster_configs/main/cluster_configs/v1/
+    ├── g1gc.ini                 ← Krav 3: add gc_tune variable
+    └── parallelgc.ini           ← Krav 3: add gc_tune variable
 
 tests/unit/solr/
-├── test_client.py
-├── test_runner.py
-├── test_telemetry.py
-├── test_result_writer.py
-├── test_provisioner.py
-├── test_schema_generator.py
-└── conversion/
-    ├── test_detector.py
-    ├── test_query.py
-    └── test_workload_converter.py
+├── test_runner.py               ← Krav 2: tests for new collection params
+├── test_client.py               ← Krav 2: tests for new create_collection sig
+├── test_provisioner.py          ← Krav 3: tests for env var application
+└── test_cluster_config.py       ← Krav 3: tests for benchmark-only guard
 ```
 
-**Structure Decision**: Single Python project. The `osbenchmark/solr/conversion/` sub-package is the sole home of workload conversion logic — it is a standalone utility that the `convert-workload` CLI subcommand calls directly. It MUST NOT be imported from the benchmark run path (other than `detector.py` which is used for format detection → error).
+---
 
-## Phase 0: Research
+## Phase 0: Research — COMPLETE
 
-All foundational research is complete (original 39 tasks). The remaining research applies only to the three pending directives:
+See [research.md](research.md) sections R-05, R-06, R-07.
 
-### R-01: Isolation boundary for conversion module
+Key findings:
+- **Logging bug** (R-07): `self.test_run.cluster_config` is a list; format string renders it as `[['external']]`. Fix: `", ".join(names)`.
+- **cluster_config INI** (R-05): Files exist at `osbenchmark/resources/cluster_configs/main/cluster_configs/v1/`. Variables `heap_size` → `SOLR_HEAP`, `gc_tune` → `GC_TUNE`, `solr_opts` → `SOLR_OPTS`.
+- **Collection fields** (R-06): Solr V2 API supports `nrtReplicas`, `tlogReplicas`, `pullReplicas` directly. Replace `replication-factor` (→ `nrt_replicas`) with full three-type model.
 
-**Finding**: `osbenchmark/solr/conversion/` already exists as a standalone module. The problematic coupling is in `test_run_orchestrator.py` where `_maybe_auto_convert_workload()` imports from `workload_converter` (full conversion). Per FR-018b, only `detector.py` may be imported from the run path — and only to detect the format and abort with an error.
+---
 
-**Decision**: Replace `_maybe_auto_convert_workload()` body with:
-1. Load workload path from config
-2. Call `detector.is_opensearch_workload_path(workload_path)` (new function in `detector.py`)
-3. If True → print ERROR message with `convert-workload` command → raise `exceptions.SystemSetupError`
-4. If False → no-op
+## Phase 1: Design
 
-### R-02: Bridge runners to remove
+### Krav 1 — Logging Fix
 
-**Finding**: The following bridge runner classes in `osbenchmark/solr/runner.py` map OpenSearch operation types at runtime — violating FR-018g which mandates that all operation type mapping happens at workload conversion time:
+**File**: `osbenchmark/test_run_orchestrator.py`
 
-| Class | Maps | Remove? |
-|-------|------|---------|
-| `SolrRefreshBridge` | `refresh` → commit | YES |
-| `SolrNoOpBridge` | various OS ops → no-op | YES |
-| `SolrDeleteIndexBridge` | `delete-index` → delete-collection | YES |
-| `SolrCreateIndexBridge` | `create-index` → create-collection | YES |
-| `SolrBulkBridge` | `bulk` (OS NDJSON) → bulk-index | YES |
-
-**Decision**: Remove all five bridge classes and their `register_runner()` calls. Solr-native workloads use `bulk-index`, `create-collection`, `delete-collection` directly.
-
-### R-03: Search runner OpenSearch DSL error (FR-018f)
-
-**Finding**: The current `SolrSearch.__call__()` accepts Mode 3 (OpenSearch DSL body where `body["query"]` is a dict) and auto-translates it at runtime. Per FR-018f, this should now raise an error — the workload should never reach the runner in OSB DSL format because FR-018b aborts at load time.
-
-**Decision**: In `SolrSearch.__call__()`, when `body["query"]` is a `dict`, raise `exceptions.BenchmarkAssertionError` with a clear message: "Query body contains OpenSearch DSL (query is a dict). Convert this workload first using `solr-benchmark convert-workload`."
-
-### R-04: detector.py file-path entry point
-
-**Finding**: The current `detector.py` exports `is_opensearch_workload(workload)` which takes a loaded workload object. `test_run_orchestrator.py` needs to detect format before loading (to abort early). `workload_converter.py` has `detect_workload_format_from_file(path)` but this lives in the converter (wrong boundary).
-
-**Decision**: Add `is_opensearch_workload_path(workload_path: str) -> bool` to `detector.py` that reads the workload JSON file from disk and checks for `"indices"` vs `"collections"` key. This function may be imported by `test_run_orchestrator.py` without pulling in any conversion code.
-
-## Phase 1: Design & Contracts
-
-### Data Model (unchanged from original design)
-
-No data model changes. The `Workload` entity already has `collections` (Solr) vs `indices` (OSB) as the discriminator.
-
-### API Contracts (updated)
-
-#### `osbenchmark/solr/conversion/detector.py` (updated interface)
-
+Two call sites (~lines 297 and 305). Current code:
 ```python
-def is_opensearch_workload_path(workload_path: str) -> bool:
-    """
-    Read the workload JSON from disk and return True if it is an OpenSearch workload.
-    Raises no exceptions — returns False for missing/unparseable files (not OSB).
-    """
-
-def is_opensearch_workload(workload) -> bool:
-    """Existing: takes loaded workload object."""
+console.info("...cluster_config [{}]...".format(self.test_run.cluster_config, ...))
 ```
 
-#### `osbenchmark/test_run_orchestrator.py` (updated method)
-
+Fix — produce a comma-joined string:
 ```python
-def _check_workload_is_solr_native(self):
-    """
-    Detect workload format. If OpenSearch format detected, abort with clear error.
-    DOES NOT perform conversion. DOES NOT import workload_converter.
-    """
+cluster_cfg_display = ", ".join(self.test_run.cluster_config or ["none"])
+console.info("...cluster_config [{}]...".format(cluster_cfg_display, ...))
 ```
 
-#### `osbenchmark/solr/runner.py` (updated SolrSearch)
+No other changes needed. This is a pure display fix.
+
+---
+
+### Krav 2 — Collection Settings
+
+Field naming: keep existing hyphen-style names (`num-shards`, `replication-factor`). `replication-factor` is an alias for nrt-replicas (semantically identical in SolrCloud). Only ADD the two new fields: `pull-replicas` and `tlog-replicas`.
+
+#### 2a. `Collection` class (`osbenchmark/workload/workload.py`)
+
+Add two new fields only — keep `num_shards` and `replication_factor` unchanged:
 
 ```python
-# In SolrSearch.__call__(): Mode 3 detection
-if isinstance(body.get("query"), dict):
-    raise exceptions.BenchmarkAssertionError(
-        "Query body contains OpenSearch DSL. Convert this workload first: "
-        "`solr-benchmark convert-workload --workload-path <src> --output-path <dest>`"
+class Collection:
+    def __init__(self, name, configset=None, configset_path=None,
+                 num_shards=1, replication_factor=1,
+                 pull_replicas=0, tlog_replicas=0):   # ← only these two are new
+        ...
+        self.pull_replicas = pull_replicas
+        self.tlog_replicas = tlog_replicas
+```
+
+#### 2b. Workload loader (`osbenchmark/workload/loader.py`)
+
+Add two new reads only — keep existing `num-shards` and `replication-factor` reads:
+
+```python
+pull_replicas = int(self._r(col_spec, "pull-replicas", mandatory=False, default_value=0))
+tlog_replicas = int(self._r(col_spec, "tlog-replicas", mandatory=False, default_value=0))
+return workload.Collection(..., pull_replicas=pull_replicas, tlog_replicas=tlog_replicas)
+```
+
+#### 2b². `CreateCollectionParamSource` (`osbenchmark/workload/params.py`)
+
+Add `"pull-replicas"` and `"tlog-replicas"` to both `collection_def` dicts (lines ~469–485):
+
+```python
+"pull-replicas": col.pull_replicas,
+"tlog-replicas": col.tlog_replicas,
+```
+
+#### 2c. `SolrAdminClient.create_collection()` (`osbenchmark/solr/client.py`)
+
+Add two params, replace `replicationFactor` with `nrtReplicas` in payload:
+
+```python
+def create_collection(self, name, configset,
+                      num_shards=1, replication_factor=1,
+                      tlog_replicas=0, pull_replicas=0, ...):
+    payload = {
+        "name": name,
+        "config": configset,
+        "numShards": num_shards,
+        "nrtReplicas": replication_factor,   # replication-factor = nrt replicas
+        "tlogReplicas": tlog_replicas,
+        "pullReplicas": pull_replicas,
+        "waitForFinalState": True,
+    }
+```
+
+#### 2d. `SolrCreateCollection` runner (`osbenchmark/solr/runner.py`)
+
+Add two new param reads — keep existing `num-shards` / `replication-factor` reads:
+
+```python
+tlog_replicas = params.get("tlog-replicas", 0)
+pull_replicas = params.get("pull-replicas", 0)
+await _run_in_executor(
+    admin.create_collection,
+    collection, configset, num_shards, replication_factor, tlog_replicas, pull_replicas,
+)
+```
+
+---
+
+### Krav 3 — cluster_config for Solr
+
+#### 3a. INI files — add `gc_tune` variable
+
+`g1gc.ini`:
+```ini
+[meta]
+description=Use G1 Garbage Collector
+
+[config]
+base=vanilla
+
+[variables]
+gc_tune=-XX:+UseG1GC -XX:+UseStringDeduplication
+```
+
+`parallelgc.ini`:
+```ini
+[meta]
+description=Use Parallel Garbage Collector
+
+[config]
+base=vanilla
+
+[variables]
+gc_tune=-XX:+UseParallelGC
+```
+
+(Remove old `use_g1_gc=true` / `use_parallel_gc=true` variables which were only used by the OSB Jinja2 template.)
+
+#### 3b. `SolrProvisioner` (`osbenchmark/solr/provisioner.py`)
+
+Add `cluster_config` parameter to `__init__` and `start()`:
+
+```python
+class SolrProvisioner:
+    def __init__(self, ..., cluster_config=None):
+        ...
+        self.cluster_config = cluster_config
+
+    def _build_env(self):
+        """Build subprocess environment with Solr env vars from cluster_config."""
+        env = os.environ.copy()
+        if self.cluster_config:
+            vars_ = self.cluster_config.variables
+            if "heap_size" in vars_:
+                env["SOLR_HEAP"] = vars_["heap_size"]
+            if "gc_tune" in vars_:
+                env["GC_TUNE"] = vars_["gc_tune"]
+            if "solr_opts" in vars_:
+                env["SOLR_OPTS"] = vars_["solr_opts"]
+        return env
+
+    def start(self, solr_root, mode=None):
+        cmd = [bin_solr, "start", "-p", str(self.port), ...]
+        result = subprocess.run(cmd, env=self._build_env(), ...)
+```
+
+#### 3c. `SolrDockerLauncher` (`osbenchmark/solr/provisioner.py`)
+
+Add `-e KEY=VALUE` flags to `docker run`:
+
+```python
+def _cluster_config_env_flags(self):
+    flags = []
+    if self.cluster_config:
+        vars_ = self.cluster_config.variables
+        mapping = {"heap_size": "SOLR_HEAP", "gc_tune": "GC_TUNE", "solr_opts": "SOLR_OPTS"}
+        for ini_key, env_key in mapping.items():
+            if ini_key in vars_:
+                flags += ["-e", f"{env_key}={vars_[ini_key]}"]
+    return flags
+
+def start(self, version_tag="9", mode=None):
+    cmd = ["docker", "run", "--rm", "--name", self.container_name,
+           "-p", f"{self.port}:8983", "-d"]
+    cmd += self._cluster_config_env_flags()
+    cmd.append(image)
+    ...
+```
+
+#### 3d. Provisioner wiring (`osbenchmark/test_run_orchestrator.py` or `builder/`)
+
+Where `SolrProvisioner` / `SolrDockerLauncher` is instantiated, pass the loaded `cluster_config` instance.
+
+The `cluster_config` is loaded via:
+```python
+from osbenchmark.builder import cluster_config as cluster_config_module
+cfg_instance = cluster_config_module.load_cluster_config(
+    repo=...,
+    name=self.config.opts("builder", "cluster_config.names")[0],
+    cluster_config_params=self.config.opts("builder", "cluster_config.params"),
+)
+```
+
+#### 3e. `benchmark-only` validation (`osbenchmark/benchmark.py`)
+
+In `configure_builder_params()`, after reading `args.cluster_config`:
+
+```python
+pipeline = cfg.opts("test_execution", "pipeline")
+if pipeline == "benchmark-only" and args.cluster_config != "defaults":
+    raise SystemExit(
+        "ERROR: --cluster-config is only valid for provisioning pipelines "
+        "(from-distribution, docker, from-sources). "
+        "It cannot be used with the 'benchmark-only' pipeline."
     )
 ```
 
-#### `osbenchmark/resources/benchmark.ini` (updated URL)
+---
 
-```ini
-[workloads]
-default.url = https://github.com/janhoy/solr-benchmark-workloads
-```
+## Test Plan
 
-### Quickstart
+### Unit Tests
 
-**To run a Solr-native benchmark:**
-```bash
-# Against a running Solr instance
-solr-benchmark run --pipeline=benchmark-only \
-  --target-hosts=localhost:8983 \
-  --workload-path=/path/to/solr-workload
+| Test | File | What it covers |
+|---|---|---|
+| `test_cluster_config_log_format` | `test_run_orchestrator` | Verifies `cluster_config [external]` not `[['external']]` |
+| `test_collection_new_fields_defaults` | `test_workload_loader` | Parses workload.json with no topology fields → defaults |
+| `test_collection_new_fields_explicit` | `test_workload_loader` | Parses `shards=2, nrt_replicas=2, tlog_replicas=1, pull_replicas=0` |
+| `test_collection_backward_compat` | `test_workload_loader` | Old `num-shards` / `replication-factor` still parsed |
+| `test_create_collection_new_params` | `test_client` | `create_collection()` sends `nrtReplicas`, `tlogReplicas`, `pullReplicas` |
+| `test_create_collection_runner_new_params` | `test_runner` | Runner reads new params, passes to admin client |
+| `test_provisioner_heap_env` | `test_provisioner` | `SolrProvisioner._build_env()` sets `SOLR_HEAP=4g` from `4gheap` config |
+| `test_provisioner_gc_env` | `test_provisioner` | `_build_env()` sets `GC_TUNE` from `g1gc` config |
+| `test_provisioner_no_config` | `test_provisioner` | No env vars set when `cluster_config=None` |
+| `test_docker_env_flags` | `test_provisioner` | `_cluster_config_env_flags()` produces `-e SOLR_HEAP=4g` |
+| `test_benchmark_only_rejects_cluster_config` | `test_benchmark` | `--cluster-config 4gheap` with `benchmark-only` raises `SystemExit` |
 
-# If you have an OpenSearch workload, convert first:
-solr-benchmark convert-workload \
-  --workload-path=/path/to/osb-workload \
-  --output-path=/path/to/solr-workload
+---
 
-# Then run the converted workload
-solr-benchmark run --pipeline=benchmark-only \
-  --target-hosts=localhost:8983 \
-  --workload-path=/path/to/solr-workload
-```
+## Implementation Order
 
-**Error message shown when OSB workload is detected at run time:**
-```
-[ERROR] This workload is in OpenSearch Benchmark format.
-        Run `solr-benchmark convert-workload --workload-path <src> --output-path <dest>` to convert it to Solr format first.
-```
+Tasks to be broken down in `/speckit.tasks`. Suggested sequence:
 
-## Remaining Implementation Tasks
+1. **T-A**: Fix logging bug in `test_run_orchestrator.py` (trivial, 5 min, zero risk)
+2. **T-B**: Update `Collection` class fields + loader backward-compat
+3. **T-C**: Update `SolrAdminClient.create_collection()` signature + tests
+4. **T-D**: Update `SolrCreateCollection` runner to read new params
+5. **T-E**: Update GC INI configs (`g1gc.ini`, `parallelgc.ini`) with `gc_tune`
+6. **T-F**: Add `_build_env()` + `_cluster_config_env_flags()` to provisioners
+7. **T-G**: Wire cluster_config loading into provisioner instantiation
+8. **T-H**: Add `benchmark-only` + `--cluster-config` guard in `benchmark.py`
+9. **T-I**: Unit tests for all above
 
-The following tasks remain from the updated spec (all original 39 tasks are complete):
+---
 
-### Task A: Fix benchmark.ini default.url (1 line)
-- **File**: `osbenchmark/resources/benchmark.ini`
-- **Change**: `default.url = https://github.com/janhoy/solr-benchmark-workloads`
+## Artifacts Generated
 
-### Task B: Add `is_opensearch_workload_path()` to detector.py
-- **File**: `osbenchmark/solr/conversion/detector.py`
-- **Change**: New function that reads workload JSON from disk and checks for OSB format markers
-
-### Task C: Replace auto-convert with detection+error in test_run_orchestrator.py
-- **File**: `osbenchmark/test_run_orchestrator.py`
-- **Change**: Replace `_maybe_auto_convert_workload()` body — detect OSB format → raise error with helpful message; rename method to `_check_workload_is_solr_native()` or update in-place
-
-### Task D: Remove bridge runners from runner.py
-- **File**: `osbenchmark/solr/runner.py`
-- **Change**: Remove `SolrRefreshBridge`, `SolrNoOpBridge`, `SolrDeleteIndexBridge`, `SolrCreateIndexBridge`, `SolrBulkBridge` classes and their `register_runner()` calls
-
-### Task E: Update SolrSearch to error on OpenSearch DSL (FR-018f)
-- **File**: `osbenchmark/solr/runner.py` — `SolrSearch.__call__()`
-- **Change**: Detect `body["query"]` is dict → raise `BenchmarkAssertionError` with convert-workload hint
-
-### Task F: Update/add unit tests
-- **Files**: `tests/unit/solr/conversion/test_detector.py`, `tests/unit/solr/test_runner.py`
-- **Change**: Test new `is_opensearch_workload_path()`, test error path in SolrSearch, test removal of bridge runners
-
-## Complexity Tracking
-
-No constitution violations. The conversion module isolation is a simplification (removing code), not an addition.
+- ✅ `research.md` — updated with R-05, R-06, R-07
+- ✅ `data-model.md` — Collection entity updated; ClusterConfig entity added
+- ✅ `plan.md` — this file
+- `tasks.md` — next step: `/speckit.tasks`

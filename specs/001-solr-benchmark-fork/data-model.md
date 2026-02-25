@@ -46,22 +46,28 @@ A Solr collection definition used in workload setup/teardown.
   "name": "my-collection",
   "configset": "my-configset",
   "configset-path": "workloads/geonames/configset",
-  "num_shards": 1,
-  "replication_factor": 1
+  "num-shards": 1,
+  "replication-factor": 1,
+  "tlog-replicas": 0,
+  "pull-replicas": 0
 }
 ```
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | yes | Solr collection name |
-| `configset` | string | yes | Configset name to upload to (and reference when creating the collection) |
-| `configset-path` | string | yes | Path to the configset directory (must contain `conf/schema.xml` and `conf/solrconfig.xml`). The tool zips this directory and uploads it before creating the collection. |
-| `num_shards` | int | no (default: 1) | Number of shards |
-| `replication_factor` | int | no (default: 1) | Replica count per shard |
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | yes | — | Solr collection name |
+| `configset` | string | no | (collection name) | Configset name on the cluster |
+| `configset-path` | string | no | — | Path to the local configset directory (`conf/schema.xml`, `conf/solrconfig.xml`). If provided, the tool zips and uploads it before creating the collection. |
+| `num-shards` | int | no | 1 | Number of shards (`numShards` in Solr V2 API) |
+| `replication-factor` | int | no | 1 | NRT (Near-Real-Time) replicas per shard (`nrtReplicas` in Solr V2 API). In SolrCloud, `replication-factor` has always meant NRT replicas; this mapping is semantically identical. |
+| `tlog-replicas` | int | no | 0 | TLOG replicas per shard (`tlogReplicas`). Used in SolrCloud for transaction-log-based recovery. |
+| `pull-replicas` | int | no | 0 | Pull replicas per shard (`pullReplicas`). Read-only replicas that do not participate in indexing. |
 
-**Collection creation is a two-step API sequence**: (1) `PUT /api/cluster/configs/{configset}` with the ZIP body, then (2) `POST /api/collections` referencing the configset name. Teardown deletes both the collection and the configset.
+**Collection creation is a two-step API sequence**: (1) `POST /solr/admin/configs?action=UPLOAD&name={configset}` with ZIP body (V1 API, works on Solr 9.x), then (2) `POST /api/collections` referencing the configset name (V2 API). Teardown deletes both.
 
 **Replaces**: OSB `Index` entity (which had `name`, `body` for mappings, `auto_managed_index`)
+
+**Note on replica types**: Total replicas per shard = `replication-factor + tlog-replicas + pull-replicas`. For single-node benchmarks, keep defaults (1 NRT replica, 0 others).
 
 ---
 
@@ -316,6 +322,56 @@ Polls `GET /api/collections/{collection}/metrics` (or cluster metrics) per colle
 | `num_docs` | count | Live document count |
 | `index_size_bytes` | bytes | On-disk index size |
 | `segment_count` | count | Lucene segment count |
+
+---
+
+## 10. ClusterConfig (provisioning entity)
+
+A named configuration that sets Solr JVM and GC parameters before a provisioned Solr node starts. Applicable only to provisioning pipelines (`from-distribution`, `docker`, `from-sources`). **Not applicable to `benchmark-only` pipeline** — specifying `--cluster-config` with `benchmark-only` is a hard error.
+
+### INI file format (stored in `osbenchmark/resources/cluster_configs/main/cluster_configs/v1/`)
+
+```ini
+[meta]
+description=Sets the Java heap to 4GB
+
+[config]
+base=vanilla
+
+[variables]
+heap_size=4g
+```
+
+### Variable → Solr env var mapping
+
+| INI variable | Solr env var | Description | Example value |
+|---|---|---|---|
+| `heap_size` | `SOLR_HEAP` | JVM heap size (Xms and Xmx) | `4g` |
+| `gc_tune` | `GC_TUNE` | GC algorithm flags | `-XX:+UseG1GC -XX:+UseStringDeduplication` |
+| `solr_opts` | `SOLR_OPTS` | Additional JVM options | `-XX:+PrintGCDetails` |
+
+All variables are optional. Variables not present in the INI are not set in the subprocess env (Solr uses its defaults).
+
+### Built-in presets
+
+| Name | heap_size | gc_tune |
+|---|---|---|
+| `defaults` | (Solr default) | (Solr default) |
+| `1gheap` | `1g` | — |
+| `2gheap` | `2g` | — |
+| `4gheap` | `4g` | — |
+| `8gheap` | `8g` | — |
+| `16gheap` | `16g` | — |
+| `24gheap` | `24g` | — |
+| `g1gc` | — | `-XX:+UseG1GC -XX:+UseStringDeduplication` |
+| `parallelgc` | — | `-XX:+UseParallelGC` |
+
+Configs can be combined with `+` separator, e.g. `--cluster-config 4gheap+g1gc`.
+
+### Application method
+
+- **`SolrProvisioner` (local)**: Sets env vars in `subprocess.run(..., env={...})` before calling `bin/solr start`.
+- **`SolrDockerLauncher` (Docker)**: Passes `-e SOLR_HEAP=4g -e GC_TUNE=...` flags in `docker run`.
 
 ---
 

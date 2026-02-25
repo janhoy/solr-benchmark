@@ -149,17 +149,22 @@ class SolrAdminClient:
 
     def create_collection(self, name: str, configset: str,
                           num_shards: int = 1, replication_factor: int = 1,
+                          tlog_replicas: int = 0, pull_replicas: int = 0,
                           wait_for_active_shards: int = 1) -> None:
         """
         Create a Solr collection via POST /api/collections.
 
         The configset must already exist on the cluster (call upload_configset first).
+        ``replication_factor`` maps to ``nrtReplicas`` in the Solr V2 API (they are semantically
+        identical: NRT replicas that participate in indexing and serving queries in real time).
         """
         payload = {
             "name": name,
             "config": configset,
             "numShards": num_shards,
-            "replicationFactor": replication_factor,
+            "nrtReplicas": replication_factor,
+            "tlogReplicas": tlog_replicas,
+            "pullReplicas": pull_replicas,
             "waitForFinalState": True,
         }
         resp = self._get_session().post(
@@ -174,7 +179,8 @@ class SolrAdminClient:
                     f"Collection '{name}' already exists"
                 )
         self._raise_for_solr_error(resp, f"create collection '{name}'")
-        logger.info("Created collection '%s' (shards=%d, rf=%d)", name, num_shards, replication_factor)
+        logger.info("Created collection '%s' (shards=%d, nrt=%d, tlog=%d, pull=%d)",
+                    name, num_shards, replication_factor, tlog_replicas, pull_replicas)
 
     def delete_collection(self, name: str) -> None:
         """Delete a Solr collection via DELETE /api/collections/{name}."""

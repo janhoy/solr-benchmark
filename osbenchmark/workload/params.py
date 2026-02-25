@@ -472,6 +472,8 @@ class CreateCollectionParamSource(ParamSource):
                     "configset-path": col.configset_path,
                     "num-shards": col.num_shards,
                     "replication-factor": col.replication_factor,
+                    "pull-replicas": col.pull_replicas,
+                    "tlog-replicas": col.tlog_replicas,
                 }
             else:
                 self.collection_def = {"collection": target}
@@ -483,6 +485,8 @@ class CreateCollectionParamSource(ParamSource):
                 "configset-path": col.configset_path,
                 "num-shards": col.num_shards,
                 "replication-factor": col.replication_factor,
+                "pull-replicas": col.pull_replicas,
+                "tlog-replicas": col.tlog_replicas,
             }
         else:
             raise exceptions.InvalidSyntax("create-collection operation targets no collection")

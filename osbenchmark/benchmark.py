@@ -1084,6 +1084,13 @@ def configure_builder_params(args, cfg, command_requires_cluster_config=True):
         cfg.add(config.Scope.applicationOverride, "builder",
         "cluster_config.params", opts.to_dict(
             args.cluster_config_params))
+        pipeline = getattr(args, "pipeline", None)
+        if pipeline == "benchmark-only" and args.cluster_config != "defaults":
+            raise SystemExit(
+                "ERROR: --cluster-config is only valid for provisioning pipelines "
+                "(from-distribution, docker, from-sources). "
+                "It cannot be used with the 'benchmark-only' pipeline."
+            )
 
 
 def configure_connection_params(arg_parser, args, cfg):
