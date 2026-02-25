@@ -412,10 +412,11 @@ def _apply_inline_conversions(text: str, rendered_workload: dict, issues: list, 
         if "indices" in parsed:
             parsed["collections"] = parsed.pop("indices")
 
-        # Convert operations
-        for op in parsed.get("operations", []):
-            if isinstance(op, dict):
-                _convert_operation(op, issues, skipped, "", "")
+        # Convert operations (filter out those skipped by _convert_operation)
+        parsed["operations"] = [
+            op for op in parsed.get("operations", [])
+            if not isinstance(op, dict) or _convert_operation(op, issues, skipped, "", "")
+        ]
 
         # Convert challenge schedules
         for challenge in parsed.get("challenges", []):
@@ -459,11 +460,12 @@ def _process_collected_files(source_dir: str, output_dir: str, issues: list, ski
                 shutil.copy2(src_path, dst_path)
                 continue
 
-            # Convert each operation in the fragment
+            # Convert each operation in the fragment; filter out skipped ones
             if subdir == "operations":
-                for op in ops_list:
-                    if isinstance(op, dict):
-                        _convert_operation(op, issues, skipped, source_dir, output_dir)
+                ops_list = [
+                    op for op in ops_list
+                    if not isinstance(op, dict) or _convert_operation(op, issues, skipped, source_dir, output_dir)
+                ]
 
             converted_text = _serialise_jinja_fragment(ops_list, tokens, wrap_array=True)
 
@@ -539,14 +541,45 @@ def _find_operation(workload, op_name):
     return None
 
 
+def _has_auto_date_histogram(aggs: dict) -> bool:
+    """Return True if any aggregation (at any nesting level) uses auto_date_histogram."""
+    for agg_def in aggs.values():
+        if not isinstance(agg_def, dict):
+            continue
+        if "auto_date_histogram" in agg_def:
+            return True
+        nested = agg_def.get("aggs") or agg_def.get("aggregations") or {}
+        if _has_auto_date_histogram(nested):
+            return True
+    return False
+
+
 def _convert_operation(op, issues, skipped, source_dir, output_dir):
-    """Convert an operation definition dict in-place."""
+    """Convert an operation definition dict in-place.
+
+    Returns True if the operation should be kept, False if it should be removed.
+    """
     op_type = op.get("operation-type") or op.get("type", "")
+    op_name = op.get("name", op_type)
 
     if op_type in _UNSUPPORTED_OPS:
-        logger.warning("Skipping unsupported operation '%s' (type: %s)", op.get("name", "?"), op_type)
-        skipped.append(op.get("name", op_type))
-        return
+        logger.warning("Skipping unsupported operation '%s' (type: %s)", op_name, op_type)
+        skipped.append(op_name)
+        return False
+
+    # auto_date_histogram has no Solr equivalent — skip the whole operation.
+    if op_type in ("search", "paginated-search", "scroll-search"):
+        body = op.get("body")
+        if isinstance(body, dict):
+            aggs = body.get("aggs") or body.get("aggregations") or {}
+            if _has_auto_date_histogram(aggs):
+                logger.warning(
+                    "Skipping operation '%s': auto_date_histogram is not supported in Solr "
+                    "(Solr requires explicit gap/start/end for range facets).",
+                    op_name,
+                )
+                skipped.append(f"{op_name} (auto_date_histogram not supported in Solr)")
+                return False
 
     new_type = _OP_MAP.get(op_type)
     if new_type and new_type != op_type:
@@ -599,6 +632,8 @@ def _convert_operation(op, issues, skipped, source_dir, output_dir):
                             json.dump(converted, f, indent=2)
                 except Exception as exc:
                     issues.append(f"Could not translate body file '{body_file}': {exc}")
+
+    return True
 
 
 def _copy_auxiliary_files(source_dir: str, output_dir: str, skip_files: set = None):

@@ -38,7 +38,6 @@ from osbenchmark.solr.telemetry import _parse_prometheus_text
 
 logger = logging.getLogger(__name__)
 
-
 # ---------------------------------------------------------------------------
 # Error translation helpers
 # ---------------------------------------------------------------------------
@@ -535,6 +534,7 @@ class SolrSearch(SolrRunner):
         host = params.get("host", "localhost")
         port = params.get("port", 8983)
         tls = params.get("tls", False)
+        op_name = params.get("name", params.get("operation-type", "unknown"))
         # Accept 'index' as alias for 'collection' (standard OSB workload format).
         collection = params.get("collection") or params.get("index") or None
         if not collection:
@@ -555,7 +555,6 @@ class SolrSearch(SolrRunner):
                 # FR-018b ensures OSB workloads are rejected at load time, so this
                 # should never happen in practice. If it does, the workload was not
                 # properly converted — raise a clear error rather than silently degrading.
-                op_name = params.get("name", params.get("operation-type", "unknown"))
                 raise benchmark_exceptions.BenchmarkAssertionError(
                     f"Task '{op_name}' has a query body with an OpenSearch DSL dict (body['query'] is a dict). "
                     f"This workload must be converted to Solr format first. Run: "
