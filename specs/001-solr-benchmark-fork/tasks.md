@@ -401,4 +401,125 @@ Field naming convention: keep existing hyphen-style names throughout (`num-shard
 | **Phase 10: Workload Conversion Refactor** | **T063–T072** | **T068, T069, T070, T072** | US4 |
 | **Phase 11: Remove Auto-Conversion** | **T073–T079** | **T076, T077, T078** | US4 |
 | **Phase 12: cluster_config + Collection Settings + Logging** | **T080–T091** | **T082, T083, T087, T090** | — |
-| **Total** | **91 tasks** | **40 parallelizable** | |
+| **Phase 13: Docs Site Setup** | **T092–T094** | **T093, T094** | — |
+| **Phase 14: US5 Documentation Content** | **T095–T113** | **T095–T099, T101–T109, T111–T113** | US5 |
+| **Total** | **113 tasks** | **57 parallelizable** | |
+
+---
+
+## Phase 13: Documentation Site Setup (Jekyll scaffold + CI)
+
+**Purpose**: Initialize the `docs/` Jekyll site structure and GitHub Actions deployment
+workflow. These tasks MUST complete before any content tasks (Phase 14) can begin.
+
+- [ ] T092 Create `docs/` Jekyll scaffold — create `docs/Gemfile` with `gem "jekyll", "~> 4.4.1"` and `gem "just-the-docs", "0.12.0"`; create `docs/_config.yml` per plan.md Phase 1 design (title, theme, url, aux_links, search_enabled, callouts); create `docs/.gitignore` containing `_site/` and `.jekyll-cache/`; verify `cd docs && bundle install && bundle exec jekyll build` succeeds
+
+- [ ] T093 [P] Create `.github/workflows/docs.yml` — implement the full GitHub Actions workflow per plan.md Phase 1 design: trigger on push to `main` and `workflow_dispatch`; two jobs (`build` using `ruby/setup-ruby@v1` + `actions/configure-pages@v5` + `bundle exec jekyll build`, and `deploy` using `actions/deploy-pages@v4`); set `working-directory: docs` for all `run` steps; upload artifact from `docs/_site`
+
+- [ ] T094 [P] Create `docs/_includes/footer_custom.html` — implement the ASF copyright + attribution footer per plan.md Phase 1 design; include ASF copyright line, Apache 2.0 license link, link to About page, and one-line credit to OpenSearch Benchmark with trademark notice; use `{{ '/about' | relative_url }}` for the About link
+
+**Checkpoint**: `cd docs && bundle exec jekyll build --strict` succeeds with zero errors.
+
+---
+
+## Phase 14: US5 — Documentation Site Content
+
+**Goal**: 38 Markdown pages covering all 6 navigation sections, fully adapted for
+Apache Solr Benchmark terminology and ASF attribution requirements.
+
+**Independent Test**: `cd docs && bundle exec jekyll build --strict` succeeds; site served
+locally shows all 6 sidebar sections with correct nesting; `about.md` contains the full
+attribution chain and trademark notices; no "OpenSearch Benchmark" text appears in body
+content outside of `about.md`.
+
+### Foundation pages
+
+- [ ] T095 [P] [US5] Create `docs/index.md` — home/landing page for Apache Solr Benchmark; front matter: `title: Apache Solr Benchmark`, `nav_order: 1`; content: 2–3 sentence description of the tool ("Apache Solr Benchmark is a performance benchmarking tool for [Apache Solr](https://solr.apache.org) clusters, derived from OpenSearch Benchmark"), quick links to Quickstart and User Guide sections, link to GitHub repo
+
+- [ ] T096 [P] [US5] Create `docs/about.md` — license, attribution, and trademark page; front matter: `title: About / Credits`, `nav_order: 102`; sections: (1) License — Apache 2.0 with link to full text; (2) Attribution — "Apache Solr Benchmark is derived from OpenSearch Benchmark (Copyright 2022 OpenSearch Contributors, licensed under Apache 2.0), which in turn derives from Elasticsearch Rally (Copyright Elasticsearch bv)"; (3) Trademarks — "Apache Solr is a trademark of The Apache Software Foundation. OpenSearch® is a registered trademark of Amazon Web Services, Inc. or its affiliates."; (4) Links — apache.org, solr.apache.org, opensearch.org; this is the ONLY page where OpenSearch trademark appears in body text
+
+- [ ] T097 [P] [US5] Create `docs/quickstart.md` — adapt OSB quickstart for Apache Solr Benchmark; front matter: `title: Quickstart`, `nav_order: 2`; replace all OpenSearch cluster references with Apache Solr; replace index/indices with collection/collections; update install command to `pip install solr-benchmark`; show example `solr-benchmark run` command targeting `localhost:8983`; link to https://github.com/janhoy/solr-benchmark-workloads as the workloads repository
+
+- [ ] T098 [P] [US5] Create `docs/glossary.md` — adapt OSB glossary for Solr Benchmark; front matter: `title: Glossary`, `nav_order: 100`; include OSB terms (workload, challenge, test procedure, pipeline, corpora, schedule) with Solr-adapted definitions; add Solr-specific terms (collection, configset, shard leader, nrt replica, tlog replica, pull replica); include a terminology mapping table (OSB term → Solr Benchmark canonical term) matching Constitution Principle VI
+
+- [ ] T099 [P] [US5] Create `docs/faq.md` — adapt OSB FAQ for Solr Benchmark; front matter: `title: FAQ`, `nav_order: 101`; remove any FAQ items about OpenSearch-specific features (ML Commons, CCR, etc.); adapt remaining items for Solr context; add FAQ items: "How do I convert an OpenSearch Benchmark workload?" (answer: use `convert-workload` command), "What Solr versions are supported?" (9.x and 10.x), "Where can I find pre-built workloads?" (link to janhoy/solr-benchmark-workloads)
+
+### User Guide section
+
+- [ ] T100 [US5] Create `docs/user-guide/index.md` and `docs/user-guide/concepts.md` — index: `title: User Guide`, `nav_order: 5`, `has_children: true`; concepts: `title: Concepts`, `parent: User Guide`, `nav_order: 3`; adapt OSB concepts page: replace index→collection, primary shard→shard leader, aggregations→facets; keep workload/challenge/pipeline/schedule/operation terminology unchanged; add Solr-specific concept: configset
+
+- [ ] T101 [P] [US5] Create `docs/user-guide/install-and-configure/` section (3 files) — `index.md`: `title: Install and Configure`, `parent: User Guide`, `nav_order: 5`, `has_children: true`; `installing.md`: `title: Installing`, `parent: Install and Configure`, `grand_parent: User Guide`, `nav_order: 5`; adapt from OSB: replace `pip install opensearch-benchmark` with `pip install solr-benchmark`; `configuring.md`: `title: Configuring`, same parent/grand_parent, `nav_order: 7`; adapt from OSB: update `~/.benchmark/benchmark.ini` paths to `~/.solr-benchmark/benchmark.ini`; replace OSB-specific config keys with Solr equivalents
+
+- [ ] T102 [P] [US5] Create `docs/user-guide/understanding-workloads/` section (3 files) — `index.md`: `title: Understanding Workloads`, `parent: User Guide`, `nav_order: 10`, `has_children: true`; `anatomy-of-a-workload.md`: `title: Anatomy of a Workload`, parent/grand_parent set, `nav_order: 15`; adapt from OSB: replace `"indices"` key with `"collections"`, replace `create-index`/`delete-index` with `create-collection`/`delete-collection`, show Solr workload.json example with `collections` array containing `name`, `configset-path`, `shards`, `nrt_replicas`; `common-operations.md`: `title: Common Operations`, `nav_order: 16`; adapt from OSB: document bulk-index, search, commit, optimize, create-collection, delete-collection operations; remove OSB-only ops (create-index, force-merge OpenSearch style)
+
+- [ ] T103 [P] [US5] Create `docs/user-guide/working-with-workloads/` section (4 files) — `index.md`: `title: Working with Workloads`, `parent: User Guide`, `nav_order: 15`, `has_children: true`; `running-workloads.md`: `title: Running a Workload`, `nav_order: 9`; adapt from OSB: update CLI examples to use `solr-benchmark run`, replace `--target-hosts` examples with Solr `host:8983`, replace workload repo URL with `https://github.com/janhoy/solr-benchmark-workloads`; `creating-custom-workloads.md`: `title: Creating Custom Workloads`, `nav_order: 10`; adapt: show Solr-native workload.json format; `finetune-workloads.md`: `title: Fine-tuning Workloads`, `nav_order: 12`; adapt from OSB fine-tuning page; NO contributing-workloads.md (excluded per spec)
+
+- [ ] T104 [P] [US5] Create `docs/user-guide/understanding-results/` section (3 files) — `index.md`: `title: Understanding Results`, `parent: User Guide`, `nav_order: 20`, `has_children: true`; `summary-reports.md`: `title: Summary Reports`, `nav_order: 22`; adapt from OSB: update output format description for JSON/CSV local filesystem output (`~/.solr-benchmark/results/`); `telemetry.md`: `title: Enabling Telemetry`, `nav_order: 30`; adapt from OSB: document Solr telemetry devices only (SolrJvmStats, SolrNodeStats, SolrCollectionStats); remove OpenSearch-only telemetry devices (CCR, ML Commons, etc.)
+
+### Reference section
+
+- [ ] T105 [P] [US5] Create `docs/reference/index.md`, `docs/reference/summary-report.md`, `docs/reference/telemetry.md` — index: `title: Reference`, `nav_order: 25`, `has_children: true`; summary-report: `title: Summary Report Format`, `parent: Reference`, `nav_order: 40`; document the JSON/CSV output format with field descriptions; telemetry: `title: Telemetry Devices`, `parent: Reference`, `nav_order: 45`; list all Solr telemetry devices with their names, metrics collected, and configuration options; remove all OpenSearch-only devices
+
+- [ ] T106 [P] [US5] Create `docs/reference/workloads/` section (5 files) — `index.md`: `title: Workload Reference`, `parent: Reference`, `nav_order: 60`, `has_children: true`; `collections.md` (NEW): `title: collections`, `parent: Workload Reference`, `grand_parent: Reference`, `nav_order: 65`; document the `"collections"` workload.json array key: fields `name`, `configset-path`, `shards` (default 1), `nrt_replicas` (default 1), `pull_replicas` (default 0), `tlog_replicas` (default 0); show JSON examples; `corpora.md`: adapt from OSB, `nav_order: 70`; `operations.md`: adapt from OSB, `nav_order: 100`, replace index operations with Solr operations, remove OpenSearch-only ops; `test-procedures.md`: adapt from OSB, `nav_order: 110`
+
+- [ ] T107 [P] [US5] Create `docs/reference/commands/` section (6 files) — `index.md`: `title: Command Reference`, `parent: Reference`, `nav_order: 50`, `has_children: true`; `run.md`: adapt from OSB run command, `nav_order: 90`, update all flags for Solr (remove `--target-os`, `--cluster-manager-node-count`; add `--cluster-config`); `list.md`: adapt, `nav_order: 80`; `info.md`: adapt, `nav_order: 70`; `compare.md`: adapt, `nav_order: 20`; `command-flags.md`: adapt from OSB, `nav_order: 150`; document all current `solr-benchmark` CLI flags; remove flags for deleted features (generate-data, redline-test, create-index)
+
+### New sections (no OSB equivalent)
+
+- [ ] T108 [P] [US5] Create `docs/cluster-config/` section (2 files) — `index.md`: `title: Cluster Config`, `nav_order: 27`, `has_children: true`; content: overview of `--cluster-config` flag, explain that it controls JVM/GC settings for provisioned Solr nodes (from-distribution, docker, from-sources pipelines only), note it is NOT valid with benchmark-only pipeline, show example: `solr-benchmark run --cluster-config 4gheap --pipeline from-distribution ...`; `available-configs.md`: `title: Available Configs`, `parent: Cluster Config`, `nav_order: 2`; list all built-in configs: defaults, 1gheap, 4gheap, g1gc, parallelgc; for each show the Solr env vars it sets (`SOLR_HEAP`, `GC_TUNE`, `SOLR_OPTS`) and their values
+
+- [ ] T109 [P] [US5] Create `docs/converter/` section (3 files) — `index.md`: `title: Converter Tool`, `nav_order: 28`, `has_children: true`; overview: explain what the converter does (translates OSB workloads to Solr-native format), when to use it, link to janhoy/solr-benchmark-workloads for pre-built Solr workloads; `usage.md`: `title: Usage`, `parent: Converter Tool`, `nav_order: 2`; show full CLI usage: `solr-benchmark convert-workload --workload-path <src> --output-path <dest> [--force]`; show example output including `CONVERTED.md` summary file; `what-converts.md`: `title: What Gets Converted`, `parent: Converter Tool`, `nav_order: 3`; table of: (a) auto-converted constructs (bulk-index→bulk-index, search with match/range/term/bool→Solr JSON DSL, date ranges with format→ISO 8601, aggregations→facets), (b) requires manual review (script_score, percolator, complex nested aggregations), (c) skipped with TODO comment (cluster-health, force-merge, etc.)
+
+### Polish
+
+- [ ] T110 [US5] Run `cd docs && bundle exec jekyll build --strict` and resolve all warnings and errors — fix any broken internal links, missing `parent` references, duplicate `nav_order` values, or malformed front matter; the build MUST complete with zero warnings
+
+- [ ] T111 [P] Terminology audit — scan all docs pages for OSB-specific terms using `grep -r "OpenSearch Benchmark\|create-index\|delete-index\| index \| indices \|aggregation" docs/ --include="*.md" | grep -v about.md`; fix every instance found by applying the adaptation rules from plan.md; verify canonical Solr Benchmark terms used throughout
+
+- [ ] T112 [P] Trademark audit — verify OpenSearch trademark appears ONLY in `docs/about.md`; run `grep -r "OpenSearch" docs/ --include="*.md" | grep -v about.md`; any remaining hits (outside license header comments) MUST be removed or replaced with "Apache Solr Benchmark"; confirm `about.md` contains the full trademark notice for both Apache Solr and OpenSearch
+
+- [ ] T113 [P] Verify GitHub Actions workflow syntax — run `cat .github/workflows/docs.yml` and confirm YAML is valid; verify `working-directory: docs` is set for all run steps; verify `path: docs/_site` is set on the upload artifact step; optionally validate with `yamllint .github/workflows/docs.yml`
+
+**Checkpoint US5**: `bundle exec jekyll build --strict` passes; all 38 pages render; sidebar shows 6 sections with correct nesting; `about.md` has complete attribution chain; terminology and trademark audits pass.
+
+---
+
+## Summary (Updated)
+
+| Phase | Tasks | Parallelizable | Story |
+|---|---|---|---|
+| Phase 1: Setup | T001–T004 | T003, T004 | — |
+| Phase 2: Foundational | T005–T009 | T006, T008 | — |
+| Phase 3: US1 (P1) MVP | T010–T016 | T010, T011, T012, T015 | US1 |
+| Phase 4: US2 (P2) | T017–T019 | T019 | US2 |
+| Phase 5: US3 (P3) | T020–T024 | T021, T022 | US3 |
+| Phase 6: US4 (P4) | T025–T027 | T026 | US4 |
+| Phase 7: Polish | T028–T039 | T028–T033, T035–T039 | — |
+| Phase 8: Corrections | T040–T053 | T043, T046, T048, T052 | — |
+| Phase 9: Results Consolidation | T054–T062 | T054, T059, T060, T062 | — |
+| Phase 10: Workload Conversion Refactor | T063–T072 | T068, T069, T070, T072 | US4 |
+| Phase 11: Remove Auto-Conversion | T073–T079 | T076, T077, T078 | US4 |
+| Phase 12: cluster_config + Collection Settings | T080–T091 | T082, T083, T087, T090 | — |
+| **Phase 13: Docs Site Setup** | **T092–T094** | **T093, T094** | — |
+| **Phase 14: US5 Documentation Content** | **T095–T113** | **T095–T099, T101–T109, T111–T113** | US5 |
+| **Total** | **113 tasks** | **57 parallelizable** | |
+
+### Dependencies
+
+- Phase 13 (T092–T094) can start immediately — no dependency on any prior phase
+- Phase 14 (T095–T113) depends on Phase 13 completion (Jekyll scaffold must exist)
+- Within Phase 14, all `[P]` tasks can run in parallel after T092 completes
+- T110–T113 (polish) depend on all content pages existing
+
+### Parallel opportunities (Phase 14)
+
+All content tasks T095–T109 can be written in parallel (each is a different set of files).
+Recommended grouping for efficient execution:
+
+```
+Group A (foundation):    T095, T096, T097, T098, T099
+Group B (user guide):    T100, T101, T102, T103, T104
+Group C (reference):     T105, T106, T107
+Group D (new sections):  T108, T109
+Polish (sequential):     T110, T111, T112, T113
+```

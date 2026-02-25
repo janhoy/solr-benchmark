@@ -104,5 +104,9 @@ Workloads can be loaded from a git repository (`--workload-repository`), local p
 - Python 3.10+ + pysolr 3.x, requests, thespian (actor model), pytes (001-solr-benchmark-fork)
 - Local filesystem — JSON/CSV result files, SQLite test-runs store (001-solr-benchmark-fork)
 
+- Jekyll 4.4.1 + just-the-docs 0.12.0 gem — documentation site in `docs/` (001-solr-benchmark-fork)
+- GitHub Actions (`docs.yml`) — deploy docs to GitHub Pages on push to main (001-solr-benchmark-fork)
+
 ## Recent Changes
 - 001-solr-benchmark-fork: Added Python 3.10+
+- 001-solr-benchmark-fork: Added Jekyll docs site (docs/) with just-the-docs theme

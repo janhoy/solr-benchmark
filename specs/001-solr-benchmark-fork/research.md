@@ -440,3 +440,66 @@ def is_opensearch_workload_path(workload_path: str) -> bool:
 **Fix location**: `osbenchmark/test_run_orchestrator.py` — two `console.info(...)` call sites (lines ~297 and ~305). Change `self.test_run.cluster_config` to `", ".join(self.test_run.cluster_config or ["none"])` in both format calls.
 
 **Expected output after fix**: `cluster_config [external]`
+
+---
+
+## Phase 0 Addendum: Documentation Site (US5) — 2026-02-25
+
+### Decision D-DOC-1: Jekyll Theme
+
+**Decision**: `just-the-docs` gem version 0.12.0
+
+**Rationale**: The OSB docs use a similar sidebar-nav documentation theme. `just-the-docs`
+provides built-in Lunr.js search (client-side, no backend), clean sidebar navigation with
+3-level nesting (`parent` / `grand_parent` front matter), responsive layout, callout blocks,
+and native GitHub Pages compatibility. It is actively maintained and widely used for
+technical reference documentation.
+
+**Alternatives considered**:
+- `minimal-mistakes` — more blog-oriented, heavier config, less suited for deep reference nav.
+- `minima` (default) — too plain; no sidebar navigation or built-in search.
+- Custom theme — unnecessary complexity; `just-the-docs` meets all requirements.
+
+### Decision D-DOC-2: Deployment Method
+
+**Decision**: GitHub Actions workflow (`docs.yml`) deploying to GitHub Pages from `docs/`.
+
+**Rationale**: Modern GitHub Pages approach (Settings → Pages → Source: "GitHub Actions")
+gives full control over build environment (Ruby 3.3, Jekyll 4.4.1). The workflow uses
+`actions/configure-pages` to inject the correct `baseurl` automatically. The legacy
+`github-pages` gem pins Jekyll 3.x and is incompatible with `just-the-docs` 0.12.0.
+
+### Decision D-DOC-3: OSB Pages Included vs Excluded
+
+**Included (~35 pages)**: All user-guide pages except contributing-workloads; all reference
+pages except generate-data and redline-test commands; indices.md replaced by collections.md;
+quickstart, glossary, faq — all adapted for Solr.
+
+**Excluded (8 pages)**:
+- `features/synthetic-data-generation/` (entire section) — feature deleted
+- `reference/commands/generate-data.md` — command deleted
+- `reference/commands/redline-test.md` — not ported
+- `reference/workloads/indices.md` — replaced by `collections.md`
+- `workloads/vectorsearch.md` — OSB-only workload
+- `user-guide/working-with-workloads/contributing-workloads.md` — OSB contribution workflow
+- `migration-assistance.md` — OSB-specific Rally migration
+- `version-history.md` — deferred (will be created when releases are tagged)
+
+**New pages (7)**:
+`reference/workloads/collections.md`, `cluster-config/index.md`,
+`cluster-config/available-configs.md`, `converter/index.md`, `converter/usage.md`,
+`converter/what-converts.md`, `about.md`
+
+### Decision D-DOC-4: Copyright & Attribution Approach
+
+**Decision**: Shared ASF footer include + dedicated `about.md` page.
+
+**Rationale**: Per Constitution Principles I–III — individual Markdown pages do NOT carry
+per-file license headers (HTML comments in Markdown are non-standard across renderers).
+The `_includes/footer_custom.html` is the correct mechanism for a Jekyll site. The
+`about.md` page is the single authoritative location for the full attribution chain
+(OpenSearch Contributors, Elasticsearch bv/Rally) and trademark notices.
+
+OpenSearch trademark notice (where referenced): "OpenSearch is a registered trademark
+of Amazon Web Services, Inc. or its affiliates."
+Apache Solr trademark notice: "Apache Solr is a trademark of The Apache Software Foundation."

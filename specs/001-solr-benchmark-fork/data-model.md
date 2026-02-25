@@ -389,3 +389,65 @@ SolrNode → (telemetry) → MetricRecord[]
 Operation → (result) → MetricRecord[]
 MetricRecord[] → (aggregated by aggregator.py) → ResultWriter → output files
 ```
+
+---
+
+## Documentation Site Content Inventory (US5) — 2026-02-25
+
+This section describes the "data model" for the documentation site: its content
+inventory and navigation hierarchy.
+
+### Content Entities
+
+| Entity | Description | Source |
+|--------|-------------|--------|
+| **Page** | A single Markdown file rendered to an HTML page | Migrated from OSB or new |
+| **Section** | A named navigation group with an `index.md` | Maps to OSB subdirectory |
+| **Nav entry** | `title` + `nav_order` + optional `parent`/`grand_parent` front matter | Jekyll/just-the-docs |
+| **Callout** | `{: .note }` / `{: .warning }` / `{: .important }` block | just-the-docs feature |
+
+### Full Content Inventory
+
+| File | Title | Source | nav_order | parent | grand_parent |
+|------|-------|--------|-----------|--------|--------------|
+| index.md | Home | NEW | 1 | — | — |
+| quickstart.md | Quickstart | OSB-adapted | 2 | — | — |
+| about.md | About / Credits | NEW | 102 | — | — |
+| glossary.md | Glossary | OSB-adapted | 100 | — | — |
+| faq.md | FAQ | OSB-adapted | 101 | — | — |
+| user-guide/index.md | User Guide | OSB-adapted | 5 | — | — |
+| user-guide/concepts.md | Concepts | OSB-adapted | 3 | User Guide | — |
+| user-guide/install-and-configure/index.md | Install and Configure | OSB-adapted | 5 | User Guide | — |
+| user-guide/install-and-configure/installing.md | Installing | OSB-adapted | 5 | Install and Configure | User Guide |
+| user-guide/install-and-configure/configuring.md | Configuring | OSB-adapted | 7 | Install and Configure | User Guide |
+| user-guide/understanding-workloads/index.md | Understanding Workloads | OSB-adapted | 10 | User Guide | — |
+| user-guide/understanding-workloads/anatomy-of-a-workload.md | Anatomy of a Workload | OSB-adapted | 15 | Understanding Workloads | User Guide |
+| user-guide/understanding-workloads/common-operations.md | Common Operations | OSB-adapted | 16 | Understanding Workloads | User Guide |
+| user-guide/working-with-workloads/index.md | Working with Workloads | OSB-adapted | 15 | User Guide | — |
+| user-guide/working-with-workloads/running-workloads.md | Running a Workload | OSB-adapted | 9 | Working with Workloads | User Guide |
+| user-guide/working-with-workloads/creating-custom-workloads.md | Creating Custom Workloads | OSB-adapted | 10 | Working with Workloads | User Guide |
+| user-guide/working-with-workloads/finetune-workloads.md | Fine-tuning Workloads | OSB-adapted | 12 | Working with Workloads | User Guide |
+| user-guide/understanding-results/index.md | Understanding Results | OSB-adapted | 20 | User Guide | — |
+| user-guide/understanding-results/summary-reports.md | Summary Reports | OSB-adapted | 22 | Understanding Results | User Guide |
+| user-guide/understanding-results/telemetry.md | Enabling Telemetry | OSB-adapted | 30 | Understanding Results | User Guide |
+| reference/index.md | Reference | OSB-adapted | 25 | — | — |
+| reference/summary-report.md | Summary Report Format | OSB-adapted | 40 | Reference | — |
+| reference/telemetry.md | Telemetry Devices | OSB-adapted | 45 | Reference | — |
+| reference/commands/index.md | Command Reference | OSB-adapted | 50 | Reference | — |
+| reference/commands/run.md | run | OSB-adapted | 90 | Command Reference | Reference |
+| reference/commands/list.md | list | OSB-adapted | 80 | Command Reference | Reference |
+| reference/commands/info.md | info | OSB-adapted | 70 | Command Reference | Reference |
+| reference/commands/compare.md | compare | OSB-adapted | 20 | Command Reference | Reference |
+| reference/commands/command-flags.md | Command Flags | OSB-adapted | 150 | Command Reference | Reference |
+| reference/workloads/index.md | Workload Reference | OSB-adapted | 60 | Reference | — |
+| reference/workloads/collections.md | collections | NEW | 65 | Workload Reference | Reference |
+| reference/workloads/corpora.md | corpora | OSB-adapted | 70 | Workload Reference | Reference |
+| reference/workloads/operations.md | operations | OSB-adapted | 100 | Workload Reference | Reference |
+| reference/workloads/test-procedures.md | test_procedures | OSB-adapted | 110 | Workload Reference | Reference |
+| cluster-config/index.md | Cluster Config | NEW | 27 | — | — |
+| cluster-config/available-configs.md | Available Configs | NEW | 2 | Cluster Config | — |
+| converter/index.md | Converter Tool | NEW | 28 | — | — |
+| converter/usage.md | Usage | NEW | 2 | Converter Tool | — |
+| converter/what-converts.md | What Gets Converted | NEW | 3 | Converter Tool | — |
+
+**Total pages**: 38 (31 OSB-adapted + 7 new)

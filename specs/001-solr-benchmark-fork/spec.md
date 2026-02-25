@@ -36,6 +36,10 @@
 - Q: Which Solr env vars should cluster_config control? → A: Three variables: `SOLR_HEAP` (e.g. `4g`), `GC_TUNE` (GC algorithm flags, e.g. `-XX:+UseG1GC`), and `SOLR_OPTS` (extra arbitrary JVM options). No operational vars (port, home, ZK).
 - Q: What is the correct log format for cluster_config? → A: Plain name without nested brackets: `cluster_config [external]` — consistent with how pipeline, workload, and test_procedure appear in the same log line.
 - Q: Which Jekyll theme should the documentation site use? → A: `just-the-docs` gem theme — clean sidebar navigation, built-in search, same family as OSB docs.
+- Q: Where will the documentation site be deployed? → A: GitHub Pages, served from the `docs/` folder in the repository root (not `documentation/`). The Jekyll site lives at `docs/`.
+- Q: What navigation structure should the documentation site use? → A: Mirror OSB structure adapted for Solr — top-level sections: Quickstart, User Guide, Workload Reference, Configuration Reference, Telemetry, Converter Tool.
+- Q: Which OSB content sections should be migrated? → A: All sections EXCEPT "contributing" (OSB-specific) and OSB results-format (our output differs). Include: Quickstart, User Guide, CLI Reference, Cluster-Config reference, Telemetry reference, Troubleshooting — all adapted for Solr Benchmark.
+- Q: Should a GitHub Actions workflow be included to auto-publish docs to GitHub Pages? → A: Yes — include `.github/workflows/docs.yml` that builds and publishes to GitHub Pages on push to main.
 
 ### Session 2026-02-24
 
@@ -125,11 +129,11 @@ A contributor or user of Apache Solr Benchmark wants to read comprehensive, Solr
 
 **Why this priority**: Discoverable documentation is essential for adoption. The OSB documentation serves as the source material; migrating it into a self-contained Jekyll site in this repository makes the tool usable without external dependencies.
 
-**Independent Test**: Can be verified by running `bundle exec jekyll serve` in `documentation/` and confirming all pages render without broken links and that search returns relevant results.
+**Independent Test**: Can be verified by running `bundle exec jekyll serve` in `docs/` and confirming all pages render without broken links and that search returns relevant results.
 
 **Acceptance Scenarios**:
 
-1. **Given** a clone of the repository, **When** the user runs `cd documentation && bundle exec jekyll serve`, **Then** a local documentation site starts and all pages are accessible at `http://localhost:4000`.
+1. **Given** a clone of the repository, **When** the user runs `cd docs && bundle exec jekyll serve`, **Then** a local documentation site starts and all pages are accessible at `http://localhost:4000`.
 2. **Given** the documentation site, **When** a user searches for "workload", **Then** relevant workload-format and converter pages appear in the results.
 3. **Given** the documentation content, **When** a page references terminology or features, **Then** it uses Solr terminology throughout (collection, configset, commit, optimize) — no OpenSearch-only terminology remains.
 4. **Given** a page that previously referenced OSB-only workloads (percolator, etc.), **Then** that workload is not listed; only workloads compatible with this tool are documented.
@@ -222,12 +226,13 @@ A contributor or user of Apache Solr Benchmark wants to read comprehensive, Solr
 - **FR-034**: cluster_config covers single-node JVM and GC tuning only. Multi-node topology (e.g., 3-node SolrCloud) is out of scope for cluster_config and is not controlled by this mechanism.
 
 **Documentation Site:**
-- **FR-035**: The repository MUST include a self-contained Jekyll documentation site in a `documentation/` folder at the repository root. The site MUST use the `just-the-docs` gem theme (sidebar navigation, built-in search). A `Gemfile` and `_config.yml` MUST be included so the site can be served locally with `bundle exec jekyll serve` without any external dependency on the opensearch-project documentation infrastructure.
-- **FR-036**: The documentation content MUST be migrated from the OSB `_benchmark/` section of the opensearch documentation-website repository and adapted for Apache Solr Benchmark. All Solr-incompatible content MUST be removed or replaced; all terminology MUST be updated to use Solr concepts (collection, configset, shards, replicas, commit, optimize).
-- **FR-037**: The documentation MUST NOT include: (a) the "Contribute to workloads" section (OSB-specific contribution workflow), (b) workload listings for OSB-only workloads (percolator, etc.), (c) links to other opensearch.org documentation, (d) documentation for features deleted in this fork (OpenSearch client, gRPC/protobuf operations, OpenSearch telemetry devices).
+- **FR-035**: The repository MUST include a self-contained Jekyll documentation site in a `docs/` folder at the repository root. The site MUST use the `just-the-docs` gem theme (sidebar navigation, built-in search). A `Gemfile` and `_config.yml` MUST be included so the site can be served locally with `bundle exec jekyll serve` without any external dependency on the opensearch-project documentation infrastructure. The site is deployed via GitHub Pages using the `docs/` folder as the source, so `_config.yml` MUST set `baseurl` appropriately for the GitHub Pages URL.
+- **FR-036**: The documentation content MUST be migrated from the OSB `_benchmark/` section of the opensearch documentation-website repository and adapted for Apache Solr Benchmark. All Solr-incompatible content MUST be removed or replaced; all terminology MUST be updated to use Solr concepts (collection, configset, shards, replicas, commit, optimize). The site navigation MUST mirror the OSB top-level structure adapted for Solr, with these sections: **Quickstart**, **User Guide**, **Workload Reference**, **Configuration Reference**, **Telemetry**, **Converter Tool**.
+- **FR-037**: The documentation MUST NOT include: (a) the "Contribute to workloads" section (OSB-specific contribution workflow), (b) workload listings for OSB-only workloads (percolator, etc.), (c) links to other opensearch.org documentation, (d) documentation for features deleted in this fork (OpenSearch client, gRPC/protobuf operations, OpenSearch telemetry devices), (e) the OSB results-format section (our output format — JSON/CSV local filesystem — is documented inline in the User Guide instead). The documentation MUST include: Quickstart, User Guide (running benchmarks, pipelines, workload operations), CLI Reference (all command-line parameters), Cluster-Config reference, Telemetry reference, Troubleshooting, Workload format reference, and Converter Tool guide — all adapted for Solr Benchmark.
 - **FR-038**: The documentation MUST include a dedicated section for the Solr-native workload format, covering: workload.json structure with `"collections"` key, operation types (bulk-index, search, commit, optimize, create-collection, delete-collection, raw-request), collection topology parameters (shards, nrt_replicas, pull_replicas, tlog_replicas), and the configset-path field.
 - **FR-039**: The documentation MUST include a section for the `convert-workload` subcommand and `migrate_workload.py` utility, explaining how to convert an OSB workload to Solr format, what gets converted automatically, what requires manual review (`# TODO` comments), and the `CONVERTED.md` summary file.
 - **FR-040**: Any reference to an external workloads repository MUST point to `https://github.com/janhoy/solr-benchmark-workloads` (not the opensearch-benchmark-workloads repository).
+- **FR-041**: The repository MUST include a GitHub Actions workflow at `.github/workflows/docs.yml` that builds the Jekyll site in `docs/` and publishes it to GitHub Pages automatically on every push to the main branch. The workflow MUST use the `actions/jekyll-build-pages` action (or equivalent) and deploy via `actions/deploy-pages`.
 
 ### Key Entities
 

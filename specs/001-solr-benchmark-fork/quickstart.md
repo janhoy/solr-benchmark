@@ -195,3 +195,75 @@ Review all `# TODO` comments in the output — these indicate operations that re
 | Connection refused to Solr | Check `docker ps` or that `bin/solr start` succeeded; verify port 8983 |
 | `404` on `/api/collections` | Ensure Solr version is 9.x+ (V2 API not available on 8.x) |
 | Tests fail with OpenSearch import errors | An old `async_connection.py` import may remain — check for stale `.pyc` files |
+
+---
+
+## Documentation Site Local Development (US5)
+
+### Prerequisites
+
+- Ruby 3.3+ (`rbenv` or `rvm` recommended on macOS/Linux)
+- Bundler: `gem install bundler`
+
+### First-time setup
+
+```bash
+cd docs
+bundle install
+```
+
+### Serve locally
+
+```bash
+cd docs
+bundle exec jekyll serve
+# Site available at http://localhost:4000
+```
+
+### Build for production (validates the site)
+
+```bash
+cd docs
+bundle exec jekyll build --strict
+# Output in docs/_site/
+```
+
+A successful build with `--strict` (zero warnings) is the acceptance criterion for
+all documentation pull requests.
+
+### Checking for broken links
+
+After build, run a link checker against `docs/_site/`:
+
+```bash
+# Using htmlproofer gem (add to Gemfile as dev dependency if desired)
+bundle exec htmlproofer docs/_site \
+  --disable-external \
+  --ignore-urls "/localhost/"
+```
+
+### Adding a new page
+
+1. Create `docs/<section>/<page-name>.md`
+2. Add front matter:
+   ```yaml
+   ---
+   title: My Page Title
+   parent: Section Title
+   grand_parent: Parent Section Title   # only for 3rd-level pages
+   nav_order: 10
+   ---
+   ```
+3. Run `bundle exec jekyll serve` and verify it appears in the sidebar.
+
+### Content adaptation checklist (for every migrated OSB page)
+
+- [ ] Replace "OpenSearch Benchmark" → "Apache Solr Benchmark" in body text
+- [ ] Replace `index`/`indices` (data container) → `collection`/`collections`
+- [ ] Replace `create-index`/`delete-index` operations → `create-collection`/`delete-collection`
+- [ ] Replace "aggregations" → "facets"
+- [ ] Remove or replace links to opensearch.org documentation
+- [ ] Replace OSB workloads repo URL → `https://github.com/janhoy/solr-benchmark-workloads`
+- [ ] Use "Apache Solr" on first reference per page with link to https://solr.apache.org
+- [ ] OpenSearch mentioned? → add TM notice on `about.md` only, not inline
+- [ ] No `@author`, no `<!--` license header blocks in Markdown (footer handles attribution)
