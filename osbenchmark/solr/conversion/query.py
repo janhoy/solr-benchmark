@@ -447,6 +447,7 @@ def _convert_single_agg(agg_name: str, agg_def: dict):
             "type": "range",
             "field": field,
             "gap": gap,
+            "mincount": 1,
             "start": "NOW/YEAR-10YEAR",
             "end": "NOW/YEAR+1YEAR",
         }
@@ -467,6 +468,7 @@ def _convert_single_agg(agg_name: str, agg_def: dict):
             "type": "range",
             "field": field,
             "gap": h_conf.get("interval", 1),
+            "mincount": 1,
             "start": 0,
             "end": 1000000,
         }
