@@ -176,7 +176,7 @@ def remove_runner(operation_type):
 
 class Runner:
     """
-    Base class for all operations against OpenSearch.
+    Base class for all operations against a search cluster.
     """
 
     def __init__(self, *args, **kwargs):
@@ -475,7 +475,7 @@ class BulkIndex(Runner):
         """
         Runs one bulk indexing operation.
 
-        :param client: The OpenSearch client.
+        :param client: The cluster client.
         :param params: A hash with all parameters. See below for details.
         :return: A hash with meta data for this bulk operation. See below for details.
 
@@ -828,7 +828,7 @@ class TrainKnnModel(Runner):
         """
         Create and train one model named model_id.
 
-        :param client: The OpenSearch client.
+        :param client: The cluster client.
         :param params: A hash with all parameters. See below for details.
         :return: A hash with meta data for this bulk operation. See below for details.
         :raises: Exception if training fails, times out, or a different error occurs.
@@ -950,7 +950,7 @@ class BulkVectorDataSet(Runner):
 
 class ForceMerge(Runner):
     """
-    Runs a force merge operation against OpenSearch.
+    Runs a force merge operation against the target cluster.
     """
 
     PARAM_WAIT_FOR_COMPLETION = "wait_for_completion"
@@ -1100,7 +1100,7 @@ def parse(text: BytesIO, props: List[str], lists: List[str] = None) -> dict:
 
 class Query(Runner):
     """
-    Runs a request body search against OpenSearch.
+    Runs a request body search against the target cluster.
 
     It expects at least the following keys in the `params` hash:
 
@@ -1341,7 +1341,7 @@ class Query(Runner):
                         await client.clear_scroll(body={"scroll_id": [scroll_id]})
                     except BaseException:
                         self.logger.exception("Could not clear scroll [%s]. This will lead to excessive resource usage in "
-                                              "OpenSearch and will skew your benchmark results.", scroll_id)
+                                              "the cluster and will skew your benchmark results.", scroll_id)
 
             return {
                 "weight": retrieved_pages,
@@ -1396,7 +1396,7 @@ class Query(Runner):
                 Calculates the recall by comparing top_k neighbors with predictions.
                 recall = Sum of matched neighbors from predictions / total number of neighbors from ground truth
                 Args:
-                    predictions: list containing ids of results returned by OpenSearch.
+                    predictions: list containing ids of results returned by the cluster.
                     neighbors: list containing ids of the actual neighbors for a set of queries
                     top_k: number of top results to check from the neighbors and should be greater than zero
                 Returns:
@@ -1437,7 +1437,7 @@ class Query(Runner):
                 Calculates the recall by comparing max_distance/min_score threshold neighbors with predictions.
                 recall = Sum of matched neighbors from predictions / total number of neighbors from ground truth
                 Args:
-                    predictions: list containing ids of results returned by OpenSearch.
+                    predictions: list containing ids of results returned by the cluster.
                     neighbors: list containing ids of the actual neighbors for a set of queries
                     enable_top_1_recall: boolean to calculate recall@1
                 Returns:
@@ -1679,7 +1679,7 @@ class ClusterHealth(Runner):
 
         request_params = params.get("request-params", {})
         api_kw_params = self._default_kw_params(params)
-        # by default, OpenSearch will not wait and thus we treat this as success
+        # by default, the cluster will not wait and thus we treat this as success
         expected_cluster_status = request_params.get("wait_for_status", str(ClusterHealthStatus.UNKNOWN))
         if "wait_for_no_relocating_shards" in request_params:
             expected_relocating_shards = 0
@@ -1734,7 +1734,6 @@ class DeletePipeline(Runner):
     def __repr__(self, *args, **kwargs):
         return "delete-pipeline"
 
-# TODO: refactor it after python client support search pipeline https://github.com/opensearch-project/opensearch-py/issues/474
 class CreateSearchPipeline(Runner):
     @time_func
     async def __call__(self, client, params):
@@ -2363,7 +2362,7 @@ class WaitForTransform(Runner):
         """
         stop the transform and wait until transform has finished return stats
 
-        :param client: The OpenSearch client.
+        :param client: The cluster client.
         :param params: A hash with all parameters. See below for details.
         :return: A hash with stats from the run.
 

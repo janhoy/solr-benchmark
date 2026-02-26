@@ -89,7 +89,7 @@ def osbenchmark(cfg, command_line):
     These commands may have different CLI options than test_run.
     """
     cmd = osbenchmark_command_line_for(cfg, command_line)
-    print(f'\n{datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")} Invoking OSB: {cmd}')
+    print(f'\n{datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")} Invoking solr-benchmark: {cmd}')
     err, retcode = process.run_subprocess_with_stderr(cmd)
     if retcode != 0:
         print(err)

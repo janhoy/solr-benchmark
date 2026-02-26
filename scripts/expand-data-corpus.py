@@ -4,8 +4,8 @@
 #
 # Takes one of the http_logs corpora files as input and duplicates it
 # as specified; then emits the documents with a modified timestamp
-# sequence.  Also generates the associated offset file to enable OSB
-# to start up faster.
+# sequence.  Also generates the associated offset file to enable
+# solr-benchmark to start up faster.
 #
 # See the help message for more information.
 #
@@ -20,14 +20,14 @@ import configparser
 help_msg = """
 
 This tool is intended for the purpose of expanding the size of the
-data corpus associated with an OSB workload.  Currently, this capability
+data corpus associated with a solr-benchmark workload.  Currently, this capability
 is implemented only for the http_logs workload.
 
 TLDR: to generate a 100 GB corpus and then run a test against it:
 
 $ expand-data-corpus.py --corpus-size 100 --output-file-suffix 100gb
 
-$ opensearch-benchmark run --workload http_logs \\
+$ solr-benchmark run --workload http_logs \\
     --workload_params=generated_corpus:t ...
 
 The script generates new documents by duplicating ones in the existing

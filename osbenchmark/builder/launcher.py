@@ -184,17 +184,15 @@ class ProcessLauncher:
         env = {k: v for k, v in os.environ.items() if k in self.pass_env_vars}
         if java_home:
             self._set_env(env, "PATH", os.path.join(java_home, "bin"), separator=os.pathsep, prepend=True)
-            # This property is the higher priority starting in ES 7.12.0, and is the only supported java home in >=8.0
-            env["OPENSEARCH_JAVA_HOME"] = java_home
-            # TODO remove this when ES <8.0 becomes unsupported by OSB
+            env["SOLR_JAVA_HOME"] = java_home
             env["JAVA_HOME"] = java_home
             self.logger.info("JAVA HOME: %s", env["JAVA_HOME"])
-        if not env.get("OPENSEARCH_JAVA_OPTS"):
-            env["OPENSEARCH_JAVA_OPTS"] = "-XX:+ExitOnOutOfMemoryError"
+        if not env.get("SOLR_JAVA_OPTS"):
+            env["SOLR_JAVA_OPTS"] = "-XX:+ExitOnOutOfMemoryError"
 
         # we just blindly trust telemetry here...
         for v in t.instrument_candidate_java_opts():
-            self._set_env(env, "OPENSEARCH_JAVA_OPTS", v)
+            self._set_env(env, "SOLR_JAVA_OPTS", v)
 
         self.logger.debug("env for [%s]: %s", node_name, str(env))
         return env
@@ -273,29 +271,29 @@ class ProcessLauncher:
             if metrics_store:
                 telemetry.add_metadata_for_node(metrics_store, node_name, node.host_name)
             try:
-                opensearch = psutil.Process(pid=node.pid)
+                node_process = psutil.Process(pid=node.pid)
                 node.telemetry.detach_from_node(node, running=True)
             except psutil.NoSuchProcess:
                 self.logger.warning("No process found with PID [%s] for node [%s].", node.pid, node_name)
-                opensearch = None
+                node_process = None
 
-            if opensearch:
+            if node_process:
                 stop_watch = self._clock.stop_watch()
                 stop_watch.start()
                 try:
-                    opensearch.terminate()
-                    opensearch.wait(10.0)
+                    node_process.terminate()
+                    node_process.wait(10.0)
                     stopped_nodes.append(node)
                 except psutil.NoSuchProcess:
-                    self.logger.warning("No process found with PID [%s] for node [%s].", opensearch.pid, node_name)
+                    self.logger.warning("No process found with PID [%s] for node [%s].", node_process.pid, node_name)
                 except psutil.TimeoutExpired:
                     self.logger.info("kill -KILL node [%s]", node_name)
                     try:
                         # kill -9
-                        opensearch.kill()
+                        node_process.kill()
                         stopped_nodes.append(node)
                     except psutil.NoSuchProcess:
-                        self.logger.warning("No process found with PID [%s] for node [%s].", opensearch.pid, node_name)
+                        self.logger.warning("No process found with PID [%s] for node [%s].", node_process.pid, node_name)
                 self.logger.info("Done shutting down node [%s] in [%.1f] s.", node_name, stop_watch.split_time())
 
                 node.telemetry.detach_from_node(node, running=False)

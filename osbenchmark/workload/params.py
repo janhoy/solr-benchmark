@@ -223,9 +223,9 @@ class ParamSource:
 
     def _client_params(self):
         """
-        For use when a ParamSource does not propagate self._params but does use opensearch client under the hood
+        For use when a ParamSource does not propagate self._params but does use the cluster client under the hood
 
-        :return: all applicable parameters that are global to OSB and apply to the opensearch-py client
+        :return: all applicable parameters that are global to OSB and apply to the cluster client
         """
         return {
             "request-timeout": self._params.get("request-timeout"),
@@ -763,7 +763,7 @@ class BulkIndexParamSource(ParamSource):
 
         if len(self.corpora) == 0:
             raise exceptions.InvalidSyntax(f"There is no document corpus definition for workload {workload}. You must add at "
-                                           f"least one before making bulk requests to OpenSearch.")
+                                           f"least one before making bulk requests to the target cluster.")
 
         for corpus in self.corpora:
             for document_set in corpus.documents:

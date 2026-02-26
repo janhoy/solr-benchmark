@@ -15,10 +15,6 @@ We're glad you're interested in contributing.
 
 ## Ways to Contribute
 
-Apache Solr Benchmark is a fork of
-[OpenSearch Benchmark](https://github.com/opensearch-project/opensearch-benchmark),
-itself derived from [Rally](https://github.com/elastic/rally).
-
 ### Bug Reports
 
 Please confirm you are on the latest code, then open an issue with:
