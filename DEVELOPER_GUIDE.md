@@ -41,7 +41,7 @@ Apache Solr Benchmark.
 Fork and clone the repository, then install in development mode:
 
 ```bash
-cd opensearch-benchmark   # (or your fork directory)
+cd solr-benchmark   # (or your fork directory)
 make develop
 ```
 

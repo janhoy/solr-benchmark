@@ -46,7 +46,7 @@ larger scale on, for instance, clusters with multiple data nodes or
 featuring an upgraded instance type.
 
 To carry out an performance test using the generated corpus, the
-following flag needs to be passed to the OSB command:
+following flag needs to be passed to the solr-benchmark command:
 
     --workload-params=generated_corpus:t
 
@@ -63,13 +63,12 @@ Prerequisites:
     a normal run, perhaps by limiting it to indexing-only.
 
   * The input file should be one of the data corpus files downloaded
-    from the http_logs OSB workloads repository.  The script cues off
+    from the http_logs workloads repository.  The script cues off
     the text alignment in those files.
 
 Notes and limitations:
 
-  * This feature is currently available only for OpenSearch clusters
-    and Elasticsearch 7 cluster.
+  * This feature is currently only tested with the http_logs workload.
 
   * The options tagged with "EXPERT" are intended for advanced users
     and should not be needed in normal use.
@@ -80,9 +79,9 @@ Notes and limitations:
     in the http_logs workload directory.  New ones can be regenerated
     subsequently, if desired.
 
-  * OSB runs with and without the 'generated_corpus' flag should not
+  * solr-benchmark runs with and without the 'generated_corpus' flag should not
     generally be interleaved, since they target different
-    indices. However, OSB can be run in ingest-only mode to ingest
+    collections. However, solr-benchmark can be run in ingest-only mode to ingest
     both the generated and default corpora in two separate runs.  Once
     ingested, queries packaged with the workload will operate on the
     entire loaded data set.
@@ -272,7 +271,7 @@ def main(args: list) -> None:
                         default=893964618,
                         help="[EXPERT] start timestamp, default: %(default)d")
     parser.add_argument('-b', '--batch-size', default=50000,
-                        help="[EXPERT] batch size per OSB client thread, "
+                        help="[EXPERT] batch size per benchmark client thread, "
                         "default: %(default)d")
 
     args = parser.parse_args()
