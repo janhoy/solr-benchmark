@@ -171,7 +171,7 @@ def generate_docs(script_name: str,
     benchmark_home = os.environ.get('BENCHMARK_HOME') or os.environ['HOME']
     benchmark_ini = benchmark_home + '/.benchmark/benchmark.ini'
     if not os.path.isfile(benchmark_ini):
-        error_exit(script_name, f"could not find OSB config file {benchmark_ini}, run a workload first to create it")
+        error_exit(script_name, f"could not find benchmark config file {benchmark_ini}, run a workload first to create it")
     config.read(benchmark_ini)
 
     root_dir = config['node']['root.dir']

@@ -620,8 +620,8 @@ def run(cfg):
         # in this case only benchmarking remote OpenSearch clusters makes sense
         if name != "benchmark-only":
             raise exceptions.SystemSetupError(
-                "Only the [benchmark-only] pipeline is supported by the OSB Docker image.\n"
-                "Add --pipeline=benchmark-only in your OSB arguments and try again.\n"
+                "Only the [benchmark-only] pipeline is supported by the Docker image.\n"
+                "Add --pipeline=benchmark-only in your arguments and try again.\n"
                 "For more details read the docs for the benchmark-only pipeline in {}\n".format(
                     doc_link("")))
 

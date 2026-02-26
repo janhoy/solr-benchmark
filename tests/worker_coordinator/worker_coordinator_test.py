@@ -878,7 +878,7 @@ class SchedulerTests(TestCase):
     class CustomComplexScheduler:
         def __init__(self, task):
             self.task = task
-            # will be injected by OSB
+            # will be injected by solr-benchmark
             self.parameter_source = None
 
         def before_request(self, now):

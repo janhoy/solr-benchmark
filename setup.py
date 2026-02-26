@@ -139,7 +139,7 @@ tests_require = [
     "pytest-asyncio==0.14.0"
 ]
 
-# These packages are only required when developing OSB
+# These packages are only required when developing solr-benchmark
 develop_require = [
     "tox==3.14.0",
     "coverage==5.5",
@@ -169,7 +169,7 @@ setup(name="solr-benchmark",
           exclude=("tests*", "benchmarks*", "it*")
       ),
       include_package_data=True,
-      # supported Python versions. This will prohibit pip (> 9.0.0) from even installing OSB on an unsupported
+      # supported Python versions. This will prohibit pip (> 9.0.0) from even installing solr-benchmark on an unsupported
       # Python version.
       # See also https://packaging.python.org/guides/distributing-packages-using-setuptools/#python-requires
       #
