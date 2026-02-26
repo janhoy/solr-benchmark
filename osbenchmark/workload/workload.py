@@ -654,66 +654,18 @@ class ServerlessStatus(IntEnum):
 @unique
 class OperationType(Enum):
     # for the time being we are not considering this action as administrative
-    IndexStats = (1, AdminStatus.No, ServerlessStatus.Blocked)
-    NodeStats = (2, AdminStatus.No, ServerlessStatus.Blocked)
     Search = (3, AdminStatus.No, ServerlessStatus.Public)
     Bulk = (4, AdminStatus.No, ServerlessStatus.Public)
     RawRequest = (5, AdminStatus.No, ServerlessStatus.Public)
-    WaitForRecovery = (6, AdminStatus.No, ServerlessStatus.Blocked)
-    WaitForSnapshotCreate = (7, AdminStatus.No, ServerlessStatus.Blocked)
+    WaitForBackupCreate = (7, AdminStatus.No, ServerlessStatus.Blocked)
     Composite = (8, AdminStatus.No, ServerlessStatus.Public)
-    SubmitAsyncSearch = (9, AdminStatus.No, ServerlessStatus.Blocked)
-    GetAsyncSearch = (10, AdminStatus.No, ServerlessStatus.Blocked)
-    DeleteAsyncSearch = (11, AdminStatus.No, ServerlessStatus.Blocked)
-    PaginatedSearch = (12, AdminStatus.No, ServerlessStatus.Public)
-    ScrollSearch = (13, AdminStatus.No, ServerlessStatus.Blocked)
-    CreatePointInTime = (14, AdminStatus.No, ServerlessStatus.Blocked)
-    DeletePointInTime = (15, AdminStatus.No, ServerlessStatus.Blocked)
-    ListAllPointInTime = (16, AdminStatus.No, ServerlessStatus.Blocked)
-    VectorSearch = (17, AdminStatus.No, ServerlessStatus.Public)
-    BulkVectorDataSet = (18, AdminStatus.No, ServerlessStatus.Public)
-    TrainKnnModel = (19, AdminStatus.No, ServerlessStatus.Public)
-    DeleteKnnModel = (20, AdminStatus.No, ServerlessStatus.Public)
-    ProduceStreamMessage = (21, AdminStatus.No, ServerlessStatus.Blocked)
-    ProtoBulk = (201, AdminStatus.No, ServerlessStatus.Blocked)
-    ProtoSearch = (202, AdminStatus.No, ServerlessStatus.Blocked)
-    ProtoVectorSearch = (203, AdminStatus.No, ServerlessStatus.Blocked)
 
     # administrative actions
-    ForceMerge = (22, AdminStatus.Yes, ServerlessStatus.Blocked)
-    ClusterHealth = (23, AdminStatus.Yes, ServerlessStatus.Blocked)
-    PutPipeline = (24, AdminStatus.Yes, ServerlessStatus.Public)
-    DeletePipeline = (25, AdminStatus.Yes, ServerlessStatus.Public)
-    Refresh = (26, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateIndex = (27, AdminStatus.Yes, ServerlessStatus.Public)
-    DeleteIndex = (28, AdminStatus.Yes, ServerlessStatus.Public)
-    CreateIndexTemplate = (29, AdminStatus.Yes, ServerlessStatus.Blocked)
-    DeleteIndexTemplate = (30, AdminStatus.Yes, ServerlessStatus.Blocked)
-    ShrinkIndex = (31, AdminStatus.Yes, ServerlessStatus.Blocked)
     Sleep = (32, AdminStatus.Yes, ServerlessStatus.Public)
-    DeleteSnapshotRepository = (33, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateSnapshotRepository = (34, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateSnapshot = (35, AdminStatus.Yes, ServerlessStatus.Blocked)
-    RestoreSnapshot = (36, AdminStatus.Yes, ServerlessStatus.Blocked)
-    PutSettings = (37, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateTransform = (38, AdminStatus.Yes, ServerlessStatus.Blocked)
-    StartTransform = (39, AdminStatus.Yes, ServerlessStatus.Blocked)
-    WaitForTransform = (40, AdminStatus.Yes, ServerlessStatus.Blocked)
-    DeleteTransform = (41, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateDataStream = (42, AdminStatus.Yes, ServerlessStatus.Blocked)
-    DeleteDataStream = (43, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateComposableTemplate = (44, AdminStatus.Yes, ServerlessStatus.Blocked)
-    DeleteComposableTemplate = (45, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateComponentTemplate = (46, AdminStatus.Yes, ServerlessStatus.Blocked)
-    DeleteComponentTemplate = (47, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateSearchPipeline = (48, AdminStatus.Yes, ServerlessStatus.Public)
-    DeleteMlModel = (49, AdminStatus.Yes, ServerlessStatus.Public)
-    RegisterMlModel = (50, AdminStatus.Yes, ServerlessStatus.Public)
-    DeployMlModel = (51, AdminStatus.Yes, ServerlessStatus.Public)
-    UpdateConcurrentSegmentSearchSettings = (52, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateMlConnector = (53, AdminStatus.Yes, ServerlessStatus.Public)
-    RegisterRemoteMlModel = (54, AdminStatus.Yes, ServerlessStatus.Public)
-    DeleteMlConnector = (55, AdminStatus.Yes, ServerlessStatus.Public)
+    DeleteBackupRepository = (33, AdminStatus.Yes, ServerlessStatus.Blocked)
+    CreateBackupRepository = (34, AdminStatus.Yes, ServerlessStatus.Blocked)
+    CreateBackup = (35, AdminStatus.Yes, ServerlessStatus.Blocked)
+    RestoreBackup = (36, AdminStatus.Yes, ServerlessStatus.Blocked)
 
     def __init__(self, op_id: int, admin_status: AdminStatus, serverless_status: ServerlessStatus):
         self.op_id = op_id
@@ -736,122 +688,26 @@ class OperationType(Enum):
     # pylint: disable=too-many-return-statements
     @classmethod
     def from_hyphenated_string(cls, v):
-        if v == "force-merge":
-            return OperationType.ForceMerge
-        elif v == "index-stats":
-            return OperationType.IndexStats
-        elif v == "node-stats":
-            return OperationType.NodeStats
-        elif v == "search":
+        if v == "search":
             return OperationType.Search
-        elif v == "proto-search":
-            return OperationType.ProtoSearch
-        elif v == "scroll-search":
-            return OperationType.ScrollSearch
-        elif v == "paginated-search":
-            return OperationType.PaginatedSearch
-        elif v == "vector-search":
-            return OperationType.VectorSearch
-        elif v == "proto-vector-search":
-            return OperationType.ProtoVectorSearch
-        elif v == "bulk-vector-data-set":
-            return OperationType.BulkVectorDataSet
-        elif v == "cluster-health":
-            return OperationType.ClusterHealth
         elif v == "bulk":
             return OperationType.Bulk
-        elif v == "proto-bulk":
-            return OperationType.ProtoBulk
         elif v == "raw-request":
             return OperationType.RawRequest
-        elif v == "put-pipeline":
-            return OperationType.PutPipeline
-        elif v == "delete-pipeline":
-            return OperationType.DeletePipeline
-        elif v == "refresh":
-            return OperationType.Refresh
-        elif v == "create-index":
-            return OperationType.CreateIndex
-        elif v == "delete-index":
-            return OperationType.DeleteIndex
-        elif v == "create-index-template":
-            return OperationType.CreateIndexTemplate
-        elif v == "delete-index-template":
-            return OperationType.DeleteIndexTemplate
-        elif v == "create-composable-template":
-            return OperationType.CreateComposableTemplate
-        elif v == "delete-composable-template":
-            return OperationType.DeleteComposableTemplate
-        elif v == "create-component-template":
-            return OperationType.CreateComponentTemplate
-        elif v == "delete-component-template":
-            return OperationType.DeleteComponentTemplate
-        elif v == "shrink-index":
-            return OperationType.ShrinkIndex
         elif v == "sleep":
             return OperationType.Sleep
-        elif v == "delete-snapshot-repository":
-            return OperationType.DeleteSnapshotRepository
-        elif v == "create-snapshot-repository":
-            return OperationType.CreateSnapshotRepository
-        elif v == "create-snapshot":
-            return OperationType.CreateSnapshot
-        elif v == "wait-for-snapshot-create":
-            return OperationType.WaitForSnapshotCreate
-        elif v == "restore-snapshot":
-            return OperationType.RestoreSnapshot
-        elif v == "wait-for-recovery":
-            return OperationType.WaitForRecovery
-        elif v == "put-settings":
-            return OperationType.PutSettings
-        elif v == "create-transform":
-            return OperationType.CreateTransform
-        elif v == "start-transform":
-            return OperationType.StartTransform
-        elif v == "wait-for-transform":
-            return OperationType.WaitForTransform
-        elif v == "delete-transform":
-            return OperationType.DeleteTransform
-        elif v == "create-data-stream":
-            return OperationType.CreateDataStream
-        elif v == "delete-data-stream":
-            return OperationType.DeleteDataStream
+        elif v == "delete-backup-repository":
+            return OperationType.DeleteBackupRepository
+        elif v == "create-backup-repository":
+            return OperationType.CreateBackupRepository
+        elif v == "create-backup":
+            return OperationType.CreateBackup
+        elif v == "wait-for-backup-create":
+            return OperationType.WaitForBackupCreate
+        elif v == "restore-backup":
+            return OperationType.RestoreBackup
         elif v == "composite":
             return OperationType.Composite
-        elif v == "submit-async-search":
-            return OperationType.SubmitAsyncSearch
-        elif v == "get-async-search":
-            return OperationType.GetAsyncSearch
-        elif v == "delete-async-search":
-            return OperationType.DeleteAsyncSearch
-        elif v == "create-point-in-time":
-            return OperationType.CreatePointInTime
-        elif v == "delete-point-in-time":
-            return OperationType.DeletePointInTime
-        elif v == "list-all-point-in-time":
-            return OperationType.ListAllPointInTime
-        elif v == "create-search-pipeline":
-            return OperationType.CreateSearchPipeline
-        elif v == "delete-ml-model":
-            return OperationType.DeleteMlModel
-        elif v == "register-ml-model":
-            return OperationType.RegisterMlModel
-        elif v == "deploy-ml-model":
-            return OperationType.DeployMlModel
-        elif v == "train-knn-model":
-            return OperationType.TrainKnnModel
-        elif v == "delete-knn-model":
-            return OperationType.DeleteKnnModel
-        elif v == "create-ml-connector":
-            return OperationType.CreateMlConnector
-        elif v == "delete-ml-connector":
-            return OperationType.DeleteMlConnector
-        elif v == "register-remote-ml-model":
-            return OperationType.RegisterRemoteMlModel
-        elif v == "update-concurrent-segment-search-settings":
-            return OperationType.UpdateConcurrentSegmentSearchSettings
-        elif v == "produce-stream-message":
-            return OperationType.ProduceStreamMessage
         else:
             raise KeyError(f"No enum value for [{v}]")
 

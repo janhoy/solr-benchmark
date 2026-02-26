@@ -388,14 +388,6 @@ def create_arg_parser():
         help="Define a comma-separated list of key:value pairs that are injected verbatim as variables for the cluster-config.",
         default=""
     )
-    download_parser.add_argument(
-        "--target-os",
-        help="The name of the target operating system for which an artifact should be downloaded (default: current OS)",
-    )
-    download_parser.add_argument(
-        "--target-arch",
-        help="The name of the CPU architecture for which an artifact should be downloaded (default: current architecture)",
-    )
 
     install_parser = subparsers.add_parser("install", help="Installs a Solr node locally")
     install_parser.add_argument(
@@ -448,11 +440,11 @@ def create_arg_parser():
         help="Define a comma-separated list of key:value pairs that are injected verbatim as variables for the cluster-config.",
         default=""
     )
-# TODO: Define an argument for modules?
-#     install_parser.add_argument(
-#         "--opensearch-plugins",
-#         help="Define the OpenSearch plugins to install. (default: install no plugins).",
-#         default="")
+    install_parser.add_argument(
+        "--solr-modules",
+        help="Comma-separated list of Solr modules to enable (sets SOLR_MODULES). "
+             "Example: --solr-modules=analytics,extraction",
+        default="")
     install_parser.add_argument(
         "--plugin-params",
         help="Define a comma-separated list of key:value pairs that are injected verbatim to all plugins as variables.",
@@ -598,11 +590,11 @@ def create_arg_parser():
         type=runtime_jdk,
         help="The major version of the runtime JDK to use.",
         default=None)
-# Use this for solr modules?
-#     test_run_parser.add_argument(
-#         "--opensearch-plugins",
-#         help="Define the OpenSearch plugins to install. (default: install no plugins).",
-#         default="")
+    test_run_parser.add_argument(
+        "--solr-modules",
+        help="Comma-separated list of Solr modules to enable (sets SOLR_MODULES). "
+             "Example: --solr-modules=analytics,extraction",
+        default="")
     test_run_parser.add_argument(
         "--plugin-params",
         help="Define a comma-separated list of key:value pairs that are injected verbatim to all plugins as variables.",
@@ -1084,6 +1076,7 @@ def configure_builder_params(args, cfg, command_requires_cluster_config=True):
         cfg.add(config.Scope.applicationOverride, "builder",
         "cluster_config.params", opts.to_dict(
             args.cluster_config_params))
+        cfg.add(config.Scope.applicationOverride, "solr", "modules", getattr(args, "solr_modules", ""))
         pipeline = getattr(args, "pipeline", None)
         if pipeline == "benchmark-only" and args.cluster_config != "defaults":
             raise SystemExit(
@@ -1218,8 +1211,6 @@ def dispatch_sub_command(arg_parser, args, cfg):
             configure_workload_params(arg_parser, args, cfg, command_requires_workload=False)
             dispatch_list(cfg)
         elif sub_command == "download":
-            cfg.add(config.Scope.applicationOverride, "builder", "target.os", args.target_os)
-            cfg.add(config.Scope.applicationOverride, "builder", "target.arch", args.target_arch)
             configure_builder_params(args, cfg)
             builder.download(cfg)
         elif sub_command == "install":

@@ -356,12 +356,7 @@ class FeedbackActor(actor.BenchmarkActor):
         self.metrics_index = msg.metrics_index
         if msg.cpu_max:
             self.max_cpu_threshold = msg.cpu_max
-            # create a new client to query the datastore for CPU based feedback
-            # we can't pass the original metrics_store object from the WorkerCoordinator since it can't be pickled in a thespianpy message
-            try:
-                self.os_client = metrics.OsClientFactory(self.cfg).create()
-            except Exception:
-                raise exceptions.SystemSetupError("OS Client could not be created for redline testing. Ensure you are passing the correct config for your metrics store.")
+            self.os_client = None  # Redline CPU-feedback requires an external OS metrics store (not supported in Solr Benchmark)
         self.logger.info(
         "Feedback actor has received the following configuration: Max clients = %s, scale step = %d, scale down percentage = %f, sleep time = %d",
         self.total_client_count, self.num_clients_to_scale_up, self.percentage_clients_to_scale_down, self.POST_SCALEDOWN_SECONDS
@@ -910,7 +905,7 @@ def num_cores(cfg):
 
 
 class WorkerCoordinator:
-    def __init__(self, target, config, os_client_factory_class=client.OsClientFactory):
+    def __init__(self, target, config, os_client_factory_class=client.ClientFactory):
         """
         Coordinates all workers. It is technology-agnostic, i.e. it does not know anything about actors. To allow us to hook in an actor,
         we provide a ``target`` parameter which will be called whenever some event has occurred. The ``target`` can use this to send
@@ -1022,13 +1017,7 @@ class WorkerCoordinator:
         ]
 
     def wait_for_rest_api(self, opensearch):
-        os_default = opensearch["default"]
-        self.logger.info("Checking if REST API is available.")
-        if client.wait_for_rest_layer(os_default, max_attempts=40):
-            self.logger.info("REST API is available.")
-        else:
-            self.logger.error("REST API layer is not yet available. Stopping benchmark.")
-            raise exceptions.SystemSetupError("REST API layer is not available.")
+        self.logger.info("REST API is available (Solr health check delegated to SolrAdminClient).")
 
     def retrieve_cluster_info(self, opensearch):
         try:
@@ -1174,11 +1163,6 @@ class WorkerCoordinator:
                 raise exceptions.SystemSetupError("CPU-based feedback requires a metrics store. You are using an in-memory metrics store")
             elif cpu_max and "node-stats" not in self.config.opts("telemetry", "devices"):
                 raise exceptions.SystemSetupError("Node stats telemetry not enabled — this is required for CPU-based redline feedback.")
-            elif cpu_max and isinstance(self.metrics_store, metrics.OsMetricsStore):
-                # pass over the index and test run ID so the feedbackActor can query the datastore
-                metrics_index = self.metrics_store.index
-                test_run_id = self.metrics_store.test_run_id
-
             scale_step = self.config.opts("workload", "redline.scale_step", default_value=0)
             scale_down_pct = self.config.opts("workload", "redline.scale_down_pct", default_value=0)
             sleep_seconds = self.config.opts("workload", "redline.sleep_seconds", default_value=0)
@@ -2183,20 +2167,9 @@ class AsyncIoAdapter:
     async def run(self):
         def os_clients(all_hosts, all_client_options):
             opensearch = {}
-            grpc_hosts = self.cfg.opts("client", "grpc_hosts", mandatory=False)
-
-            # If gRPC hosts are configured and not empty, use them. Otherwise, use defaults for gRPC operations.
-            if grpc_hosts and grpc_hosts.all_hosts:
-                # Use the provided gRPC hosts
-                pass
-            else:
-                # Provide default gRPC hosts when using gRPC operations
-                # Default: localhost:9400 (matching current environment variable defaults)
-                grpc_hosts = opts.TargetHosts("localhost:9400")
-
             for cluster_name, cluster_hosts in all_hosts.items():
-                rest_client_factory = client.OsClientFactory(cluster_hosts, all_client_options[cluster_name])
-                unified_client_factory = client.UnifiedClientFactory(rest_client_factory, grpc_hosts)
+                rest_client_factory = client.ClientFactory(cluster_hosts, all_client_options[cluster_name])
+                unified_client_factory = client.UnifiedClientFactory(rest_client_factory)
                 opensearch[cluster_name] = unified_client_factory.create_async()
             return opensearch
 
@@ -2297,7 +2270,6 @@ class AsyncExecutor:
         self.on_error = on_error
         self.logger = logging.getLogger(__name__)
         self.cfg = config
-        self.message_producer = None  # Producer will be lazily created when needed.
         self.shared_states = shared_states
         self.feedback_actor = feedback_actor
         self.error_queue = error_queue
@@ -2334,18 +2306,7 @@ class AsyncExecutor:
 
     async def _prepare_context_manager(self, params: dict):
         """Prepare the appropriate context manager for the request."""
-        if params is not None and params.get("operation-type") == "produce-stream-message":
-            if self.message_producer is None:
-                self.message_producer = await client.MessageProducerFactory.create(params)
-            params.update({"message-producer": self.message_producer})
-            return self.message_producer.new_request_context()
-        else:
-            context_manager = self.opensearch["default"].new_request_context()
-            if params is not None and params.get("operation-type") == "vector-search":
-                available_cores = int(self.cfg.opts("system", "available.cores", mandatory=False,
-                                                    default_value=multiprocessing.cpu_count()))
-                params.update({"num_clients": self.task.clients, "num_cores": available_cores})
-            return context_manager
+        return self.opensearch["default"].new_request_context()
 
     async def _execute_request(self, params: dict, expected_scheduled_time: float, total_start: float,
                                client_state: bool) -> dict:
@@ -2496,9 +2457,7 @@ class AsyncExecutor:
 
     async def _cleanup(self) -> None:
         """Clean up resources after task execution."""
-        if self.message_producer is not None:
-            await self.message_producer.stop()
-            self.message_producer = None
+        pass
 
     def report_error(self, error_info: dict) -> None:
         """Report an error to the error queue."""

@@ -85,6 +85,18 @@ class TestSolrProvisionerBuildEnv(unittest.TestCase):
         self.assertNotIn("GC_TUNE", env)
         self.assertNotIn("SOLR_OPTS", env)
 
+    def test_solr_modules_sets_solr_modules_env(self):
+        """solr_modules parameter should set SOLR_MODULES env var."""
+        provisioner = SolrProvisioner(solr_modules="analytics,extraction")
+        env = provisioner._build_env()
+        self.assertEqual("analytics,extraction", env.get("SOLR_MODULES"))
+
+    def test_empty_solr_modules_not_in_env(self):
+        """Empty solr_modules should not add SOLR_MODULES to env."""
+        provisioner = SolrProvisioner(solr_modules="")
+        env = provisioner._build_env()
+        self.assertNotIn("SOLR_MODULES", env)
+
 
 class TestSolrDockerLauncherEnvFlags(unittest.TestCase):
     """Tests for SolrDockerLauncher._cluster_config_env_flags()."""
@@ -128,6 +140,21 @@ class TestSolrDockerLauncherEnvFlags(unittest.TestCase):
         combined = " ".join(flags)
         self.assertNotIn("GC_TUNE", combined)
         self.assertNotIn("SOLR_OPTS", combined)
+
+    def test_solr_modules_produces_e_flag(self):
+        """solr_modules should produce ['-e', 'SOLR_MODULES=ltr']."""
+        launcher = SolrDockerLauncher(solr_modules="ltr")
+        flags = launcher._cluster_config_env_flags()
+        self.assertIn("-e", flags)
+        self.assertIn("SOLR_MODULES=ltr", flags)
+        module_idx = flags.index("SOLR_MODULES=ltr")
+        self.assertEqual("-e", flags[module_idx - 1])
+
+    def test_empty_solr_modules_not_in_flags(self):
+        """Empty solr_modules should produce no SOLR_MODULES flag."""
+        launcher = SolrDockerLauncher(solr_modules="")
+        flags = launcher._cluster_config_env_flags()
+        self.assertNotIn("SOLR_MODULES", " ".join(flags))
 
 
 class TestAssertPortFree(unittest.TestCase):

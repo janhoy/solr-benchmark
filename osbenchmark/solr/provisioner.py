@@ -98,11 +98,12 @@ class SolrProvisioner:
     """
 
     def __init__(self, cache_dir: str = None, port: int = 8983,
-                 startup_timeout: int = 120, cluster_config=None):
+                 startup_timeout: int = 120, cluster_config=None, solr_modules: str = ""):
         self.cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".solr-benchmark", "cache")
         self.port = port
         self.startup_timeout = startup_timeout
         self.cluster_config = cluster_config
+        self.solr_modules = solr_modules
         os.makedirs(self.cache_dir, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -233,6 +234,9 @@ class SolrProvisioner:
                 if ini_key in vars_:
                     env[env_key] = vars_[ini_key]
                     logger.info("Applying cluster_config: %s=%s", env_key, vars_[ini_key])
+        if self.solr_modules:
+            env["SOLR_MODULES"] = self.solr_modules
+            logger.info("Applying SOLR_MODULES=%s", self.solr_modules)
         return env
 
     def _bin_solr(self, solr_root: str) -> str:
@@ -294,11 +298,12 @@ class SolrDockerLauncher:
     DEFAULT_CONTAINER_NAME = "solr-benchmark"
 
     def __init__(self, port: int = 8983, startup_timeout: int = 60,
-                 container_name: str = None, cluster_config=None):
+                 container_name: str = None, cluster_config=None, solr_modules: str = ""):
         self.port = port
         self.startup_timeout = startup_timeout
         self.container_name = container_name or self.DEFAULT_CONTAINER_NAME
         self.cluster_config = cluster_config
+        self.solr_modules = solr_modules
 
     def start(self, version_tag: str = "9", mode: str = None) -> None:
         """
@@ -361,6 +366,9 @@ class SolrDockerLauncher:
                 if ini_key in vars_:
                     flags += ["-e", f"{env_key}={vars_[ini_key]}"]
                     logger.info("Applying cluster_config: %s=%s", env_key, vars_[ini_key])
+        if self.solr_modules:
+            flags += ["-e", f"SOLR_MODULES={self.solr_modules}"]
+            logger.info("Applying SOLR_MODULES=%s", self.solr_modules)
         return flags
 
     def stop(self) -> None:

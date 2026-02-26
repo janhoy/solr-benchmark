@@ -29,11 +29,10 @@ import os
 import re
 import shutil
 import urllib.error
-import enum
 
 from osbenchmark import exceptions, paths, PROGRAM_NAME
 from osbenchmark.exceptions import BuildError, SystemSetupError
-from osbenchmark.utils import git, io, process, net, jvm, convert, sysstats
+from osbenchmark.utils import git, io, process, net, jvm, convert
 
 # e.g. my-plugin:current - we cannot simply use String#split(":") as this would not work for timestamp-based revisions
 REVISION_PATTERN = r"(\w.*?):(.*)"
@@ -52,10 +51,7 @@ def create(cfg, sources, distribution, cluster_config, plugins=None):
     src_config = cfg.all_opts("source")
     suppliers = []
 
-    target_os = cfg.opts("builder", "target.os", mandatory=False)
-    target_arch = cfg.opts("builder", "target.arch", mandatory=False)
-
-    template_renderer = TemplateRenderer(version=os_version, os_name=target_os, arch=target_arch)
+    template_renderer = TemplateRenderer(version=os_version)
 
     if build_needed:
         raw_build_jdk = cluster_config.mandatory_var("build.jdk")
@@ -236,47 +232,12 @@ def _prune(root_path, max_age_days):
         else:
             logger.info("Skipping [%s] (not a file).", artifact)
 
-class SupportedOS(enum.Enum):
-    # Operating systems that OpenSearch currently supports
-    default = "linux"
-    linux = "linux"
-    docker = "docker"
-    freebsd = "freebsd"
-
-    # Checks if value is in enum. If not, it will use default Linux
-    @classmethod
-    def get_os(cls, value):
-        if value not in cls._value2member_map_:
-            return cls.default.value
-        return value
-
 class TemplateRenderer:
-    def __init__(self, version, os_name=None, arch=None):
+    def __init__(self, version):
         self.version = version
-        if os_name is not None:
-            self.os = os_name
-        else:
-            system_os_name = sysstats.os_name().lower()
-            self.os = SupportedOS.get_os(system_os_name)
-
-        if arch is not None:
-            self.arch = arch
-        else:
-            self.arch = sysstats.cpu_arch().lower()
-            # OpenSearch uses arm64 for the 64b Arm binary name
-            if self.arch == "aarch64":
-                self.arch = "arm64"
 
     def render(self, template):
-        substitutions = {
-            "{{VERSION}}": self.version,
-            "{{OSNAME}}": self.os,
-            "{{ARCH}}": self.arch
-        }
-        r = template
-        for key, replacement in substitutions.items():
-            r = r.replace(key, str(replacement))
-        return r
+        return template.replace("{{VERSION}}", str(self.version))
 
 
 class CompositeSupplier:

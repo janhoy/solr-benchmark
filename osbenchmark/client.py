@@ -24,13 +24,7 @@
 
 import logging
 
-try:
-    from osbenchmark.kafka_client import KafkaMessageProducer
-except ImportError:
-    KafkaMessageProducer = None
-from osbenchmark import exceptions, doc_link
 from osbenchmark.context import RequestContextHolder
-from osbenchmark.utils import console
 
 class SolrClient(RequestContextHolder):
     """
@@ -66,34 +60,6 @@ class ClientFactory:
         return SolrClient()
 
 
-# Backward compatibility alias
-OsClientFactory = ClientFactory
-
-
-def wait_for_rest_layer(client, max_attempts=40):
-    """
-    In this Solr benchmark fork, always returns True immediately — the Solr cluster
-    health check is handled separately via SolrAdminClient.
-    """
-    return True
-
-
-class MessageProducerFactory:
-    @staticmethod
-    async def create(params):
-        """
-        Creates and returns a message producer based on the ingestion source.
-        Currently supports Kafka. Ingestion source should be a dict like:
-            {'type': 'kafka', 'param': {'topic': 'test', 'bootstrap-servers': 'localhost:34803'}}
-        """
-        ingestion_source = params.get("ingestion-source", {})
-        producer_type = ingestion_source.get("type", "kafka").lower()
-        if producer_type == "kafka":
-            return await KafkaMessageProducer.create(params)
-        else:
-            raise ValueError(f"Unsupported ingestion source type: {producer_type}")
-
-
 class UnifiedClient:
     """
     Unified client wrapper — delegates attribute access to the underlying client.
@@ -121,7 +87,7 @@ class UnifiedClientFactory:
     """
     Factory that creates UnifiedClient instances.
     """
-    def __init__(self, rest_client_factory, grpc_hosts=None):
+    def __init__(self, rest_client_factory):
         self.rest_client_factory = rest_client_factory
         self.logger = logging.getLogger(__name__)
 

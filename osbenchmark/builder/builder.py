@@ -83,7 +83,7 @@ def install(cfg):
     elif build_type == "docker":
         if len(plugins) > 0:
             raise exceptions.SystemSetupError("You cannot specify any plugins for Docker clusters. Please remove "
-                                              "\"--opensearch-plugins\" and try again.")
+                                              "\"--plugin-params\" and try again.")
         p = provisioner.docker(
             cfg=cfg, cluster_config=cluster_config,
             ip=ip, http_port=http_port, target_root=root_path, node_name=node_name)
@@ -263,7 +263,7 @@ class NodesStopped:
     pass
 
 
-def cluster_distribution_version(cfg, client_factory=client.OsClientFactory):
+def cluster_distribution_version(cfg, client_factory=client.ClientFactory):
     """
     Attempt to get the cluster's distribution version even before it is actually started (which makes only sense for externally
     provisioned clusters).
@@ -277,8 +277,6 @@ def cluster_distribution_version(cfg, client_factory=client.OsClientFactory):
     opensearch = client_factory(hosts, client_options).create()
     if isinstance(opensearch, client.SolrClient):
         return "2.11.0"
-    # unconditionally wait for the REST layer - if it's not up by then, we'll intentionally raise the original error
-    client.wait_for_rest_layer(opensearch)
     try:
         info = opensearch.info()
         distribution_version = info["version"]["number"]
@@ -671,7 +669,7 @@ def create(cfg, metrics_store, node_ip, node_http_port, all_node_ips, all_node_i
     elif docker:
         if len(plugins) > 0:
             raise exceptions.SystemSetupError("You cannot specify any plugins for Docker clusters. Please remove "
-                                              "\"--opensearch-plugins\" and try again.")
+                                              "\"--plugin-params\" and try again.")
         s = lambda: None
         p = []
         for node_id in node_ids:

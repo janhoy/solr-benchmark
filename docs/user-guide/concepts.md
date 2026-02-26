@@ -65,3 +65,54 @@ A *schedule* controls how an operation executes: number of iterations, target th
 ## Facets
 
 *Facets* are Solr's aggregation mechanism — the Solr equivalent of OpenSearch aggregations. When using the [Converter Tool](../converter/), OpenSearch aggregation expressions are translated into Solr facet syntax.
+
+---
+
+## Metrics
+
+At the end of each benchmark run, Apache Solr Benchmark prints a summary table and saves it to disk. The table covers these metrics for every task in the challenge:
+
+| Metric | Description |
+|--------|-------------|
+| Throughput | Operations completed per second |
+| Service time | Round-trip time from client request to client receipt of response |
+| Latency | Service time plus any queue waiting time (differs from service time only when `target-throughput` is set) |
+| Error rate | Fraction of operations that returned an error |
+
+### How Apache Solr Benchmark defines service time and latency
+
+These terms are often used interchangeably in the industry but have distinct meanings in Apache Solr Benchmark:
+
+| Metric | Common definition | Apache Solr Benchmark definition |
+|--------|------------------|----------------------------------|
+| **Service time** | Server processing time, excluding network | Time from when the HTTP client sends the request to when it receives the full response — *including* network latency, load balancer overhead, and serialization/deserialization |
+| **Latency** | Service time plus network latency | Service time *plus* any time the request spent waiting in a local queue before being dispatched — only non-zero when `target-throughput` is configured |
+
+### Processing time
+
+Processing time measures the overhead that Apache Solr Benchmark adds during a request — for example, setting up the request context or dispatching to the client library. It is distinct from and excluded from service time measurements. This value is useful for understanding the benchmarking tool's own footprint.
+
+### Service time
+
+Service time is measured from the moment the HTTP client sends the request until the moment it receives the complete response. It includes:
+
+- Network round-trip time
+- Load balancer overhead (if any)
+- Server processing time
+- Serialization and deserialization on both ends
+
+### Latency
+
+Latency is service time plus any time the request spent waiting in a local queue *before* being sent. A queue only builds up when you set `target-throughput` on a task and the cluster cannot keep up with the requested rate. In that case, subsequent requests must wait for an earlier request to complete, adding queue time to the total latency.
+
+When no `target-throughput` is set — or when the cluster can handle every request as fast as they arrive — latency equals service time.
+
+### Throughput
+
+Throughput is the rate at which Apache Solr Benchmark *issues* requests, assuming that responses are returned instantaneously. It is not a measure of how many requests completed; it is a measure of how quickly requests were dispatched.
+
+### The two benchmark modes
+
+**Pure throughput mode** (`target-throughput` not set): Requests are issued as fast as possible — each client sends one request, waits for the response, then sends the next. Latency equals service time.
+
+**Throughput-throttled mode** (`target-throughput` set): Requests are issued at a target rate (in ops/s). If you set a rate higher than the cluster can sustain, requests pile up in the local queue and latency grows. Set `target-throughput` to a value you know is achievable; see [Target throughput](optimizing-benchmarks/target-throughput.html) for practical guidance.

@@ -21,7 +21,11 @@ solr-benchmark info --workload WORKLOAD [OPTIONS]
 |--------|-------------|
 | `--workload` | Workload name (fetched from the workloads repository) |
 | `--workload-path` | Path to a local workload directory |
+| `--workload-repository` | Git URL for the workloads repository |
+| `--workload-revision` | Git revision of the workloads repository |
 | `--challenge` | Show details for a specific challenge |
+| `--include-tasks` | Comma-separated list of task names to display (others are hidden) |
+| `--exclude-tasks` | Comma-separated list of task names to hide from the output |
 
 ## Examples
 

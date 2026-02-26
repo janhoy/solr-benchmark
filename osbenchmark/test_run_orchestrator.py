@@ -482,8 +482,9 @@ def solr_from_sources(cfg):
     solr_root = os.path.join(install_dir, top_level)
 
     cc_instance = _load_cluster_config(cfg)
+    solr_modules = cfg.opts("solr", "modules", mandatory=False, default_value="")
     provisioner = SolrProvisioner(cache_dir=os.path.join(base_dir, "cache"), port=port,
-                                  cluster_config=cc_instance)
+                                  cluster_config=cc_instance, solr_modules=solr_modules)
     try:
         provisioner.start(solr_root, mode="cloud")
         set_default_hosts(cfg, host="127.0.0.1", port=port)
@@ -526,7 +527,9 @@ def solr_from_distribution(cfg):
                          default_value=os.path.join(base_dir, "cache"))
 
     cc_instance = _load_cluster_config(cfg)
-    provisioner = SolrProvisioner(cache_dir=cache_dir, port=port, cluster_config=cc_instance)
+    solr_modules = cfg.opts("solr", "modules", mandatory=False, default_value="")
+    provisioner = SolrProvisioner(cache_dir=cache_dir, port=port, cluster_config=cc_instance,
+                                  solr_modules=solr_modules)
     tarball = provisioner.download(version_str)
     solr_root = provisioner.install(version_str, install_dir)
 
@@ -570,7 +573,8 @@ def solr_docker(cfg):
     port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
 
     cc_instance = _load_cluster_config(cfg)
-    launcher = SolrDockerLauncher(port=port, cluster_config=cc_instance)
+    solr_modules = cfg.opts("solr", "modules", mandatory=False, default_value="")
+    launcher = SolrDockerLauncher(port=port, cluster_config=cc_instance, solr_modules=solr_modules)
     try:
         launcher.start(version_tag=version_tag, mode="cloud")
         set_default_hosts(cfg, host="127.0.0.1", port=port)
@@ -617,7 +621,7 @@ def run(cfg):
         logger.info("User specified pipeline [%s].", name)
 
     if os.environ.get("BENCHMARK_RUNNING_IN_DOCKER", "").upper() == "TRUE":
-        # in this case only benchmarking remote OpenSearch clusters makes sense
+        # in this case only benchmarking remote Solr clusters makes sense
         if name != "benchmark-only":
             raise exceptions.SystemSetupError(
                 "Only the [benchmark-only] pipeline is supported by the Docker image.\n"

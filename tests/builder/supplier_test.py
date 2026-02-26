@@ -179,31 +179,16 @@ class BuilderTests(TestCase):
 
 
 class TemplateRendererTests(TestCase):
-    def test_uses_provided_values(self):
-        renderer = supplier.TemplateRenderer(version="1.2.3", os_name="Windows", arch="arm7")
-        self.assertEqual("This is version 1.2.3 on Windows with a arm7 CPU.",
-                         renderer.render("This is version {{VERSION}} on {{OSNAME}} with a {{ARCH}} CPU."))
+    def test_substitutes_version(self):
+        renderer = supplier.TemplateRenderer(version="9.10.1")
+        self.assertEqual(
+            "https://archive.apache.org/dist/solr/solr/9.10.1/solr-9.10.1.tgz",
+            renderer.render("https://archive.apache.org/dist/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"),
+        )
 
-    @mock.patch("osbenchmark.utils.sysstats.os_name", return_value="Linux")
-    @mock.patch("osbenchmark.utils.sysstats.cpu_arch", return_value="X86_64")
-    def test_uses_derived_values(self, os_name, cpu_arch):
-        renderer = supplier.TemplateRenderer(version="1.2.3")
-        self.assertEqual("This is version 1.2.3 on linux with a x86_64 CPU.",
-                         renderer.render("This is version {{VERSION}} on {{OSNAME}} with a {{ARCH}} CPU."))
-
-    @mock.patch("osbenchmark.utils.sysstats.os_name", return_value="Linux")
-    @mock.patch("osbenchmark.utils.sysstats.cpu_arch", return_value="X86_64")
-    def test_supported_os_enum_match(self, os_name, cpu_arch):
-        renderer = supplier.TemplateRenderer(version="1.2.3")
-        self.assertEqual("This is version 1.2.3 on linux with a x86_64 CPU.",
-                         renderer.render("This is version {{VERSION}} on {{OSNAME}} with a {{ARCH}} CPU."))
-
-    @mock.patch("osbenchmark.utils.sysstats.os_name", return_value="Darwin")
-    @mock.patch("osbenchmark.utils.sysstats.cpu_arch", return_value="X86_64")
-    def test_supported_os_enum_returns_default(self, os_name, cpu_arch):
-        renderer = supplier.TemplateRenderer(version="1.2.3")
-        self.assertEqual("This is version 1.2.3 on linux with a x86_64 CPU.",
-                         renderer.render("This is version {{VERSION}} on {{OSNAME}} with a {{ARCH}} CPU."))
+    def test_leaves_non_version_placeholders_intact(self):
+        renderer = supplier.TemplateRenderer(version="9.10.1")
+        self.assertEqual("solr-9.10.1 on {{OSNAME}}", renderer.render("solr-{{VERSION}} on {{OSNAME}}"))
 
 
 class CachedOpenSearchSourceSupplierTests(TestCase):
@@ -218,7 +203,7 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         opensearch.add.side_effect = add_os_artifact
 
         # no version / revision provided
-        renderer = supplier.TemplateRenderer(version=None, os_name="linux", arch="x64")
+        renderer = supplier.TemplateRenderer(version=None)
 
         dist_cfg = {
             "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
@@ -248,7 +233,7 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
     def test_uses_already_cached_artifact(self, opensearch, path_exists):
         # assume that the artifact is already cached
         path_exists.return_value = True
-        renderer = supplier.TemplateRenderer(version="abc123", os_name="linux", arch="x64")
+        renderer = supplier.TemplateRenderer(version="abc123")
 
         dist_cfg = {
             "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
@@ -288,7 +273,7 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         opensearch.fetch.return_value = "abc123"
         opensearch.add.side_effect = add_os_artifact
 
-        renderer = supplier.TemplateRenderer(version="abc123", os_name="linux", arch="x64")
+        renderer = supplier.TemplateRenderer(version="abc123")
 
         dist_cfg = {
             "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
@@ -340,7 +325,7 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         opensearch.add.side_effect = add_os_artifact
         copy.side_effect = OSError("no space left on device")
 
-        renderer = supplier.TemplateRenderer(version="abc123", os_name="linux", arch="x64")
+        renderer = supplier.TemplateRenderer(version="abc123")
 
         dist_cfg = {
             "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
@@ -370,7 +355,7 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
 class OpenSearchFileNameResolverTests(TestCase):
     def setUp(self):
         super().setUp()
-        renderer = supplier.TemplateRenderer(version="9.10.1", os_name="linux", arch="x86_64")
+        renderer = supplier.TemplateRenderer(version="9.10.1")
 
         dist_cfg = {
             "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz"
@@ -773,9 +758,7 @@ class CreateSupplierTests(TestCase):
 
 
 class DistributionRepositoryTests(TestCase):
-    @mock.patch("osbenchmark.utils.sysstats.os_name", return_value="Linux")
-    @mock.patch("osbenchmark.utils.sysstats.cpu_arch", return_value="x64")
-    def test_release_repo_config_with_default_url(self, os_name, cpu_arch):
+    def test_release_repo_config_with_default_url(self):
         renderer = supplier.TemplateRenderer(version="9.10.1")
         repo = supplier.DistributionRepository(name="release", distribution_config={
             "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz",
@@ -786,8 +769,7 @@ class DistributionRepositoryTests(TestCase):
         self.assertEqual("solr-9.10.1.tgz", repo.file_name)
         self.assertTrue(repo.cache)
 
-    @mock.patch("osbenchmark.utils.sysstats.cpu_arch", return_value="x64")
-    def test_release_repo_config_with_user_url(self, cpu_arch):
+    def test_release_repo_config_with_user_url(self):
         renderer = supplier.TemplateRenderer(version="9.10.1")
         repo = supplier.DistributionRepository(name="release", distribution_config={
             "release_url": "https://downloads.apache.org/solr/solr/{{VERSION}}/solr-{{VERSION}}.tgz",

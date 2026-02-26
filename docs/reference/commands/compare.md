@@ -21,7 +21,10 @@ solr-benchmark compare --baseline BASELINE_ID --contender CONTENDER_ID
 |--------|-------------|
 | `--baseline` | Test execution ID of the baseline run |
 | `--contender` | Test execution ID of the contender run |
-| `--results-file` | Path to a results JSON file (alternative to using stored results) |
+| `--results-format` | Output format: `markdown` (default) or `csv` |
+| `--results-numbers-align` | Column alignment in the output table: `right` (default), `left`, or `center` |
+| `--results-file` | Write the comparison table to a file in addition to console output |
+| `--show-in-results` | Which values to include: `available` (default), `all-percentiles`, or `all` |
 
 ## Example
 
