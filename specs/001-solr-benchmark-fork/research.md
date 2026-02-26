@@ -502,3 +502,143 @@ The `_includes/footer_custom.html` is the correct mechanism for a Jekyll site. T
 
 OpenSearch trademark notice (where referenced): "OpenSearch® is a registered trademark of the OpenSearch Software Foundation."
 Apache Solr trademark notice: "Apache Solr is a trademark of The Apache Software Foundation."
+
+---
+
+## 7. Telemetry Device Portability Research (2026-02-26)
+
+### Decision
+
+Port 8 OSB telemetry devices to the Solr Benchmark fork, organised into three categories. Class names and `--telemetry` flag values keep the OSB naming — no "Solr-" prefix is added. The existing OSB device classes are EDITED to use Solr APIs in place of OpenSearch APIs. Old OpenSearch behavior is removed, not retained alongside Solr behavior.
+
+- **REST-based (works on all pipelines)**: `SegmentStats` (edited), `ShardStats` (new, no OSB equivalent), `ClusterEnvironmentInfo` (edited)
+- **JVM instrumentation (provisioned pipelines only)**: `FlightRecorder` (edited), `Gc` (edited), `JitCompiler` (edited)
+- **PID-based process monitoring (provisioned pipelines only)**: `Heapdump` (edited), `DiskIo` (edited)
+
+Do NOT port: `ccr-stats`, `transform-stats`, `searchable-snapshots-stats`, `segment-replication-stats`, `MlBucketProcessingTime` — these are OpenSearch-only concepts with no Solr equivalent.
+
+Treat as redundant (already covered): `node-stats` → `SolrNodeStats`; `JvmStatsSummary` → `SolrJvmStats`.
+
+### Rationale
+
+JVM instrumentation devices work unchanged on any Java process. `SOLR_OPTS` is the Solr equivalent of the JVM flags injection point that OSB uses (`jvm.options`). Provisioner already has `_build_env()` / `_cluster_config_env_flags()` patterns that can append these opts.
+
+Segment/shard REST devices have direct Solr equivalents via the Luke Request Handler and CLUSTERSTATUS APIs. These require no provisioner changes and work even against external Solr clusters.
+
+### OSB → Solr API Mapping
+
+| OSB Device | OSB API | Solr Equivalent |
+|------------|---------|-----------------|
+| `segment-stats` | `GET /_cat/segments` | `GET /solr/{coll}/admin/luke?numTerms=0` |
+| `shard-stats` | `GET /_nodes/stats?level=shards` | `GET /solr/admin/collections?action=CLUSTERSTATUS` + `/admin/cores?action=STATUS&core={core}` |
+| `ClusterEnvironmentInfo` | `GET /` + `GET /_nodes/_all` | `GET /api/node/system` + CLUSTERSTATUS |
+| `DiskIo` | `psutil.Process(pid).io_counters()` | Same (Solr PID from `bin/solr-{port}.pid`) |
+| `heapdump` | `jmap -dump:... {pid}` | Same; Docker variant: `docker exec {container} jmap ...` |
+| `jfr` | `instrument_java_opts()` → OpenSearch JVM flags | Same flags injected into `SOLR_OPTS` |
+| `gc` | `instrument_java_opts()` → GC log flags | Same flags injected into `SOLR_OPTS` |
+| `jit` | `instrument_java_opts()` → JIT flags | Same flags injected into `SOLR_OPTS` |
+
+### JVM Instrumentation: Architecture Decision
+
+OSB's `instrument_java_opts()` pattern works by having devices return JVM flag lists, which OSB injects into the node's JVM options before startup.
+
+For Solr, the equivalent injection point is the `SOLR_OPTS` environment variable, which Solr reads from `solr.in.sh` or from Docker `-e` flags.
+
+**Integration path:**
+1. Each JVM device implements `instrument_java_opts() → list[str]`
+2. `SolrProvisioner._build_env()` collects flags from all active JVM devices and appends them to the `SOLR_OPTS` value
+3. `SolrDockerLauncher._cluster_config_env_flags()` does the same for Docker
+4. Devices must be instantiated before the provisioner's `start()` call and made available to it (via a context object or direct parameter)
+
+**Constraint**: Only works for provisioned pipelines. `benchmark-only` has no pre-start hook. Devices must detect this and skip with a warning.
+
+### PID Tracking: Architecture Decision
+
+`Heapdump` and `DiskIo` (both edited OSB classes) require the Solr process PID. Solr writes its PID to `{solr_root}/bin/solr-{port}.pid` after startup. `SolrProvisioner.start()` should read this file after `_wait_for_ready()` completes and store it in `self.pid`. The Docker launcher can obtain the PID via `docker inspect {container} --format='{{.State.Pid}}'`.
+
+### SegmentStats: Luke API Response Shape
+
+The Luke Request Handler (`/admin/luke?numTerms=0`) returns:
+```json
+{
+  "index": {
+    "numDocs": 1000000,
+    "maxDoc": 1000050,
+    "deletedDocs": 50,
+    "segmentCount": 12,
+    "indexHeapUsageBytes": 2097152
+  }
+}
+```
+`maxDoc` = numDocs + deletedDocs (Lucene internal). Metric name mapping: `numDocs` → `segment_numdocs`, `maxDoc` → `segment_maxdoc`, `deletedDocs` → `segment_deleteddocs`, `segmentCount` → `segment_segmentcount`, `indexHeapUsageBytes` → `segment_indexheapusagebytes`.
+
+### ShardStats: CLUSTERSTATUS + Core Status Response Shape
+
+CLUSTERSTATUS response (`/solr/admin/collections?action=CLUSTERSTATUS`) provides the shard→replica→core mapping. For each shard leader replica, fetch core status:
+```
+GET /solr/admin/cores?action=STATUS&core={core_name}
+```
+Response contains `status.{core}.index.numDocs` and `status.{core}.index.sizeInBytes`.
+
+Standalone detection: If `cluster.collections` is absent from CLUSTERSTATUS or returns empty, the device is in standalone mode and must skip silently.
+
+### ClusterEnvironmentInfo: system endpoint response
+
+`GET /api/node/system` returns (relevant fields):
+```json
+{
+  "lucene": { "solr-spec-version": "9.7.0" },
+  "jvm": { "version": "21.0.1", "name": "OpenJDK ...", "spec": { "vendor": "Oracle" } },
+  "system": { "name": "Mac OS X", "version": "14.0", "availableProcessors": 10 }
+}
+```
+
+### JVM Device Flag Reference
+
+**FlightRecorder** (`jfr`) — edit existing OSB class:
+```python
+def instrument_java_opts(self):
+    log_file = os.path.join(self.log_root, "profile.jfr")
+    return [
+        "-XX:+UnlockDiagnosticVMOptions",
+        "-XX:+DebugNonSafepoints",
+        f"-XX:StartFlightRecording=maxsize=0,maxage=0s,disk=true,dumponexit=true,filename={log_file}",
+    ]
+```
+
+**Gc** (`gc`) — edit existing OSB class:
+```python
+def instrument_java_opts(self):
+    log_file = os.path.join(self.log_root, "gc.log")
+    gc_config = self.params.get("gc-log-config", "gc*=info,safepoint=info,age*=trace")
+    return [f"-Xlog:{gc_config}:file={log_file}:utctime,uptimemillis,level,tags:filecount=0"]
+```
+
+**JitCompiler** (`jit`) — edit existing OSB class:
+```python
+def instrument_java_opts(self):
+    log_file = os.path.join(self.log_root, "jit.log")
+    return ["-XX:+UnlockDiagnosticVMOptions", "-XX:+TraceClassLoading",
+            "-XX:+LogCompilation", f"-XX:LogFile={log_file}", "-XX:+PrintAssembly"]
+```
+
+### What NOT to Port
+
+| Device | Why Not |
+|--------|---------|
+| `ccr-stats` | OpenSearch Cross-Cluster Replication — not a Solr feature |
+| `transform-stats` | OpenSearch Transforms / Elasticsearch Transform Jobs — no Solr equivalent |
+| `searchable-snapshots-stats` | OpenSearch Searchable Snapshots (cloud-native) — no Solr equivalent |
+| `segment-replication-stats` | OpenSearch Segment Replication (doc-based vs segment-based) — architecturally different in Solr |
+| `MlBucketProcessingTime` | OpenSearch ML plugin feature |
+
+### Files That Will Need Changes
+
+| File | Change |
+|------|--------|
+| `osbenchmark/telemetry.py` | Edit `SegmentStats`, `FlightRecorder`, `Gc`, `JitCompiler`, `Heapdump`, `DiskIo`, `ClusterEnvironmentInfo` to use Solr APIs/PID instead of OpenSearch equivalents |
+| `osbenchmark/solr/telemetry.py` | Add new `ShardStats` class (no OSB equivalent; Solr-only, follows OSB naming) |
+| `osbenchmark/solr/provisioner.py` | PID tracking in `SolrProvisioner.start()`; JVM opts injection from telemetry devices into `SOLR_OPTS` |
+| `osbenchmark/worker_coordinator/worker_coordinator.py` | Register `ShardStats` and updated devices in `_create_solr_telemetry_devices()` |
+| `tests/unit/test_telemetry.py` | Update existing device tests for Solr API calls |
+| `tests/unit/solr/test_telemetry.py` | Add `ShardStats` tests |
