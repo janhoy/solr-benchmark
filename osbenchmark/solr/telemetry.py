@@ -271,6 +271,9 @@ class SolrJvmStats(SolrTelemetryDevice):
     Supports both Solr 9.x JSON and Solr 10.x Prometheus formats.
     """
 
+    human_name = "Solr JVM Stats"
+    help = "JVM heap, GC (total/young/old), threads, and buffer pool metrics"
+
     def _collect(self) -> None:
         fmt, data = self._fetch_node_metrics_parsed()
         if fmt == "prometheus":
@@ -385,6 +388,9 @@ class SolrNodeStats(SolrTelemetryDevice):
       - query_handler_avg_latency_ms   (gauge, rolling mean)
     """
 
+    human_name = "Solr Node Stats"
+    help = "CPU usage, OS memory, file descriptors, HTTP requests, and query handler latency"
+
     def _collect(self) -> None:
         self._collect_system_stats()
         self._collect_metrics_stats()
@@ -479,6 +485,9 @@ class SolrCollectionStats(SolrTelemetryDevice):
         sample_interval_s: Polling interval in seconds.
     """
 
+    human_name = "Solr Collection Stats"
+    help = "Per-collection: doc count, deleted docs, index size, and segment count (30 s interval)"
+
     def __init__(self, admin_client, metrics_store,
                  collections: list = None, sample_interval_s: float = 30.0):
         super().__init__(admin_client, metrics_store, sample_interval_s)
@@ -568,6 +577,9 @@ class SolrQueryStats(SolrTelemetryDevice):
     Supports both Solr 9.x JSON and Solr 10.x Prometheus formats.
     """
 
+    human_name = "Solr Query Stats"
+    help = "Query latency percentiles (p50/p99/p999), cache hit ratio, request and error totals"
+
     def _collect(self) -> None:
         fmt, data = self._fetch_node_metrics_parsed()
         if fmt == "prometheus":
@@ -628,6 +640,9 @@ class SolrIndexingStats(SolrTelemetryDevice):
     Supports both Solr 9.x JSON and Solr 10.x Prometheus formats.
     """
 
+    human_name = "Solr Indexing Stats"
+    help = "Indexing request counts, average indexing time, and major/minor merge activity"
+
     def _collect(self) -> None:
         fmt, data = self._fetch_node_metrics_parsed()
         if fmt == "prometheus":
@@ -683,6 +698,9 @@ class SolrCacheStats(SolrTelemetryDevice):
 
     Supports both Solr 9.x JSON and Solr 10.x Prometheus formats.
     """
+
+    human_name = "Solr Cache Stats"
+    help = "Per-cache hits, inserts, evictions, memory, and hit ratio (query/filter/document caches)"
 
     CACHE_NAMES = ["queryResultCache", "filterCache", "documentCache"]
 

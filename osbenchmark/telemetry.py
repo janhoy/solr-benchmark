@@ -42,15 +42,36 @@ from osbenchmark.utils import io, sysstats, console, opts, process
 from osbenchmark.utils.versions import components
 
 def list_telemetry():
+    # Lazy import to avoid circular dependency (solr/telemetry.py imports TelemetryDevice from this module)
+    from osbenchmark.solr import telemetry as solr_telemetry
+
     console.println("Available telemetry devices:\n")
-    devices = [[device.command, device.human_name, device.help] for device in [JitCompiler, Gc, FlightRecorder,
-                                                                               Heapdump, NodeStats, RecoveryStats,
-                                                                               CcrStats, SegmentStats, TransformStats,
-                                                                               SearchableSnapshotsStats,
-                                                                               SegmentReplicationStats, ShardStats]]
-    console.println(tabulate.tabulate(devices, ["Command", "Name", "Description"]))
-    console.println("\nKeep in mind that each telemetry device may incur a runtime overhead which can skew results.")
-    console.println("\nSolr telemetry devices: SolrJvmStats, SolrNodeStats, SolrCollectionStats (see osbenchmark/solr/telemetry.py)")
+
+    # --- Solr-native devices (always enabled) ---
+    console.println("Solr Benchmark devices (always enabled — no --telemetry flag needed):\n")
+    solr_devices = [
+        [d.human_name, d.help] for d in [
+            solr_telemetry.SolrJvmStats,
+            solr_telemetry.SolrNodeStats,
+            solr_telemetry.SolrCollectionStats,
+            solr_telemetry.SolrQueryStats,
+            solr_telemetry.SolrIndexingStats,
+            solr_telemetry.SolrCacheStats,
+        ]
+    ]
+    console.println(tabulate.tabulate(solr_devices, ["Name", "Description"]))
+    console.println("\nAll devices poll /solr/admin/metrics (JSON on Solr 9.x, Prometheus text on Solr 10.x).")
+
+    # --- OpenSearch-only devices ---
+    console.println("\n\nOpenSearch-only devices (NOT applicable to Solr Benchmark):\n")
+    console.println("Note: The following devices target OpenSearch clusters and are not functional against Solr.")
+    console.println("      They are listed here for compatibility when this tool is used as an OpenSearch Benchmark.\n")
+    os_devices = [[device.command, device.human_name, device.help] for device in [JitCompiler, Gc, FlightRecorder,
+                                                                                   Heapdump, NodeStats, RecoveryStats,
+                                                                                   CcrStats, SegmentStats, TransformStats,
+                                                                                   SearchableSnapshotsStats,
+                                                                                   SegmentReplicationStats, ShardStats]]
+    console.println(tabulate.tabulate(os_devices, ["Command", "Name", "Description"]))
 
 
 class Telemetry:
