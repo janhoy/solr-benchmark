@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import shutil
+import socket
 import subprocess
 import tarfile
 import time
@@ -59,6 +60,23 @@ _DOWNLOADS_URL = "https://downloads.apache.org/solr/solr"
 _ARCHIVE_9_URL = "https://archive.apache.org/dist/solr/solr"
 # Pre-9.0 versions (in lucene directory)
 _ARCHIVE_PRE9_URL = "https://archive.apache.org/dist/lucene/solr"
+
+
+def _assert_port_free(port: int) -> None:
+    """
+    Raise SystemSetupError if *port* is already in use on localhost.
+
+    Uses a non-blocking connect attempt: if the connection succeeds, something
+    is already listening and we must abort before trying to start Solr.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1)
+        if sock.connect_ex(("localhost", port)) == 0:
+            raise exceptions.SystemSetupError(
+                f"Port {port} is already in use. "
+                f"Stop the process listening on port {port} before running a benchmark "
+                f"with the 'docker', 'from-distribution', or 'from-sources' pipeline."
+            )
 
 
 class SolrProvisionerError(Exception):
@@ -158,6 +176,8 @@ class SolrProvisioner:
             solr_root: Path to the extracted Solr root directory.
             mode:      "cloud" (default), "user-managed", or None (defaults to "cloud").
         """
+        _assert_port_free(self.port)
+
         if mode is None:
             mode = "cloud"
 
@@ -316,8 +336,10 @@ class SolrDockerLauncher:
         if mode == "cloud" and major < 10:
             cmd.append("-c")
 
-        # Remove any stale container with the same name before starting
+        # Remove any stale container with the same name before the port check,
+        # so a leftover benchmark container does not cause a false-positive.
         subprocess.run(["docker", "rm", "-f", self.container_name], capture_output=True, text=True)
+        _assert_port_free(self.port)
 
         logger.info("Starting Solr Docker container: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)

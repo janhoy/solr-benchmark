@@ -17,10 +17,12 @@
 
 """Unit tests for osbenchmark/solr/provisioner.py"""
 
+import socket
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from osbenchmark.solr.provisioner import SolrProvisioner, SolrDockerLauncher
+from osbenchmark import exceptions
+from osbenchmark.solr.provisioner import SolrProvisioner, SolrDockerLauncher, _assert_port_free
 
 
 def _make_cluster_config(variables: dict):
@@ -126,6 +128,52 @@ class TestSolrDockerLauncherEnvFlags(unittest.TestCase):
         combined = " ".join(flags)
         self.assertNotIn("GC_TUNE", combined)
         self.assertNotIn("SOLR_OPTS", combined)
+
+
+class TestAssertPortFree(unittest.TestCase):
+    """Tests for the _assert_port_free() helper."""
+
+    def test_raises_when_port_in_use(self):
+        """Should raise SystemSetupError when something is already listening."""
+        # Open a real listening socket so the port is genuinely in use.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
+            srv.bind(("localhost", 0))
+            srv.listen(1)
+            port = srv.getsockname()[1]
+            with self.assertRaises(exceptions.SystemSetupError) as ctx:
+                _assert_port_free(port)
+            self.assertIn(str(port), str(ctx.exception))
+
+    def test_no_raise_when_port_free(self):
+        """Should not raise when nothing is listening on the port."""
+        # Find a free port by binding briefly, then release it.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("localhost", 0))
+            free_port = s.getsockname()[1]
+        # Port is now released — _assert_port_free should pass silently.
+        _assert_port_free(free_port)  # must not raise
+
+    def test_provisioner_start_raises_on_busy_port(self):
+        """SolrProvisioner.start() should abort early if the port is busy."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
+            srv.bind(("localhost", 0))
+            srv.listen(1)
+            port = srv.getsockname()[1]
+            p = SolrProvisioner(port=port)
+            with self.assertRaises(exceptions.SystemSetupError):
+                p.start("/tmp/fake-solr-root")
+
+    def test_docker_launcher_start_raises_on_busy_port(self):
+        """SolrDockerLauncher.start() should abort early if the port is busy."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
+            srv.bind(("localhost", 0))
+            srv.listen(1)
+            port = srv.getsockname()[1]
+            launcher = SolrDockerLauncher(port=port)
+            # docker rm -f runs first; mock it out so we don't need Docker installed.
+            with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+                with self.assertRaises(exceptions.SystemSetupError):
+                    launcher.start(version_tag="9")
 
 
 if __name__ == "__main__":
