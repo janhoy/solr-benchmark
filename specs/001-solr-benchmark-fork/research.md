@@ -40,8 +40,8 @@ The V2 API OpenAPI spec is published in Solr's release tarball (see https://solr
 | Delete collection | `/api/collections/{name}` | DELETE |
 | Cluster status | `/api/cluster` | GET |
 | Collection aliases | `/api/aliases` | GET/POST |
-| Node metrics (9.x) | `/api/node/metrics` | GET |
-| Node metrics (10.x, Prometheus) | `/api/node/metrics` | GET (Accept: text/plain) |
+| Node metrics (9.x, JSON) | `/solr/admin/metrics` | GET |
+| Node metrics (10.x, Prometheus) | `/solr/admin/metrics` | GET |
 | System info | `/api/node/system` | GET |
 
 ### Configset Upload Protocol
@@ -71,8 +71,8 @@ POST /api/collections
 The configset ZIP is produced by the workload at benchmark setup time. The workload definition must specify the path to the configset directory (containing `conf/`); the tool zips it in-memory and uploads it before calling the collection API. The configset should be deleted as part of teardown alongside the collection.
 
 ### Metrics Format Split
-- **Solr 9.x**: `GET /api/node/metrics` → custom JSON: `{"metrics": {"solr.jvm": {...}, "solr.node": {...}}}`
-- **Solr 10.x**: Same endpoint → Prometheus text exposition format (detected via `Content-Type: text/plain; version=0.0.4`)
+- **Solr 9.x**: `GET /solr/admin/metrics` → custom JSON: `{"metrics": {"solr.jvm": {...}, "solr.node": {...}}}`
+- **Solr 10.x**: `GET /solr/admin/metrics` → Prometheus text exposition format (detected via `Content-Type: text/plain; version=0.0.4`)
 
 ### Version Detection
 - `GET /api/node/system` → JSON response includes `"lucene": {"solr-spec-version": "9.7.0", ...}`

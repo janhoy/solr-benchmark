@@ -484,6 +484,36 @@ content outside of `about.md`.
 
 ---
 
+## Phase 15: US3 Telemetry Enhancement — Feature Parity with OpenSearch Benchmark
+
+**Goal**: Expand Solr telemetry coverage from ~15% (3 basic devices) to full feature parity by enhancing existing devices and adding 3 new Phase 1 devices (SolrQueryStats, SolrIndexingStats, SolrCacheStats). Implements FR-019 Phase 1 requirements from the 2026-02-26 telemetry gap analysis.
+
+**Independent Test**: Run a benchmark with `--telemetry solr-jvm-stats,solr-query-stats,solr-indexing-stats,solr-cache-stats` against Solr 9.x; verify results contain `query_latency_p99_ms`, `indexing_requests_total`, `queryResultCache_hit_ratio`, `jvm_thread_count`, and `num_deleted_docs` with non-zero values.
+
+- [X] T114 [US3] Add shared dual-format metrics helpers to base device in `osbenchmark/solr/telemetry.py` — add `_get_metric_json(self, key_path: str, default=None)` and `_get_metric_prometheus(self, metric_name: str, labels: dict = None, default=None)` helper methods to the `SolrTelemetryDevice` base class (or a shared mixin); `_get_metric_json` takes a dot-separated path (e.g. `"solr.jvm.threads.count"`) into the already-fetched JSON dict; `_get_metric_prometheus` searches already-parsed Prometheus lines for a matching metric name and optional label set; the base class `__call__` dispatch MUST check `Content-Type` header from the cached `/admin/metrics` response and set `self._format` to either `"json"` or `"prometheus"` before dispatching to `_collect_json()` / `_collect_prometheus()` abstract methods; this satisfies constitution Principle VII (dual-format rule) for all devices centrally
+- [X] T115 [US3] Enhance `SolrJvmStats` in `osbenchmark/solr/telemetry.py` — extend `_collect_json()` and `_collect_prometheus()` to additionally emit: `jvm_thread_count` (`solr.jvm.threads.count`), `jvm_thread_peak_count` (`solr.jvm.threads.peak.count`), `jvm_buffer_pool_direct_bytes` (`solr.jvm.buffers.direct.used`), `jvm_buffer_pool_mapped_bytes` (`solr.jvm.buffers.mapped.used`), `jvm_gc_young_count` and `jvm_gc_young_time_ms` (G1/CMS young-generation GC collector), `jvm_gc_old_count` and `jvm_gc_old_time_ms` (G1/CMS old-generation GC collector); use shared helpers from T114
+- [X] T116 [P] [US3] Enhance `SolrNodeStats` in `osbenchmark/solr/telemetry.py` — extend both format collectors to additionally emit: `node_file_descriptors_open` and `node_file_descriptors_max` (from `/api/node/system` → `fileDescriptors.open` / `fileDescriptors.max`), `node_http_requests_total` (Jetty metric from `/admin/metrics` → `solr.jetty.org.eclipse.jetty.server.handler.StatisticsHandler.requests`), `query_handler_avg_latency_ms` (from `solr.node.QUERY./select.requestTimes.mean_ms`); if a key is absent (standalone vs cloud, Solr version differences) emit 0 without error
+- [X] T117 [P] [US3] Enhance `SolrCollectionStats` in `osbenchmark/solr/telemetry.py` — add `_fetch_luke_stats(collection: str) -> dict` private method that GET-requests `/solr/{collection}/admin/luke?wt=json&numTerms=0` and returns parsed JSON; extend `__call__()` to additionally emit: `num_deleted_docs` (luke `index.deletedDocs`), `segment_memory_bytes` (luke `index.sizeInBytes`); call luke once per collection per sampling interval; wrap luke call in try/except so failure (e.g., collection mid-reindex) does not abort telemetry collection
+- [X] T118 [US3] Create `SolrQueryStats` telemetry device in `osbenchmark/solr/telemetry.py` — new class `SolrQueryStats(SolrTelemetryDevice)` with device name `"solr-query-stats"`; `_collect_json()`: parse `/admin/metrics?group=core&prefix=QUERY` JSON to extract per-handler `requestTimes.p_99`, `requestTimes.p_50`, `requestTimes.p_999` → emit `query_latency_p50_ms`, `query_latency_p99_ms`, `query_latency_p999_ms`; also extract `requests` → `query_requests_total` and `errors` → `query_errors_total`; extract `CACHE.queryResultCache.hitratio` → `query_cache_hit_ratio`; `_collect_prometheus()`: equivalent parsing from Prometheus text lines matching `QUERY_select_requestTimes*`; return empty gracefully if no handlers found
+- [X] T119 [P] [US3] Create `SolrIndexingStats` telemetry device in `osbenchmark/solr/telemetry.py` — new class `SolrIndexingStats(SolrTelemetryDevice)` with device name `"solr-indexing-stats"`; `_collect_json()`: parse `/admin/metrics?group=core&prefix=UPDATE` to extract `UPDATE./update.requests` → `indexing_requests_total`, `UPDATE./update.errors` → `indexing_errors_total`, `UPDATE./update.requestTimes.mean_ms` → `indexing_avg_time_ms`; parse `INDEX.merge.major.running` → `index_merge_major_running`, `INDEX.merge.minor.running` → `index_merge_minor_running`, cumulative `INDEX.merge.major.totalTimeMS` → `index_merge_major_time_ms_total`; `_collect_prometheus()`: equivalent Prometheus parsing; compute `indexing_docs_per_sec` by delta of `UPDATE./update.requests` between successive samples divided by sampling interval
+- [X] T120 [P] [US3] Create `SolrCacheStats` telemetry device in `osbenchmark/solr/telemetry.py` — new class `SolrCacheStats(SolrTelemetryDevice)` with device name `"solr-cache-stats"`; for each of `queryResultCache`, `filterCache`, `documentCache`: in `_collect_json()` parse `CACHE.{name}.hits` → `{name}_hits_total`, `CACHE.{name}.misses` → `{name}_misses_total`, `CACHE.{name}.evictions` → `{name}_evictions_total`, `CACHE.{name}.ramBytesUsed` → `{name}_memory_bytes`, `CACHE.{name}.hitratio` → `{name}_hit_ratio`; in `_collect_prometheus()`: parse Prometheus lines with `solr_cache_{name}_*` prefix; if a cache type is absent from the response emit 0 without error
+- [X] T121 [US3] Register `SolrQueryStats`, `SolrIndexingStats`, `SolrCacheStats` in `osbenchmark/telemetry.py` — add `SolrQueryStats`, `SolrIndexingStats`, `SolrCacheStats` to the Solr device registry alongside the existing three devices; wire `SolrAdminClient` instance into each at startup; add device names `"solr-query-stats"`, `"solr-indexing-stats"`, `"solr-cache-stats"` to the default enabled-devices list (or ensure they are included when `--telemetry all` is specified)
+- [X] T122 [P] [US3] Write unit tests for `SolrJvmStats` enhancements and `SolrQueryStats` in `tests/unit/solr/test_telemetry.py` — `test_jvm_stats_thread_count_json`: mock 9.x JSON response with `solr.jvm.threads.count=150`; assert `jvm_thread_count == 150`; `test_jvm_stats_buffer_pool_prometheus`: mock Prometheus text with `solr_jvm_buffers_direct_used_bytes 4096`; assert `jvm_buffer_pool_direct_bytes == 4096`; `test_jvm_stats_gc_per_collector_json`: mock two GC collectors; assert `jvm_gc_young_count` and `jvm_gc_old_count` both present; `test_query_stats_latency_json`: mock JSON requestTimes histogram; assert `query_latency_p99_ms` correct; `test_query_stats_latency_prometheus`: mock Prometheus lines; assert same field; `test_query_stats_cache_hit_ratio`: mock hitratio=0.85; assert `query_cache_hit_ratio == 0.85`; `test_query_stats_no_handlers`: empty metrics response; assert device returns empty dict without error
+- [X] T123 [P] [US3] Write unit tests for `SolrNodeStats` and `SolrCollectionStats` enhancements in `tests/unit/solr/test_telemetry.py` — `test_node_stats_file_descriptors_json`: mock `/api/node/system` with `fileDescriptors:{open:100,max:1024}`; assert `node_file_descriptors_open==100`, `node_file_descriptors_max==1024`; `test_node_stats_http_requests`: mock Jetty metric; assert `node_http_requests_total`; `test_collection_stats_deleted_docs`: mock `/admin/luke` with `index.deletedDocs=5`; assert `num_deleted_docs==5`; `test_collection_stats_segment_memory`: mock luke `index.sizeInBytes=1048576`; assert `segment_memory_bytes==1048576`; `test_collection_stats_luke_failure_graceful`: mock luke returning 500; assert device does not raise and emits 0 for deleted_docs
+- [X] T124 [P] [US3] Write unit tests for `SolrIndexingStats` and `SolrCacheStats` in `tests/unit/solr/test_telemetry.py` — `test_indexing_stats_requests_json`: mock UPDATE metrics JSON; assert `indexing_requests_total`, `indexing_errors_total`, `indexing_avg_time_ms`; `test_indexing_stats_merge_running`: mock `INDEX.merge.major.running=2`; assert `index_merge_major_running==2`; `test_indexing_stats_prometheus`: mock Prometheus lines; assert correct extraction; `test_cache_stats_query_cache_json`: mock `CACHE.queryResultCache.hits=1000, misses=200, hitratio=0.833`; assert all three metrics correct; `test_cache_stats_filter_cache_evictions`: assert `filterCache_evictions_total`; `test_cache_stats_document_cache_prometheus`: mock Prometheus; assert `documentCache_hit_ratio`; `test_cache_stats_missing_cache`: cache absent from response → 0, no error
+- [X] T125 [P] [US3] Update `docs/user-guide/understanding-results/telemetry.md` — add new device sections for `SolrQueryStats` (explain latency percentiles and cache hit rates), `SolrIndexingStats` (explain indexing rate and merge stats), `SolrCacheStats` (explain query/filter/document cache metrics); update existing device sections to mention new metrics added in this phase (`jvm_thread_count`, `node_file_descriptors_open`, `num_deleted_docs`); add a note that telemetry requires a live Solr connection and shows only metrics available for the running Solr version
+- [X] T126 [P] [US3] Update `docs/reference/telemetry.md` — expand device reference table to include all 6 Phase 1 devices; for each device add columns: Device Name, Default Enabled, API Endpoint(s), All Metric Names, Units; add section "Dual-format support" explaining JSON vs Prometheus detection; add section "Phase 2 optional devices" listing SolrShardStats and SolrReplicationStats as planned future additions with their intended metrics
+- [ ] T127 [US3] End-to-end validation of Phase 15 — run `solr-benchmark run --pipeline=docker --distribution-version=9.10.1 --workload=nyc_taxis --telemetry=solr-jvm-stats,solr-node-stats,solr-collection-stats,solr-query-stats,solr-indexing-stats,solr-cache-stats --test-mode`; verify: (1) `query_latency_p99_ms` appears in results with non-zero value; (2) `indexing_requests_total` appears during bulk-index phase; (3) `queryResultCache_hit_ratio` appears; (4) `jvm_thread_count` appears (enhanced SolrJvmStats); (5) `num_deleted_docs` appears (enhanced SolrCollectionStats); (6) no errors or warnings about missing metrics; (7) run same against Solr 10.x if available and verify Prometheus-format parsing produces identical metric names
+
+**Phase 2 Optional Devices** *(SHOULD implement — add to registry when complete)*:
+
+- [ ] T128 [P] [US3] Implement `SolrShardStats` in `osbenchmark/solr/telemetry.py` — optional Phase 2 device, device name `"solr-shard-stats"`; at collection start check CLUSTERSTATUS response: if `clusterStatus` key absent or `zkHost` absent → `self._solrcloud = False`; if standalone mode, `__call__()` returns immediately with debug log "SolrShardStats skipped: not SolrCloud mode"; if SolrCloud, iterate shards from CLUSTERSTATUS and emit `shard_{name}_doc_count`, `shard_{name}_index_size_bytes`, `shard_{name}_replica_count`, `shard_{name}_active_replicas` per shard; satisfies FR-019b
+- [ ] T129 [P] [US3] Implement `SolrReplicationStats` in `osbenchmark/solr/telemetry.py` — optional Phase 2 device, device name `"solr-replication-stats"`; SolrCloud only (same guard as T128); polls `GET /solr/admin/collections?action=REPLICATIONDETAILS` for each collection and emits `replication_lag_docs` (leader maxDoc minus replica maxDoc), `replication_errors_total`, `recovery_status` (coded as 0=active, 1=recovering, 2=down); gracefully handles standalone mode (no metrics emitted); satisfies FR-019b
+
+**Checkpoint US3 Phase 15**: Unit tests for all 3 new devices and 3 enhanced devices pass; benchmark report contains 6+ new Solr-side metric names; `query_latency_p99_ms` and `queryResultCache_hit_ratio` populated in a nyc_taxis test-mode run.
+
+---
+
 ## Summary (Updated)
 
 | Phase | Tasks | Parallelizable | Story |
@@ -500,9 +530,10 @@ content outside of `about.md`.
 | Phase 10: Workload Conversion Refactor | T063–T072 | T068, T069, T070, T072 | US4 |
 | Phase 11: Remove Auto-Conversion | T073–T079 | T076, T077, T078 | US4 |
 | Phase 12: cluster_config + Collection Settings | T080–T091 | T082, T083, T087, T090 | — |
-| **Phase 13: Docs Site Setup** | **T092–T094** | **T093, T094** | — |
-| **Phase 14: US5 Documentation Content** | **T095–T113** | **T095–T099, T101–T109, T111–T113** | US5 |
-| **Total** | **113 tasks** | **57 parallelizable** | |
+| Phase 13: Docs Site Setup | T092–T094 | T093, T094 | — |
+| Phase 14: US5 Documentation Content | T095–T113 | T095–T099, T101–T109, T111–T113 | US5 |
+| **Phase 15: US3 Telemetry Enhancement** | **T114–T129** | **T116, T117, T119, T120, T122–T126, T128, T129** | **US3** |
+| **Total** | **129 tasks** | **67 parallelizable** | |
 
 ### Dependencies
 
@@ -510,6 +541,7 @@ content outside of `about.md`.
 - Phase 14 (T095–T113) depends on Phase 13 completion (Jekyll scaffold must exist)
 - Within Phase 14, all `[P]` tasks can run in parallel after T092 completes
 - T110–T113 (polish) depend on all content pages existing
+- Phase 15 (T114–T129): T114 MUST complete first (shared helpers); T115–T120 can run in parallel after T114; T121 depends on T115–T120; T122–T126 can run in parallel after T114; T127 (verification) depends on T121; T128–T129 (Phase 2 optional) can run in parallel any time after T114
 
 ### Parallel opportunities (Phase 14)
 
@@ -522,4 +554,16 @@ Group B (user guide):    T100, T101, T102, T103, T104
 Group C (reference):     T105, T106, T107
 Group D (new sections):  T108, T109
 Polish (sequential):     T110, T111, T112, T113
+```
+
+### Parallel opportunities (Phase 15)
+
+```
+Sequential:   T114  (shared helpers — must complete first)
+Parallel:     T115, T116, T117  (enhance existing devices)
+Parallel:     T118, T119, T120  (new devices — can overlap with T115–T117)
+Sequential:   T121  (register all new devices — after T115–T120)
+Parallel:     T122, T123, T124, T125, T126  (tests + docs — after T114)
+Sequential:   T127  (verification — after T121)
+Parallel:     T128, T129  (Phase 2 optional — any time after T114)
 ```

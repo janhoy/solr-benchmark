@@ -673,8 +673,8 @@ class SolrWaitForMerges(SolrRunner):
     """
     Poll Solr node metrics until no active merge operations remain across any core.
 
-    Supports Solr 9.x (JSON format from /solr/admin/metrics) and Solr 10.x
-    (Prometheus text format from /api/node/metrics) — format is auto-detected
+    Supports Solr 9.x (JSON format) and Solr 10.x (Prometheus text format),
+    both served from /solr/admin/metrics — format is auto-detected
     by SolrAdminClient.get_node_metrics().
 
     Params:

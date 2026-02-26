@@ -295,7 +295,7 @@ Three new telemetry devices replace the OpenSearch-specific ones.
 
 ### `SolrJvmStats`
 
-Polls `GET /api/node/metrics` during benchmark. Recorded metrics:
+Polls `GET /solr/admin/metrics` during benchmark. Recorded metrics:
 
 | Metric name | Unit | Source (9.x JSON path) |
 |---|---|---|

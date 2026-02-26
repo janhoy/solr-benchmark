@@ -216,27 +216,15 @@ class SolrAdminClient:
         """
         Retrieve node metrics via GET /solr/admin/metrics.
 
-        Falls back to /api/node/metrics for Solr 10.x (Prometheus text format).
-
-        Detects response format by Content-Type:
+        Both Solr 9.x and Solr 10.x use the same endpoint. The response format
+        differs by version and is detected via the Content-Type header:
           - application/json  → Solr 9.x custom JSON → returns parsed dict
           - text/plain        → Solr 10.x Prometheus text → returns raw str
 
         The telemetry device is responsible for parsing the format-specific response.
         """
-        # Solr 9.x uses the legacy /solr/admin/metrics endpoint (JSON format).
-        # Solr 10.x exposes /api/node/metrics (Prometheus text format).
-        # Try the legacy endpoint first; fall back to V2 API on 404.
-        try:
-            resp = self._get_session().get(f"{self.base_url}/solr/admin/metrics", timeout=self.timeout)
-            if resp.ok:
-                content_type = resp.headers.get("Content-Type", "")
-                if "text/plain" in content_type:
-                    return resp.text
-                return resp.json()
-        except Exception:
-            pass
-        resp = self._get("/api/node/metrics")
+        resp = self._get_session().get(f"{self.base_url}/solr/admin/metrics", timeout=self.timeout)
+        resp.raise_for_status()
         content_type = resp.headers.get("Content-Type", "")
         if "text/plain" in content_type:
             return resp.text

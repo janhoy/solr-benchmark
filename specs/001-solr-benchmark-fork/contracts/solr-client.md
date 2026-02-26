@@ -110,7 +110,7 @@ class SolrAdminClient:
 
     def get_node_metrics(self) -> dict | str:
         """
-        Retrieve node metrics via GET /api/node/metrics.
+        Retrieve node metrics via GET /solr/admin/metrics.
 
         Automatically detects response format by Content-Type:
           - Solr 9.x: returns parsed JSON dict

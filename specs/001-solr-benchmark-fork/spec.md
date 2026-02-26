@@ -47,6 +47,10 @@
 - Directive: The `convert-workload` subcommand code MUST live in a clearly isolated module (`osbenchmark/solr/conversion/`) with no imports from the benchmark run path. It is a standalone utility, not part of the run pipeline.
 - Directive: `osbenchmark/resources/benchmark.ini` `default.url` MUST be changed from the opensearch-project workloads repository to `https://github.com/janhoy/solr-benchmark-workloads`.
 
+### Session 2026-02-26
+
+- Directive: Telemetry gap analysis incorporated. The tool MUST implement the following additional telemetry devices and device enhancements to achieve feature parity with OpenSearch Benchmark's 14-device telemetry suite. Current coverage is ~15% (3 basic devices); target is parity via Phase 1 (critical) and Phase 2 (advanced) devices. Phase 3 operational tools (StartupTime, DiskIo, Heapdump) are lower priority but use existing framework infrastructure. OpenSearch-only concepts (CcrStats, TransformStats, Circuit Breakers) are explicitly out of scope for Solr.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Run Benchmarks Against Existing Solr Cluster (Priority: P1)
@@ -93,10 +97,13 @@ A Solr operator wants the benchmark tool to collect fine-grained Solr-specific p
 
 **Acceptance Scenarios**:
 
-1. **Given** telemetry is enabled, **When** a benchmark runs, **Then** the tool collects JVM heap usage, GC pause times, and thread counts from Solr's metrics API.
-2. **Given** telemetry is enabled during indexing, **When** the benchmark completes, **Then** the report includes collection segment counts and index size growth recorded during the run.
-3. **Given** a Solr cluster node, **When** node stats telemetry runs, **Then** the tool retrieves CPU usage, memory usage, and Solr query handler throughput/error counts from the admin API.
-4. **Given** OpenSearch-only telemetry devices (CCR stats, ML model stats, Transform stats, async search stats, gRPC stats), **When** the tool starts, **Then** these devices are absent and produce no errors or warnings.
+1. **Given** telemetry is enabled, **When** a benchmark runs, **Then** the tool collects JVM heap usage, GC pause times, thread counts, and buffer pool stats from Solr's metrics API (`SolrJvmStats` enhanced).
+2. **Given** telemetry is enabled during indexing, **When** the benchmark completes, **Then** the report includes collection segment counts, index size growth, deleted document counts, and segment memory usage (`SolrCollectionStats` enhanced).
+3. **Given** a Solr cluster node, **When** node stats telemetry runs, **Then** the tool retrieves CPU usage, memory usage, file descriptor counts, and network stats from the admin API (`SolrNodeStats` enhanced).
+4. **Given** telemetry is enabled during a query workload, **When** the benchmark completes, **Then** the report includes query latency percentiles (p50, p99, p999), per-handler request/error counts, and query cache hit rates (`SolrQueryStats` — Phase 1 new device).
+5. **Given** telemetry is enabled during bulk indexing, **When** the benchmark completes, **Then** the report includes indexing rate (docs/sec), update handler errors, merge statistics, and refresh statistics (`SolrIndexingStats` — Phase 1 new device).
+6. **Given** telemetry is enabled, **When** a benchmark runs, **Then** the report includes query cache, filter cache, and document cache hit/miss rates, eviction counts, and memory usage (`SolrCacheStats` — Phase 1 new device).
+7. **Given** OpenSearch-only telemetry devices (CCR stats, ML model stats, Transform stats, Circuit Breakers, async search stats, gRPC stats), **When** the tool starts, **Then** these devices are absent and produce no errors or warnings.
 
 ---
 
@@ -191,12 +198,34 @@ A contributor or user of Apache Solr Benchmark wants to read comprehensive, Solr
 - **FR-018g**: The bridge runner classes that mapped OpenSearch operation types at runtime (`SolrCreateIndexBridge`, `SolrBulkBridge`, `SolrDeleteIndexBridge`) MUST be removed. All operation type mapping (`create-index`→`create-collection`, `bulk`→`bulk-index`, etc.) happens exclusively at workload conversion time.
 
 **Telemetry:**
-- **FR-019**: The tool MUST collect JVM metrics (heap usage, GC pause times, thread counts), collection statistics (document count, index size, segment count), node-level system metrics (CPU, memory, disk), and query handler statistics (request count, error count, average response time) from Solr nodes via the V2 metrics API during benchmarks.
+- **FR-019**: The tool MUST collect Solr-specific performance metrics during benchmark runs via the following telemetry devices. All devices query Solr admin APIs and write named metrics into the time-series results store. Target Solr version: 9.x and 10.x.
+
+  **Existing devices (already implemented — require enhancement):**
+  - **SolrJvmStats**: Heap used/max, GC count/time. Enhancement: add thread counts, buffer pool stats (direct/mapped), per-GC-collector details. API: `/admin/metrics` → `solr.jvm.*`.
+  - **SolrNodeStats**: CPU usage, OS memory free, query handler request/error counts. Enhancement: add file descriptor counts (open/max), network transport stats, per-handler latency averages. API: `/admin/metrics` → `solr.node.*`, `/api/node/system`.
+  - **SolrCollectionStats**: Document count, index size, segment count per collection. Enhancement: add deleted document counts, segment memory usage, per-shard breakdown (optional). API: `CLUSTERSTATUS`, `/admin/luke` per core.
+
+  **Phase 1 — new devices (MUST implement for feature parity):**
+  - **SolrQueryStats**: Query latency percentiles (p50, p99, p999), per-handler request counts, per-handler error counts, query result cache hit rates. API: `/admin/metrics` → `QUERY.*.requestTimes.*`.
+  - **SolrIndexingStats**: Indexing rate (docs/sec), update handler error counts, merge statistics (merge count, merge time), refresh/commit statistics. API: `/admin/metrics` → `UPDATE.*`, `INDEX.merge.*`.
+  - **SolrCacheStats**: Query cache, filter cache, and document cache hit/miss rates, eviction counts, and memory usage. API: `/admin/metrics` → `CACHE.*`.
+
+  **Phase 2 — optional advanced devices (SHOULD implement):**
+  - **SolrShardStats**: Per-shard document counts, per-shard index sizes, replica sync status. API: `CLUSTERSTATUS` + per-core APIs. Note: SolrCloud mode only; device MUST gracefully handle standalone mode.
+  - **SolrReplicationStats**: Leader-replica lag, replication errors, recovery progress. API: `REPLICATIONDETAILS`, `REQUESTRECOVERYSTATUS`. Note: SolrCloud mode only.
+
+  **Phase 3 — operational tools (MAY implement):**
+  - **StartupTime**: Tracks cluster startup duration (no new API required; uses framework infrastructure already present in OSB).
+  - **DiskIo**: Disk I/O statistics at OS level (framework infrastructure already present in OSB).
+  - **Heapdump**: On-demand JVM heap dump (requires JMX or Solr-specific endpoint).
+
 - **FR-019a**: The telemetry layer MUST support two response formats for the V2 metrics endpoint, selected automatically based on detected Solr version:
   - **Solr 9.x**: custom JSON format returned by the V2 metrics API.
   - **Solr 10.x+**: Prometheus exposition format (text-based) returned by the same endpoint.
   The tool MUST parse whichever format the connected Solr version returns and map the result to the same internal metric names regardless of source format.
-- **FR-023**: The tool MUST NOT include telemetry devices for OpenSearch-only features (CCR replication, Transform, Searchable Snapshots, ML Commons, Segment Replication plugin stats).
+- **FR-019b**: Devices that only apply to SolrCloud mode (SolrShardStats, SolrReplicationStats) MUST gracefully detect standalone mode by checking the CLUSTERSTATUS response and skip collection without error.
+- **FR-019c**: All telemetry metric names MUST follow the OpenSearch Benchmark naming convention (underscore_separated) rather than Solr's dot-separated internal names, so that results from this tool can be cross-referenced with existing OSB result sets.
+- **FR-023**: The tool MUST NOT include telemetry devices for OpenSearch-only features (CCR replication, Transform, Circuit Breakers, Searchable Snapshots, ML Commons, Segment Replication plugin stats). These are explicitly out of scope because Solr has no equivalent capabilities.
 
 **ASF Licensing and Attribution:**
 - **FR-028**: The NOTICE file MUST be updated to place "Apache Solr Benchmark / Copyright [YEAR] The Apache Solr project" at the top, followed by the full attribution chain — retaining all existing attributions in order: OpenSearch Contributors (Copyright 2022), and Elasticsearch bv (Rally source code). No existing attribution may be removed.

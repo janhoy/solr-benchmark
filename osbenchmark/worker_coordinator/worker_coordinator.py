@@ -1016,6 +1016,9 @@ class WorkerCoordinator:
             solr_telemetry.SolrJvmStats(admin, self.metrics_store),
             solr_telemetry.SolrNodeStats(admin, self.metrics_store),
             solr_telemetry.SolrCollectionStats(admin, self.metrics_store),
+            solr_telemetry.SolrQueryStats(admin, self.metrics_store),
+            solr_telemetry.SolrIndexingStats(admin, self.metrics_store),
+            solr_telemetry.SolrCacheStats(admin, self.metrics_store),
         ]
 
     def wait_for_rest_api(self, opensearch):
