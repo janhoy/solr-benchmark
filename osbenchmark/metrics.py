@@ -81,7 +81,8 @@ def metrics_store(cfg, read_only=True, workload=None, test_procedure=None, clust
     :param read_only: Whether to open the metrics store only for reading (Default: True).
     :return: A metrics store implementation.
     """
-    cls = InMemoryMetricsStore
+    store_type = cfg.opts("reporting", "metrics_store", mandatory=False, default_value="filesystem")
+    cls = FilesystemMetricsStore if store_type == "filesystem" else InMemoryMetricsStore
     store = cls(cfg=cfg, meta_info=meta_info)
     logging.getLogger(__name__).info("Creating %s", str(store))
 
@@ -95,6 +96,8 @@ def metrics_store(cfg, read_only=True, workload=None, test_procedure=None, clust
         workload, test_procedure, selected_cluster_config,
         create=not read_only)
     return store
+
+
 def extract_user_tags_from_config(cfg):
     """
     Extracts user tags into a structured dict
@@ -711,6 +714,44 @@ class InMemoryMetricsStore(MetricsStore):
 
     def __str__(self):
         return "in-memory metrics store"
+
+
+class FilesystemMetricsStore(InMemoryMetricsStore):
+    """Extends InMemoryMetricsStore to also persist each metric document to disk as a JSONL file."""
+
+    def __init__(self, cfg, clock=time.Clock, meta_info=None):
+        super().__init__(cfg=cfg, clock=clock, meta_info=meta_info)
+        self._metrics_file = None
+
+    def open(self, test_run_id=None, test_run_timestamp=None, workload_name=None,
+             test_procedure_name=None, cluster_config_name=None, ctx=None, create=False):
+        super().open(test_run_id, test_run_timestamp, workload_name,
+                     test_procedure_name, cluster_config_name, ctx, create)
+        if create:
+            run_dir = paths.test_run_root(self._config, test_run_id=self._test_run_id)
+            io.ensure_dir(run_dir)
+            metrics_path = os.path.join(run_dir, "metrics.jsonl")
+            # line-buffered so each metric line is flushed immediately
+            self._metrics_file = open(metrics_path, "wt", encoding="utf-8", buffering=1)  # pylint: disable=consider-using-with
+            self.logger.info("FilesystemMetricsStore writing raw metrics to %s", metrics_path)
+
+    def _add(self, doc):
+        super()._add(doc)
+        if self._metrics_file is not None:
+            self._metrics_file.write(json.dumps(doc) + "\n")
+
+    def flush(self, refresh=True):
+        if self._metrics_file is not None:
+            self._metrics_file.flush()
+
+    def close(self):
+        super().close()
+        if self._metrics_file is not None:
+            self._metrics_file.close()
+            self._metrics_file = None
+
+    def __str__(self):
+        return "filesystem metrics store"
 
 
 def test_run_store(cfg):

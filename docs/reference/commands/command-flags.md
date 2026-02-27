@@ -13,12 +13,14 @@ Complete reference of all `solr-benchmark` command-line flags.
 
 Accepted by all subcommands.
 
-| Flag | Description |
-|------|-------------|
-| `--version` | Show version and exit |
-| `--quiet` | Suppress console output (except errors) |
-| `--loglevel` | Log level: `debug`, `info` (default), `warning`, `error` |
-| `--log-path` | Path to the log file (default: `~/.solr-benchmark/logs/`) |
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--help` | `-h` | Display help text for the current command and exit |
+| `--offline` | — | Run without network access; disables workload repository fetching and update checks |
+| `--version` | — | Show version and exit |
+| `--quiet` | — | Suppress console output (except errors) |
+| `--loglevel` | — | Log level: `debug`, `info` (default), `warning`, `error` |
+| `--log-path` | — | Path to the log file (default: `~/.solr-benchmark/logs/`) |
 
 ## run flags
 

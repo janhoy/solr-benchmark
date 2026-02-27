@@ -18,3 +18,12 @@ Reference documentation for all `solr-benchmark` subcommands and their flags.
 | [info](info.html) | Show detailed information about a workload |
 | [list](list.html) | List available workloads, telemetry, pipelines, or past runs |
 | [run](run.html) | Run a benchmark workload |
+
+## Common options
+
+The following flags are accepted by every `solr-benchmark` subcommand.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--help` | `-h` | Display help text for the current command and exit |
+| `--offline` | — | Run without network access; disables workload repository fetching and any update checks |
