@@ -81,7 +81,7 @@ def metrics_store(cfg, read_only=True, workload=None, test_procedure=None, clust
     :param read_only: Whether to open the metrics store only for reading (Default: True).
     :return: A metrics store implementation.
     """
-    store_type = cfg.opts("reporting", "metrics_store", mandatory=False, default_value="filesystem")
+    store_type = cfg.opts("reporting", "datastore.type", mandatory=False, default_value="in-memory")
     cls = FilesystemMetricsStore if store_type == "filesystem" else InMemoryMetricsStore
     store = cls(cfg=cfg, meta_info=meta_info)
     logging.getLogger(__name__).info("Creating %s", str(store))

@@ -253,9 +253,7 @@ class Config:
             (Scope.application, "builder", "cluster_config.default.repository"): "default",
             # Solr-specific defaults
             (Scope.application, "solr", "port"): 8983,
-            (Scope.application, "reporting", "results_writer"): "local_filesystem",
-            (Scope.application, "reporting", "results_path"): "~/.solr-benchmark/results",
-            (Scope.application, "reporting", "metrics_store"): "filesystem",
+            (Scope.application, "reporting", "datastore.type"): "in-memory",
         }
 
     def _fill_from_config_file(self, config):

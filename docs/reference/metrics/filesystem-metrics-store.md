@@ -7,56 +7,53 @@ nav_order: 1
 
 # Filesystem Metrics Store
 
-The filesystem metrics store is the default metrics store for Apache Solr Benchmark.
-It extends the in-memory store by also streaming each metric document to a `metrics.jsonl`
-file on disk as the benchmark runs, so that raw samples are available for offline analysis
-even after the process exits.
+The filesystem metrics store is an opt-in extension of the default in-memory store.
+It keeps all metric records in RAM and additionally streams each metric document to a
+`metrics.jsonl` file on disk as the benchmark runs, making raw samples available for
+offline analysis even after the process exits.
+
+The default metrics store is **in-memory**. Enable the filesystem store explicitly when
+you need access to individual raw samples after the run.
 
 ## Configuration
 
-The store type is controlled by the `metrics_store` key under the `[reporting]` section in
-`~/.solr-benchmark/solr-benchmark.ini`:
+The store type is controlled by the `datastore.type` key under the `[reporting]` section in
+`~/.solr-benchmark/benchmark.ini`:
 
 ```ini
 [reporting]
-# Default: filesystem (writes metrics.jsonl alongside test_run.json)
-# Set to "memory" to disable disk persistence
-metrics_store = filesystem
+# Default: in-memory (no disk writes for raw samples)
+# Set to "filesystem" to also stream raw metric documents to metrics.jsonl
+datastore.type = filesystem
 ```
-
-You can also override it for a single run using `--workload-params` or by setting the value
-in the configuration file before running.
 
 ## File layout
 
-After a completed benchmark run the following structure is created under `~/.solr-benchmark/`:
+When the filesystem metrics store is active, the following structure is created under
+`~/.solr-benchmark/` after a completed benchmark run:
 
 ```
 ~/.solr-benchmark/
-├── benchmarks/
-│   └── test-runs/
-│       └── <run-id>/
-│           ├── test_run.json   # full run record with calculated results
-│           └── metrics.jsonl  # raw metric documents, one JSON object per line
-└── results/
-    └── <timestamp>_<run-id>/
-        ├── summary.txt         # human-readable Markdown summary table
-        ├── results.csv         # flattened CSV of calculated results
-        └── test_run.json       # copy of the canonical run record
+└── benchmarks/
+    └── test-runs/
+        └── <run-id>/
+            ├── test_run.json   # full run record with calculated results
+            └── metrics.jsonl   # raw metric documents, one JSON object per line
 ```
+
+`test_run.json` is written by the test-run store after every run regardless of which
+metrics store is active.
 
 ### `test_run.json`
 
-Written by the test-run store after the run finishes.
 Contains the full computed results (percentiles, error rates, throughput summaries)
 together with workload metadata and benchmark environment information.
 
 ### `metrics.jsonl`
 
-Written by the filesystem metrics store incrementally during the run.
-Each line is a standalone JSON object representing a single metric measurement.
-Lines are written in chronological order with line buffering (no data is lost if the
-process is killed after the first measurement).
+Written incrementally during the run, one JSON object per line.
+Lines are written with line buffering, so no data is lost if the process is killed after
+the first measurement.
 
 Example line:
 

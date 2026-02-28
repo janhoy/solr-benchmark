@@ -165,10 +165,10 @@ class FilesystemMetricsStoreTests(unittest.TestCase):
         self.assertIsNone(self.store._metrics_file)
 
     # ------------------------------------------------------------------
-    # metrics_store() factory returns FilesystemMetricsStore by default
+    # metrics_store() factory — default and explicit configuration
     # ------------------------------------------------------------------
 
-    def test_factory_returns_filesystem_store_by_default(self):
+    def test_factory_returns_in_memory_store_by_default(self):
         cfg = _make_cfg(self.tmp_dir)
         cfg.add(config.Scope.application, "system", "test_run.id", TEST_RUN_ID)
         cfg.add(config.Scope.application, "system", "time.start", TEST_RUN_TIMESTAMP)
@@ -176,21 +176,21 @@ class FilesystemMetricsStoreTests(unittest.TestCase):
 
         store = metrics.metrics_store(cfg, read_only=False, workload="test", test_procedure="challenge")
         try:
-            self.assertIsInstance(store, metrics.FilesystemMetricsStore)
+            self.assertIsInstance(store, metrics.InMemoryMetricsStore)
+            self.assertNotIsInstance(store, metrics.FilesystemMetricsStore)
         finally:
             store.close()
 
-    def test_factory_returns_in_memory_store_when_configured(self):
+    def test_factory_returns_filesystem_store_when_configured(self):
         cfg = _make_cfg(self.tmp_dir)
-        cfg.add(config.Scope.application, "system", "test_run.id", TEST_RUN_ID + "-mem")
+        cfg.add(config.Scope.application, "system", "test_run.id", TEST_RUN_ID + "-fs")
         cfg.add(config.Scope.application, "system", "time.start", TEST_RUN_TIMESTAMP)
         cfg.add(config.Scope.application, "builder", "cluster_config.names", "defaults")
-        cfg.add(config.Scope.application, "reporting", "metrics_store", "memory")
+        cfg.add(config.Scope.application, "reporting", "datastore.type", "filesystem")
 
         store = metrics.metrics_store(cfg, read_only=False, workload="test", test_procedure="challenge")
         try:
-            self.assertIsInstance(store, metrics.InMemoryMetricsStore)
-            self.assertNotIsInstance(store, metrics.FilesystemMetricsStore)
+            self.assertIsInstance(store, metrics.FilesystemMetricsStore)
         finally:
             store.close()
 

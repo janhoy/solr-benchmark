@@ -14,33 +14,33 @@ analyzed and compared across runs. This page describes the available storage opt
 
 Metrics can be stored in two ways depending on your analysis requirements.
 
-### In memory
+### In memory (default)
 
-The simplest configuration keeps all metric records in RAM for the duration of the run.
-Results are computed from this in-memory state and written to the filesystem when the run
-completes. The raw individual samples are not persisted beyond the process lifetime.
+The default configuration keeps all metric records in RAM for the duration of the run.
+Results are computed from this in-memory state and written to `test_run.json` when the run
+completes. The raw individual samples are not persisted beyond the process lifetime, which
+keeps disk usage minimal and avoids per-sample write overhead.
 
-To use in-memory storage, set `metrics_store` in your configuration file
-(`~/.solr-benchmark/solr-benchmark.ini`):
+No configuration is required to use in-memory storage — it is the default. You can also
+set it explicitly in `~/.solr-benchmark/benchmark.ini`:
 
 ```ini
 [reporting]
-metrics_store = memory
+datastore.type = in-memory
 ```
 
-Use this option when you only need the aggregated results (percentiles, throughput summaries)
-and do not require access to the individual raw samples after the run.
+### Filesystem (opt-in)
 
-### Filesystem (default)
+The filesystem metrics store keeps all metric records in RAM (exactly like the in-memory
+store) **and** also streams every raw metric document to a `metrics.jsonl` file on disk as
+it arrives. This makes individual samples available for offline analysis even after the
+benchmark process exits, at the cost of additional disk I/O during the run.
 
-The filesystem metrics store is the default. It keeps all metric records in RAM (exactly
-like the in-memory store) **and** streams every raw metric document to a `metrics.jsonl`
-file on disk as it arrives. This makes individual samples available for offline analysis
-even after the benchmark process exits.
+To opt in, add the following to `~/.solr-benchmark/benchmark.ini`:
 
 ```ini
 [reporting]
-metrics_store = filesystem
+datastore.type = filesystem
 ```
 
 Files are written to:
