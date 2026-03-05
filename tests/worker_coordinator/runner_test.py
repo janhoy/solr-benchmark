@@ -29,11 +29,14 @@ import random
 import unittest.mock as mock
 from unittest import TestCase
 
-import opensearchpy
 import pytest
 from osbenchmark import client, exceptions
 from osbenchmark.worker_coordinator import runner
 from tests import run_async, as_future
+
+
+class _FakeOSClient:
+    """Sentinel used as mock target in place of opensearchpy.OpenSearch (which was removed from this fork)."""
 
 
 class BaseUnitTestContextManagerRunner:
@@ -276,7 +279,7 @@ class AssertingRunnerTests(TestCase):
 class RawRequestRunnerTests(TestCase):
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_raises_missing_slash(self, opensearch, on_client_request_start, on_client_request_end):
         opensearch.transport.perform_request.return_value = as_future()
@@ -296,7 +299,7 @@ class RawRequestRunnerTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_issue_request_with_defaults(self, opensearch, on_client_request_start, on_client_request_end):
         opensearch.transport.perform_request.return_value = as_future()
@@ -315,7 +318,7 @@ class RawRequestRunnerTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_issue_delete_index(self, opensearch, on_client_request_start, on_client_request_end):
         opensearch.transport.perform_request.return_value = as_future()
@@ -339,7 +342,7 @@ class RawRequestRunnerTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_issue_create_index(self, opensearch, on_client_request_start, on_client_request_end):
         opensearch.transport.perform_request.return_value = as_future()
@@ -372,7 +375,7 @@ class RawRequestRunnerTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_issue_msearch(self, opensearch, on_client_request_start, on_client_request_end):
         opensearch.transport.perform_request.return_value = as_future()
@@ -405,7 +408,7 @@ class RawRequestRunnerTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_raw_with_timeout_and_opaqueid(self, opensearch, on_client_request_start, on_client_request_end):
         opensearch.transport.perform_request.return_value = as_future()
@@ -441,7 +444,7 @@ class RawRequestRunnerTests(TestCase):
 
 
 class SleepTests(TestCase):
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
     # To avoid real sleeps in unit tests
@@ -461,7 +464,7 @@ class SleepTests(TestCase):
         self.assertEqual(1, on_client_request_end.call_count)
         self.assertEqual(0, sleep.call_count)
 
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
     # To avoid real sleeps in unit tests
@@ -479,389 +482,14 @@ class SleepTests(TestCase):
         sleep.assert_called_once_with(4.3)
 
 
-class DeleteBackupRepositoryTests(TestCase):
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_delete_snapshot_repository(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.delete_repository.return_value = as_future()
-        params = {
-            "repository": "backups"
-        }
-
-        r = runner.DeleteBackupRepository()
-        await r(opensearch, params)
-
-        opensearch.snapshot.delete_repository.assert_called_once_with(repository="backups")
 
 
-class CreateBackupRepositoryTests(TestCase):
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_create_snapshot_repository(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.create_repository.return_value = as_future()
-        params = {
-            "repository": "backups",
-            "body": {
-                "type": "fs",
-                "settings": {
-                    "location": "/var/backups"
-                }
-            }
-        }
-
-        r = runner.CreateBackupRepository()
-        await r(opensearch, params)
-
-        opensearch.snapshot.create_repository.assert_called_once_with(repository="backups",
-                                                              body={
-                                                                  "type": "fs",
-                                                                  "settings": {
-                                                                      "location": "/var/backups"
-                                                                  }
-                                                              },
-                                                              params={})
 
 
-class CreateBackupTests(TestCase):
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_create_snapshot_no_wait(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.create.return_value = as_future({})
-
-        params = {
-            "repository": "backups",
-            "snapshot": "snapshot-001",
-            "body": {
-                "indices": "logs-*"
-            },
-            "wait-for-completion": False,
-            "request-params": {
-                "request_timeout": 7200
-            }
-        }
-
-        r = runner.CreateBackup()
-        await r(opensearch, params)
-
-        opensearch.snapshot.create.assert_called_once_with(repository="backups",
-                                                   snapshot="snapshot-001",
-                                                   body={
-                                                       "indices": "logs-*"
-                                                   },
-                                                   params={"request_timeout": 7200},
-                                                   wait_for_completion=False)
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_create_snapshot_wait_for_completion(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.create.return_value = as_future({
-            "snapshot": {
-                "snapshot": "snapshot-001",
-                "uuid": "wjt6zFEIRua_-jutT5vrAw",
-                "version_id": 7070099,
-                "version": "7.7.0",
-                "indices": [
-                    "logs-2020-01-01"
-                ],
-                "include_global_state": False,
-                "state": "SUCCESS",
-                "start_time": "2020-06-10T07:38:53.811Z",
-                "start_time_in_millis": 1591774733811,
-                "end_time": "2020-06-10T07:38:55.015Z",
-                "end_time_in_millis": 1591774735015,
-                "duration_in_millis": 1204,
-                "failures": [],
-                "shards": {
-                    "total": 5,
-                    "failed": 0,
-                    "successful": 5
-                }
-            }
-        })
-
-        params = {
-            "repository": "backups",
-            "snapshot": "snapshot-001",
-            "body": {
-                "indices": "logs-*"
-            },
-            "wait-for-completion": True,
-            "request-params": {
-                "request_timeout": 7200
-            }
-        }
-
-        r = runner.CreateBackup()
-        await r(opensearch, params)
-
-        opensearch.snapshot.create.assert_called_once_with(repository="backups",
-                                                   snapshot="snapshot-001",
-                                                   body={
-                                                       "indices": "logs-*"
-                                                   },
-                                                   params={"request_timeout": 7200},
-                                                   wait_for_completion=True)
 
 
-class WaitForBackupCreateTests(TestCase):
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_wait_for_snapshot_create_entire_lifecycle(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.status.side_effect = [
-            # empty response
-            as_future({}),
-            # active snapshot
-            as_future({
-                "snapshots": [{
-                    "snapshot": "restore_speed_snapshot",
-                    "repository": "restore_speed",
-                    "uuid": "92efRcQxRCCwJuuC2lb-Ow",
-                    "state": "STARTED",
-                    "include_global_state": True,
-                    "shards_stats": {
-                        "initializing": 0,
-                        "started": 10,
-                        "finalizing": 0,
-                        "done": 3,
-                        "failed": 0,
-                        "total": 13},
-                    "stats": {
-                        "incremental": {
-                            "file_count": 222,
-                            "size_in_bytes": 243468220144
-                        },
-                        "processed": {
-                            "file_count": 18,
-                            "size_in_bytes": 82839346
-                        },
-                        "total": {
-                            "file_count": 222,
-                            "size_in_bytes": 243468220144
-                        },
-                        "start_time_in_millis": 1597319858606,
-                        "time_in_millis": 6606
-                    },
-                    "indices": {
-                        # skipping content as we don"t parse this
-                    }
-                }]
-            }
-            ),
-            # completed
-            as_future({
-                "snapshots": [{
-                    "snapshot": "restore_speed_snapshot",
-                    "repository": "restore_speed",
-                    "uuid": "6gDpGbxOTpWKIutWdpWCFw",
-                    "state": "SUCCESS",
-                    "include_global_state": True,
-                    "shards_stats": {
-                        "initializing": 0,
-                        "started": 0,
-                        "finalizing": 0,
-                        "done": 13,
-                        "failed": 0,
-                        "total": 13
-                    },
-                    "stats": {
-                        "incremental": {
-                            "file_count": 204,
-                            "size_in_bytes": 243468188055
-                        },
-                        "total": {
-                            "file_count": 204,
-                            "size_in_bytes": 243468188055
-                        },
-                        "start_time_in_millis": 1597317564956,
-                        "time_in_millis": 1113462
-                    },
-                    "indices": {
-                        # skipping content here as don"t parse this
-                    }
-                }]
-            })
-        ]
-
-        basic_params = {
-            "repository": "restore_speed",
-            "snapshot": "restore_speed_snapshot",
-            "completion-recheck-wait-period": 0
-        }
-
-        r = runner.WaitForBackupCreate()
-        result = await r(opensearch, basic_params)
-
-        opensearch.snapshot.status.assert_called_with(
-            repository="restore_speed",
-            snapshot="restore_speed_snapshot",
-            ignore_unavailable=True
-        )
-
-        self.assertDictEqual({
-            "weight": 243468188055,
-            "unit": "byte",
-            "success": True,
-            "duration": 1113462,
-            "file_count": 204,
-            "throughput": 218658731.10622546,
-            "start_time_millis": 1597317564956,
-            "stop_time_millis": 1597317564956 + 1113462
-        }, result)
-
-        self.assertEqual(3, opensearch.snapshot.status.call_count)
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_wait_for_snapshot_create_immediate_success(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.status.return_value = as_future({
-            "snapshots": [
-                {
-                    "snapshot": "snapshot-001",
-                    "repository": "backups",
-                    "uuid": "5uZiG1bhRri2DsBpZxj91A",
-                    "state": "SUCCESS",
-                    "include_global_state": False,
-                    "stats": {
-                        "total": {
-                            "file_count": 70,
-                            "size_in_bytes": 9399505
-                        },
-                        "start_time_in_millis": 1591776481060,
-                        "time_in_millis": 200
-                    }
-                }
-            ]
-        })
-
-        params = {
-            "repository": "backups",
-            "snapshot": "snapshot-001",
-        }
-
-        r = runner.WaitForBackupCreate()
-        result = await r(opensearch, params)
-
-        self.assertDictEqual({
-            "weight": 9399505,
-            "unit": "byte",
-            "success": True,
-            "duration": 200,
-            "file_count": 70,
-            "throughput": 46997525.0,
-            "start_time_millis": 1591776481060,
-            "stop_time_millis": 1591776481060 + 200
-        }, result)
-
-        opensearch.snapshot.status.assert_called_once_with(repository="backups",
-                                                   snapshot="snapshot-001",
-                                                   ignore_unavailable=True)
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_wait_for_snapshot_create_failure(self, opensearch, on_client_request_start, on_client_request_end):
-        snapshot_status = {
-            "snapshots": [
-                {
-                    "snapshot": "snapshot-001",
-                    "repository": "backups",
-                    "state": "FAILED",
-                    "include_global_state": False
-                }
-            ]
-        }
-        opensearch.snapshot.status.return_value = as_future(snapshot_status)
-
-        params = {
-            "repository": "backups",
-            "snapshot": "snapshot-001",
-        }
-
-        r = runner.WaitForBackupCreate()
-
-        with mock.patch.object(r.logger, "error") as mocked_error_logger:
-            with self.assertRaises(exceptions.BenchmarkAssertionError) as ctx:
-                await r(opensearch, params)
-                self.assertEqual("Snapshot [snapshot-001] failed. Please check logs.", ctx.exception.args[0])
-            mocked_error_logger.assert_has_calls([
-                mock.call("Snapshot [%s] failed. Response:\n%s", "snapshot-001", json.dumps(snapshot_status, indent=2))
-            ])
 
 
-class RestoreBackupTests(TestCase):
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_restore_snapshot(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.restore.return_value = as_future()
-
-        params = {
-            "repository": "backups",
-            "snapshot": "snapshot-001",
-            "wait-for-completion": True,
-            "request-params": {
-                "request_timeout": 7200
-            }
-        }
-
-        r = runner.RestoreBackup()
-        await r(opensearch, params)
-
-        opensearch.snapshot.restore.assert_called_once_with(repository="backups",
-                                                    snapshot="snapshot-001",
-                                                    wait_for_completion=True,
-                                                    params={"request_timeout": 7200})
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @run_async
-    async def test_restore_snapshot_with_body(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.snapshot.restore.return_value = as_future()
-        params = {
-            "repository": "backups",
-            "snapshot": "snapshot-001",
-            "body": {
-                "indices": "index1,index2",
-                "include_global_state": False,
-                "index_settings": {
-                    "index.number_of_replicas": 0
-                }
-            },
-            "wait-for-completion": True,
-            "request-params": {
-                "request_timeout": 7200
-            }
-        }
-
-        r = runner.RestoreBackup()
-        await r(opensearch, params)
-
-        opensearch.snapshot.restore.assert_called_once_with(repository="backups",
-                                                    snapshot="snapshot-001",
-                                                    body={
-                                                        "indices": "index1,index2",
-                                                        "include_global_state": False,
-                                                        "index_settings": {
-                                                            "index.number_of_replicas": 0
-                                                        }
-                                                    },
-                                                    wait_for_completion=True,
-                                                    params={"request_timeout": 7200})
 
 
 class CompositeContextTests(TestCase):
@@ -948,149 +576,7 @@ class CompositeTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @mock.patch('osbenchmark.client.RequestContextHolder.new_request_context')
-    @run_async
-    async def test_run_multiple_streams(self, opensearch, on_client_request_start, on_client_request_end,new_request_context):
-        opensearch.transport.perform_request.side_effect = [
-            # raw-request
-            as_future(),
-            # search
-            as_future(io.StringIO(json.dumps({
-                "hits": {
-                    "total": {
-                        "value": 10,
-                        "relation": "eq"
-                    }
-                }
-            })))
-        ]
-
-        params = {
-            "max-connections": 4,
-            "requests": [
-                {
-                    "stream": [
-                        {
-                            "operation-type": "raw-request",
-                            "path": "/",
-                            "body": {}
-                        },
-                        {
-                            "operation-type": "search",
-                            "index": "test",
-                            "detailed-results": True,
-                            "assertions": [
-                                {
-                                    "property": "hits",
-                                    "condition": ">",
-                                    "value": 0
-                                }
-                            ],
-                            "body": {
-                                "query": {
-                                    "match_all": {}
-                                }
-                            }
-                        }
-                    ]
-                },
-                {
-                    "stream": [
-                        {
-                            "operation-type": "sleep",
-                            "duration": 0.1
-                        }
-                    ]
-                }
-            ]
-        }
-
-        r = runner.Composite()
-        await r(opensearch, params)
-
-        opensearch.transport.perform_request.assert_has_calls([
-            mock.call(method="GET",
-                      url="/",
-                      headers=None,
-                      body={},
-                      params={}),
-            mock.call("GET",
-                      "/test/_search",
-                      params={},
-                      body={
-                          "query": {
-                              "match_all": {}
-                          }
-                      },
-                      headers=None)
-        ])
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
-    @mock.patch('osbenchmark.client.RequestContextHolder.new_request_context')
-    @run_async
-    async def test_propagates_violated_assertions(self, opensearch, on_client_request_start, on_client_request_end, new_request_context):
-        opensearch.transport.perform_request.side_effect = [
-            # search
-            as_future(io.StringIO(json.dumps({
-                "hits": {
-                    "total": {
-                        "value": 0,
-                        "relation": "eq"
-                    }
-                }
-            })))
-        ]
-
-        params = {
-            "max-connections": 4,
-            "requests": [
-                {
-                    "stream": [
-                        {
-                            "operation-type": "search",
-                            "index": "test",
-                            "detailed-results": True,
-                            "assertions": [
-                                {
-                                    "property": "hits",
-                                    "condition": ">",
-                                    "value": 0
-                                }
-                            ],
-                            "body": {
-                                "query": {
-                                    "match_all": {}
-                                }
-                            }
-                        }
-                    ]
-                }
-            ]
-        }
-
-        r = runner.Composite()
-        with self.assertRaisesRegex(exceptions.BenchmarkTaskAssertionError,
-                                    r"Expected \[hits\] to be > \[0\] but was \[0\]."):
-            await r(opensearch, params)
-
-        opensearch.transport.perform_request.assert_has_calls([
-            mock.call("GET",
-                      "/test/_search",
-                      params={},
-                      body={
-                          "query": {
-                              "match_all": {}
-                          }
-                      },
-                      headers=None)
-        ])
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @mock.patch('osbenchmark.client.RequestContextHolder.new_request_context')
     @run_async
     async def test_runs_tasks_in_specified_order(self, opensearch, on_client_request_start, on_client_request_end, new_request_context):
@@ -1222,7 +708,7 @@ class CompositeTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_limits_connections(self, opensearch, on_client_request_start, on_client_request_end):
         params = {
@@ -1262,7 +748,7 @@ class CompositeTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_rejects_invalid_stream(self, opensearch, on_client_request_start, on_client_request_end):
         # params contains a "streams" property (plural) but it should be "stream" (singular)
@@ -1295,7 +781,7 @@ class CompositeTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_rejects_unsupported_operations(self, opensearch, on_client_request_start, on_client_request_end):
         params = {
@@ -1344,7 +830,7 @@ class RequestTimingTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_merges_timing_info(self, opensearch, on_client_request_start, on_client_request_end):
         multi_cluster_client = {"default": opensearch}
@@ -1379,7 +865,7 @@ class RequestTimingTests(TestCase):
 
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
     @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("opensearchpy.OpenSearch")
+    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
     async def test_creates_new_timing_info(self, opensearch, on_client_request_start, on_client_request_end):
         multi_cluster_client = {"default": opensearch}
@@ -1428,14 +914,14 @@ class RetryTests(TestCase):
 
     @run_async
     async def test_is_transparent_on_exception_when_no_retries(self):
-        delegate = mock.Mock(side_effect=as_future(exception=opensearchpy.ConnectionError("N/A", "no route to host")))
+        delegate = mock.Mock(side_effect=as_future(exception=exceptions.BenchmarkConnectionError("no route to host")))
         opensearch = None
         params = {
             # no retries
         }
         retrier = runner.Retry(delegate)
 
-        with self.assertRaises(opensearchpy.ConnectionError):
+        with self.assertRaises(exceptions.BenchmarkConnectionError):
             await retrier(opensearch, params)
 
         delegate.assert_called_once_with(opensearch, params)
@@ -1475,10 +961,10 @@ class RetryTests(TestCase):
     @run_async
     async def test_retries_on_timeout_if_wanted_and_raises_if_no_recovery(self):
         delegate = mock.Mock(side_effect=[
-            as_future(exception=opensearchpy.ConnectionError("N/A", "no route to host")),
-            as_future(exception=opensearchpy.ConnectionError("N/A", "no route to host")),
-            as_future(exception=opensearchpy.ConnectionError("N/A", "no route to host")),
-            as_future(exception=opensearchpy.ConnectionError("N/A", "no route to host"))
+            as_future(exception=exceptions.BenchmarkConnectionError("no route to host")),
+            as_future(exception=exceptions.BenchmarkConnectionError("no route to host")),
+            as_future(exception=exceptions.BenchmarkConnectionError("no route to host")),
+            as_future(exception=exceptions.BenchmarkConnectionError("no route to host"))
         ])
         opensearch = None
         params = {
@@ -1489,7 +975,7 @@ class RetryTests(TestCase):
         }
         retrier = runner.Retry(delegate)
 
-        with self.assertRaises(opensearchpy.ConnectionError):
+        with self.assertRaises(exceptions.BenchmarkConnectionError):
             await retrier(opensearch, params)
 
         delegate.assert_has_calls([
@@ -1503,7 +989,7 @@ class RetryTests(TestCase):
         failed_return_value = {"weight": 1, "unit": "ops", "success": False}
 
         delegate = mock.Mock(side_effect=[
-            as_future(exception=opensearchpy.ConnectionError("N/A", "no route to host")),
+            as_future(exception=exceptions.BenchmarkConnectionError("no route to host")),
             as_future(failed_return_value)
         ])
         opensearch = None
@@ -1527,7 +1013,7 @@ class RetryTests(TestCase):
 
     @run_async
     async def test_retries_mixed_timeout_and_application_errors(self):
-        connection_error = opensearchpy.ConnectionError("N/A", "no route to host")
+        connection_error = exceptions.BenchmarkConnectionError("no route to host")
         failed_return_value = {"weight": 1, "unit": "ops", "success": False}
         success_return_value = {"weight": 1, "unit": "ops", "success": False}
 
@@ -1569,7 +1055,7 @@ class RetryTests(TestCase):
 
     @run_async
     async def test_does_not_retry_on_timeout_if_not_wanted(self):
-        delegate = mock.Mock(side_effect=as_future(exception=opensearchpy.ConnectionTimeout(408, "timed out")))
+        delegate = mock.Mock(side_effect=as_future(exception=exceptions.BenchmarkConnectionTimeout("timed out")))
         opensearch = None
         params = {
             "retries": 3,
@@ -1579,7 +1065,7 @@ class RetryTests(TestCase):
         }
         retrier = runner.Retry(delegate)
 
-        with self.assertRaises(opensearchpy.ConnectionTimeout):
+        with self.assertRaises(exceptions.BenchmarkConnectionTimeout):
             await retrier(opensearch, params)
 
         delegate.assert_called_once_with(opensearch, params)

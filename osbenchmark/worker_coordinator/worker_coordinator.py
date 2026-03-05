@@ -982,7 +982,6 @@ class WorkerCoordinator:
                 telemetry.JvmStatsSummary(os_default, self.metrics_store),
                 telemetry.IndexStats(os_default, self.metrics_store),
                 telemetry.MlBucketProcessingTime(os_default, self.metrics_store),
-                telemetry.SegmentStats(log_root, os_default),
                 telemetry.CcrStats(telemetry_params, opensearch, self.metrics_store),
                 telemetry.RecoveryStats(telemetry_params, opensearch, self.metrics_store),
                 telemetry.TransformStats(telemetry_params, opensearch, self.metrics_store),
@@ -2547,6 +2546,13 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
                 total_ops = 1
                 total_ops_unit = "ops"
                 request_meta_data = {"success": True}
+        except KeyError as e:
+            request_context_holder.on_client_request_end()
+            logging.getLogger(__name__).exception("Cannot execute runner [%s]; most likely due to missing parameters.", str(runner))
+            msg = "Cannot execute [%s]. Provided parameters are: %s. Error: [%s]." % (str(runner), list(params.keys()), str(e))
+            if not redline_enabled:
+                console.error(msg)
+                raise exceptions.SystemSetupError(msg)
         except Exception as e:
             if not isinstance(e, exceptions.BenchmarkTransportError):
                 raise
@@ -2573,13 +2579,6 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
                 if isinstance(error_val, bytes):
                     error_val = error_val.decode("utf-8")
                 request_meta_data["error-description"] = str(error_val)
-        except KeyError as e:
-            request_context_holder.on_client_request_end()
-            logging.getLogger(__name__).exception("Cannot execute runner [%s]; most likely due to missing parameters.", str(runner))
-            msg = "Cannot execute [%s]. Provided parameters are: %s. Error: [%s]." % (str(runner), list(params.keys()), str(e))
-            if not redline_enabled:
-                console.error(msg)
-                raise exceptions.SystemSetupError(msg)
 
         if not request_meta_data["success"]:
             if on_error == "abort" or fatal_error:

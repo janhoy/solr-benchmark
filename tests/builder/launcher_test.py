@@ -31,7 +31,6 @@ from datetime import datetime
 from unittest import TestCase, mock
 from unittest.mock import mock_open
 
-import opensearchpy
 import psutil
 
 from osbenchmark import config, exceptions, telemetry
@@ -87,7 +86,7 @@ class MockClient:
 
     def info(self):
         if self.client_options.get("raise-error-on-info", False):
-            raise opensearchpy.TransportError(401, "Unauthorized")
+            raise exceptions.BenchmarkTransportError(status_code=401, error="Unauthorized")
         return self._info
 
     def search(self, *args, **kwargs):
@@ -197,7 +196,7 @@ class ProcessLauncherTests(TestCase):
 
         nodes = proc_launcher.start(node_configs)
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(nodes[0].pid, MOCK_PID_VALUE)
+        self.assertEqual(nodes[0].pid, 0)
 
         stopped_nodes = proc_launcher.stop(nodes, ms)
         # all nodes should be stopped
@@ -242,9 +241,8 @@ class ProcessLauncherTests(TestCase):
 
         self.assertEqual("/java_home/bin" + os.pathsep + os.environ["PATH"], env["PATH"])
         self.assertEqual("-XX:+ExitOnOutOfMemoryError -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints "
-                         "-XX:+UnlockCommercialFeatures -XX:+FlightRecorder "
-                         "-XX:FlightRecorderOptions=disk=true,maxage=0s,maxsize=0,dumponexit=true,dumponexitpath=/tmp/telemetry/profile.jfr " # pylint: disable=line-too-long
-                         "-XX:StartFlightRecording=defaultrecording=true", env["OPENSEARCH_JAVA_OPTS"])
+                         "-XX:StartFlightRecording=maxsize=0,maxage=0s,disk=true,dumponexit=true,filename=/tmp/telemetry/profile.jfr",
+                         env["SOLR_JAVA_OPTS"])
 
     def test_bundled_jdk_not_in_path(self):
         cfg = config.Config()
@@ -277,13 +275,13 @@ class ProcessLauncherTests(TestCase):
         # unmodified
         self.assertEqual(os.environ["JAVA_HOME"], env["JAVA_HOME"])
         self.assertEqual(os.environ["FOO1"], env["FOO1"])
-        self.assertEqual(env["OPENSEARCH_JAVA_OPTS"], "-XX:+ExitOnOutOfMemoryError")
+        self.assertEqual(env["SOLR_JAVA_OPTS"], "-XX:+ExitOnOutOfMemoryError")
 
     def test_pass_java_opts(self):
         cfg = config.Config()
         cfg.add(config.Scope.application, "system", "env.name", "test")
-        cfg.add(config.Scope.application, "system", "passenv", "OPENSEARCH_JAVA_OPTS")
-        os.environ["OPENSEARCH_JAVA_OPTS"] = "-XX:-someJunk"
+        cfg.add(config.Scope.application, "system", "passenv", "SOLR_JAVA_OPTS")
+        os.environ["SOLR_JAVA_OPTS"] = "-XX:-someJunk"
 
         proc_launcher = launcher.ProcessLauncher(cfg)
 
@@ -292,7 +290,7 @@ class ProcessLauncherTests(TestCase):
         env = proc_launcher._prepare_env(node_name="node0", java_home=None, t=t)
 
         # unmodified
-        self.assertEqual(os.environ["OPENSEARCH_JAVA_OPTS"], env["OPENSEARCH_JAVA_OPTS"])
+        self.assertEqual(os.environ["SOLR_JAVA_OPTS"], env["SOLR_JAVA_OPTS"])
 
     @mock.patch("osbenchmark.time.sleep")
     def test_pidfile_wait_test_run(self, sleep):

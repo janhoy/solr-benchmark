@@ -3998,7 +3998,7 @@ class WorkloadSpecificationReaderTests(TestCase):
                     },
                     # a parameterless operation can just use the operation type as implicit reference to the operation
                     {
-                        "operation": "force-merge"
+                        "operation": "sleep"
                     }
                 ]
             }
@@ -4011,7 +4011,7 @@ class WorkloadSpecificationReaderTests(TestCase):
         self.assertEqual(2, len(test_procedure.schedule))
         self.assertEqual(workload.OperationType.Bulk.to_hyphenated_string(
         ), test_procedure.schedule[0].operation.type)
-        self.assertEqual(workload.OperationType.ForceMerge.to_hyphenated_string(
+        self.assertEqual(workload.OperationType.Sleep.to_hyphenated_string(
         ), test_procedure.schedule[1].operation.type)
 
     def test_supports_target_throughput(self):
@@ -4611,5 +4611,5 @@ class TestServerlessTaskFilter:
 
         assert filtered_workload.test_procedures[0].serverless_info == ["Treating parallel task in test-procedure "
                                                                         "[default-test-procedure] as public.",
-                                                                        "Excluding [check-cluster-health], [bulk-index] "
+                                                                        "Excluding [bulk-index] "
                                                                         "as test-procedure [default-test-procedure] is run on serverless."]

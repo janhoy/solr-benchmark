@@ -1,7 +1,7 @@
 from unittest import TestCase, mock
 from unittest.mock import Mock
 
-from osbenchmark.builder.downloaders.repositories.opensearch_distribution_repository_provider import \
+from osbenchmark.builder.downloaders.repositories.distribution_repository_provider import \
     DistributionRepositoryProvider
 from osbenchmark.builder.cluster_config import ClusterConfigInstance
 

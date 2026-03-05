@@ -1,7 +1,7 @@
 from unittest import TestCase, mock
 from unittest.mock import Mock
 
-from osbenchmark.builder.downloaders.opensearch_source_downloader import SourceDownloader
+from osbenchmark.builder.downloaders.source_downloader import SourceDownloader
 from osbenchmark.builder.cluster_config import ClusterConfigInstance
 from osbenchmark.builder.utils.binary_keys import BinaryKeys
 

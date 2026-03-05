@@ -45,7 +45,7 @@ class BareProvisionerTests(TestCase):
         def null_apply_config(source_root_path, target_root_path, config_vars):
             apply_config_calls.append((source_root_path, target_root_path, config_vars))
 
-        installer = provisioner.OpenSearchInstaller(cluster_config=
+        installer = provisioner.NodeInstaller(cluster_config=
         cluster_config.ClusterConfigInstance(
             names="unit-test-cluster-config-instance",
             root_path=None,
@@ -63,7 +63,7 @@ class BareProvisionerTests(TestCase):
                                         plugin_installers=[],
                                         apply_config=null_apply_config)
 
-        node_config = p.prepare({"opensearch": "/opt/opensearch-1.0.0.tar.gz"})
+        node_config = p.prepare({"solr": "/opt/opensearch-1.0.0.tar.gz"})
         self.assertEqual("8", node_config.cluster_config_runtime_jdks)
         self.assertEqual("/opt/opensearch-1.0.0", node_config.binary_path)
         self.assertEqual(["/opt/opensearch-1.0.0/data"], node_config.data_paths)
@@ -86,8 +86,8 @@ class BareProvisionerTests(TestCase):
             "heap_dump_path": HOME_DIR + "/.benchmark/benchmarks/test_runs/unittest/heapdump",
             "node_ip": "10.17.22.23",
             "network_host": "10.17.22.23",
-            "http_port": "9200",
-            "transport_port": "9300",
+            "http_port": "8983",
+            "transport_port": "9083",
             "all_node_ips": "[\"10.17.22.22\",\"10.17.22.23\"]",
             "all_node_names": "[\"benchmark-node-0\",\"benchmark-node-1\"]",
             "minimum_master_nodes": 2,
@@ -122,13 +122,13 @@ class NoopHookHandler:
         }
 
 
-class OpenSearchInstallerTests(TestCase):
+class NodeInstallerTests(TestCase):
     @mock.patch("glob.glob", lambda p: ["/install/opensearch-5.0.0-SNAPSHOT"])
     @mock.patch("osbenchmark.utils.io.decompress")
     @mock.patch("osbenchmark.utils.io.ensure_dir")
     @mock.patch("shutil.rmtree")
     def test_prepare_default_data_paths(self, mock_rm, mock_ensure_dir, mock_decompress):
-        installer = provisioner.OpenSearchInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
+        installer = provisioner.NodeInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
                                                                     root_path=None,
                                                                     config_paths="/tmp"),
                                                        java_home="/usr/local/javas/java8",
@@ -165,7 +165,7 @@ class OpenSearchInstallerTests(TestCase):
     @mock.patch("osbenchmark.utils.io.ensure_dir")
     @mock.patch("shutil.rmtree")
     def test_prepare_user_provided_data_path(self, mock_rm, mock_ensure_dir, mock_decompress):
-        installer = provisioner.OpenSearchInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
+        installer = provisioner.NodeInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
                                                                     root_path=None,
                                                                     config_paths="/tmp",
                                                                     variables={"data_paths": "/tmp/some/data-path-dir"}),
@@ -199,7 +199,7 @@ class OpenSearchInstallerTests(TestCase):
         self.assertEqual(installer.data_paths, ["/tmp/some/data-path-dir"])
 
     def test_invokes_hook_with_java_home(self):
-        installer = provisioner.OpenSearchInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
+        installer = provisioner.NodeInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
                                                                     root_path="/tmp",
                                                                     config_paths="/tmp/templates",
                                                                     variables={"data_paths": "/tmp/some/data-path-dir"}),
@@ -220,7 +220,7 @@ class OpenSearchInstallerTests(TestCase):
                          installer.hook_handler.hook_calls["post_install"]["kwargs"])
 
     def test_invokes_hook_no_java_home(self):
-        installer = provisioner.OpenSearchInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
+        installer = provisioner.NodeInstaller(cluster_config=cluster_config.ClusterConfigInstance(names="defaults",
                                                                     root_path="/tmp",
                                                                     config_paths="/tmp/templates",
                                                                     variables={"data_paths": "/tmp/some/data-path-dir"}),

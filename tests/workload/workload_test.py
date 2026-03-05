@@ -238,7 +238,7 @@ class OperationTypeTests(TestCase):
             self.assertEqual(op_type, workload.OperationType.from_hyphenated_string(op_type.to_hyphenated_string()))
 
     def test_attributes(self):
-        check_cluster_health = workload.OperationType.ClusterHealth
+        check_cluster_health = workload.OperationType.DeleteBackupRepository
         assert check_cluster_health.admin_op is True
         assert check_cluster_health.serverless_status == workload.ServerlessStatus.Blocked
 
@@ -251,7 +251,7 @@ class TaskFilterTests(TestCase):
     def create_index_task(self):
         return workload.Task("create-index-task",
                           workload.Operation("create-index-op",
-                                          operation_type=workload.OperationType.CreateIndex.to_hyphenated_string()),
+                                          operation_type=workload.OperationType.CreateBackup.to_hyphenated_string()),
                           tags=["write-op", "admin-op"])
 
     def search_task(self):
@@ -266,7 +266,7 @@ class TaskFilterTests(TestCase):
         self.assertFalse(f.matches(self.search_task()))
 
     def test_task_op_type_filter(self):
-        f = workload.TaskOpTypeFilter(workload.OperationType.CreateIndex.to_hyphenated_string())
+        f = workload.TaskOpTypeFilter(workload.OperationType.CreateBackup.to_hyphenated_string())
         self.assertTrue(f.matches(self.create_index_task()))
         self.assertFalse(f.matches(self.search_task()))
 

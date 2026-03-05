@@ -693,7 +693,7 @@ class CreateSupplierTests(TestCase):
         cfg.add(config.Scope.application, "distributions", "release.cache", True)
         cfg.add(config.Scope.application, "node", "root.dir", "/opt/benchmark")
         cfg.add(config.Scope.application, "node", "src.root.dir", "/opt/benchmark/src")
-        cfg.add(config.Scope.application, "source", "opensearch.src.subdir", "opensearch")
+        cfg.add(config.Scope.application, "source", "src.subdir", "opensearch")
         cfg.add(config.Scope.application, "source", "plugin.community-plugin.src.dir", "/home/user/Projects/community-plugin")
 
         cluster_config_instance = cluster_config.ClusterConfigInstance(
@@ -728,7 +728,7 @@ class CreateSupplierTests(TestCase):
         cfg.add(config.Scope.application, "distributions", "release.cache", True)
         cfg.add(config.Scope.application, "node", "root.dir", "/opt/benchmark")
         cfg.add(config.Scope.application, "node", "src.root.dir", "/opt/benchmark/src")
-        cfg.add(config.Scope.application, "source", "opensearch.src.subdir", "opensearch")
+        cfg.add(config.Scope.application, "source", "src.subdir", "opensearch")
         cfg.add(config.Scope.application, "source", "remote.repo.url", "https://github.com/opensearch-project/OpenSearch.git")
         cfg.add(config.Scope.application, "source", "plugin.community-plugin.src.subdir", "opensearch-extra/community-plugin")
 
