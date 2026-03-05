@@ -23,6 +23,7 @@
 # under the License.
 
 import collections
+import json
 import logging
 import fnmatch
 import os
@@ -48,9 +49,9 @@ def list_telemetry():
     console.println("Available telemetry devices:\n")
 
     # --- Solr-native devices (always enabled) ---
-    console.println("Solr Benchmark devices (always enabled — no --telemetry flag needed):\n")
+    console.println("Always-enabled Solr devices (no --telemetry flag needed):\n")
     solr_devices = [
-        [d.human_name, d.help] for d in [
+        [d.command, d.human_name, d.help] for d in [
             solr_telemetry.SolrJvmStats,
             solr_telemetry.SolrNodeStats,
             solr_telemetry.SolrCollectionStats,
@@ -59,19 +60,25 @@ def list_telemetry():
             solr_telemetry.SolrCacheStats,
         ]
     ]
-    console.println(tabulate.tabulate(solr_devices, ["Name", "Description"]))
-    console.println("\nAll devices poll /solr/admin/metrics (JSON on Solr 9.x, Prometheus text on Solr 10.x).")
+    console.println(tabulate.tabulate(solr_devices, ["Command", "Name", "Description"]))
+    console.println("\nAll always-on devices poll /solr/admin/metrics (JSON on Solr 9.x, Prometheus text on Solr 10.x).")
 
-    # --- OpenSearch-only devices ---
-    console.println("\n\nOpenSearch-only devices (NOT applicable to Solr Benchmark):\n")
-    console.println("Note: The following devices target OpenSearch clusters and are not functional against Solr.")
-    console.println("      They are listed here for compatibility when this tool is used as an OpenSearch Benchmark.\n")
-    os_devices = [[device.command, device.human_name, device.help] for device in [JitCompiler, Gc, FlightRecorder,
-                                                                                   Heapdump, NodeStats, RecoveryStats,
-                                                                                   CcrStats, SegmentStats, TransformStats,
-                                                                                   SearchableSnapshotsStats,
-                                                                                   SegmentReplicationStats, ShardStats]]
-    console.println(tabulate.tabulate(os_devices, ["Command", "Name", "Description"]))
+    # --- Optional REST devices (all pipelines) ---
+    console.println("\n\nOptional REST devices (all pipelines — enable with --telemetry <command>):\n")
+    rest_devices = [[device.command, device.human_name, device.help] for device in [
+        SegmentStats, ShardStats, ClusterEnvironmentInfo,
+    ]]
+    console.println(tabulate.tabulate(rest_devices, ["Command", "Name", "Description"]))
+
+    # --- Optional JVM/process devices (provisioned pipelines only) ---
+    console.println("\n\nOptional JVM/process devices (docker or from-distribution pipelines only):\n")
+    jvm_devices = [[device.command, device.human_name, device.help] for device in [
+        FlightRecorder, Gc, JitCompiler, Heapdump,
+    ]]
+    console.println(tabulate.tabulate(jvm_devices, ["Command", "Name", "Description"]))
+    console.println("\nJVM/process devices inject flags into SOLR_OPTS before Solr starts.")
+    console.println("They are silently skipped when pipeline is benchmark-only.")
+    console.println("\nNote: disk-io (disk I/O byte counters) is always active on provisioned pipelines.")
 
 
 class Telemetry:
@@ -195,7 +202,7 @@ class FlightRecorder(TelemetryDevice):
     internal = False
     command = "jfr"
     human_name = "Flight Recorder"
-    help = "Enables Java Flight Recorder (requires an Oracle JDK or OpenJDK 11+)"
+    help = "Enables Java Flight Recorder (requires OpenJDK 11+); injected into SOLR_OPTS."
 
     def __init__(self, telemetry_params, log_root, java_major_version):
         super().__init__()
@@ -204,51 +211,26 @@ class FlightRecorder(TelemetryDevice):
         self.java_major_version = java_major_version
 
     def instrument_java_opts(self):
+        if self.telemetry_params.get("pipeline", "") == "benchmark-only":
+            self.logger.warning("jfr: Solr was not provisioned by Solr Benchmark; skipping JFR flags.")
+            return []
+
         io.ensure_dir(self.log_root)
         log_file = os.path.join(self.log_root, "profile.jfr")
-
-        # JFR was integrated into OpenJDK 11 and is not a commercial feature anymore.
-        if self.java_major_version < 11:
-            console.println("\n***************************************************************************\n")
-            console.println("[WARNING] Java flight recorder is a commercial feature of the Oracle JDK.\n")
-            console.println("You are using Java flight recorder which requires that you comply with\nthe licensing terms stated in:\n")
-            console.println(console.format.link("http://www.oracle.com/technetwork/java/javase/terms/license/index.html"))
-            console.println("\nBy using this feature you confirm that you comply with these license terms.\n")
-            console.println("Otherwise, please abort and rerun OSB without the \"jfr\" telemetry device.")
-            console.println("\n***************************************************************************\n")
-
-            time.sleep(3)
-
         console.info("%s: Writing flight recording to [%s]" % (self.human_name, log_file), logger=self.logger)
-
         java_opts = self.java_opts(log_file)
-
         self.logger.info("jfr: Adding JVM arguments: [%s].", java_opts)
         return java_opts
 
     def java_opts(self, log_file):
         recording_template = self.telemetry_params.get("recording-template")
         java_opts = ["-XX:+UnlockDiagnosticVMOptions", "-XX:+DebugNonSafepoints"]
-        jfr_cmd = ""
-        if self.java_major_version < 11:
-            java_opts.append("-XX:+UnlockCommercialFeatures")
-
-        if self.java_major_version < 9:
-            java_opts.append("-XX:+FlightRecorder")
-            java_opts.append("-XX:FlightRecorderOptions=disk=true,maxage=0s,maxsize=0,dumponexit=true,dumponexitpath={}".format(log_file))
-            jfr_cmd = "-XX:StartFlightRecording=defaultrecording=true"
-            if recording_template:
-                self.logger.info("jfr: Using recording template [%s].", recording_template)
-                jfr_cmd += ",settings={}".format(recording_template)
-            else:
-                self.logger.info("jfr: Using default recording template.")
+        jfr_cmd = "-XX:StartFlightRecording=maxsize=0,maxage=0s,disk=true,dumponexit=true,filename={}".format(log_file)
+        if recording_template:
+            self.logger.info("jfr: Using recording template [%s].", recording_template)
+            jfr_cmd += ",settings={}".format(recording_template)
         else:
-            jfr_cmd += "-XX:StartFlightRecording=maxsize=0,maxage=0s,disk=true,dumponexit=true,filename={}".format(log_file)
-            if recording_template:
-                self.logger.info("jfr: Using recording template [%s].", recording_template)
-                jfr_cmd += ",settings={}".format(recording_template)
-            else:
-                self.logger.info("jfr: Using default recording template.")
+            self.logger.info("jfr: Using default recording template.")
         java_opts.append(jfr_cmd)
         return java_opts
 
@@ -257,13 +239,18 @@ class JitCompiler(TelemetryDevice):
     internal = False
     command = "jit"
     human_name = "JIT Compiler Profiler"
-    help = "Enables JIT compiler logs."
+    help = "Enables JIT compiler logs; injected into SOLR_OPTS."
 
-    def __init__(self, log_root):
+    def __init__(self, log_root, telemetry_params=None):
         super().__init__()
         self.log_root = log_root
+        self.telemetry_params = telemetry_params or {}
 
     def instrument_java_opts(self):
+        if self.telemetry_params.get("pipeline", "") == "benchmark-only":
+            self.logger.warning("jit: Solr was not provisioned by Solr Benchmark; skipping JIT flags.")
+            return []
+
         io.ensure_dir(self.log_root)
         log_file = os.path.join(self.log_root, "jit.log")
         console.info("%s: Writing JIT compiler log to [%s]" % (self.human_name, log_file), logger=self.logger)
@@ -275,7 +262,7 @@ class Gc(TelemetryDevice):
     internal = False
     command = "gc"
     human_name = "GC log"
-    help = "Enables GC logs."
+    help = "Enables GC logs (Java 9+ -Xlog: format); injected into SOLR_OPTS."
 
     def __init__(self, telemetry_params, log_root, java_major_version):
         super().__init__()
@@ -284,38 +271,43 @@ class Gc(TelemetryDevice):
         self.java_major_version = java_major_version
 
     def instrument_java_opts(self):
+        if self.telemetry_params.get("pipeline", "") == "benchmark-only":
+            self.logger.warning("gc: Solr was not provisioned by Solr Benchmark; skipping GC flags.")
+            return []
+
         io.ensure_dir(self.log_root)
         log_file = os.path.join(self.log_root, "gc.log")
         console.info("%s: Writing GC log to [%s]" % (self.human_name, log_file), logger=self.logger)
-        return self.java_opts(log_file)
-
-    def java_opts(self, log_file):
-        if self.java_major_version < 9:
-            return ["-Xloggc:{}".format(log_file), "-XX:+PrintGCDetails", "-XX:+PrintGCDateStamps", "-XX:+PrintGCTimeStamps",
-                    "-XX:+PrintGCApplicationStoppedTime", "-XX:+PrintGCApplicationConcurrentTime",
-                    "-XX:+PrintTenuringDistribution"]
-        else:
-            log_config = self.telemetry_params.get("gc-log-config", "gc*=info,safepoint=info,age*=trace")
-            # see https://docs.oracle.com/javase/9/tools/java.htm#JSWOR-GUID-BE93ABDC-999C-4CB5-A88B-1994AAAC74D5
-            return [f"-Xlog:{log_config}:file={log_file}:utctime,uptimemillis,level,tags:filecount=0"]
+        log_config = self.telemetry_params.get("gc-log-config", "gc*=info,safepoint=info,age*=trace")
+        # see https://docs.oracle.com/javase/9/tools/java.htm#JSWOR-GUID-BE93ABDC-999C-4CB5-A88B-1994AAAC74D5
+        return [f"-Xlog:{log_config}:file={log_file}:utctime,uptimemillis,level,tags:filecount=0"]
 
 
 class Heapdump(TelemetryDevice):
     internal = False
     command = "heapdump"
     human_name = "Heap Dump"
-    help = "Captures a heap dump."
+    help = "Captures a heap dump from the Solr JVM on benchmark stop."
 
-    def __init__(self, log_root):
+    def __init__(self, log_root, docker_container=None):
         super().__init__()
         self.log_root = log_root
+        self.docker_container = docker_container
 
     def detach_from_node(self, node, running):
         if running:
             heap_dump_file = os.path.join(self.log_root, "heap_at_exit_{}.hprof".format(node.pid))
             console.info("{}: Writing heap dump to [{}]".format(self.human_name, heap_dump_file), logger=self.logger)
-            cmd = "jmap -dump:format=b,file={} {}".format(heap_dump_file, node.pid)
-            if process.run_subprocess_with_logging(cmd):
+            # noinspection PyBroadException
+            try:
+                if self.docker_container:
+                    cmd = "docker exec {} jmap -dump:format=b,file={} {}".format(
+                        self.docker_container, heap_dump_file, node.pid)
+                else:
+                    cmd = "jmap -dump:format=b,file={} {}".format(heap_dump_file, node.pid)
+                if process.run_subprocess_with_logging(cmd):
+                    self.logger.warning("Could not write heap dump to [%s]", heap_dump_file)
+            except BaseException:
                 self.logger.warning("Could not write heap dump to [%s]", heap_dump_file)
 
 
@@ -323,21 +315,47 @@ class SegmentStats(TelemetryDevice):
     internal = False
     command = "segment-stats"
     human_name = "Segment Stats"
-    help = "Determines segment stats at the end of the benchmark."
+    help = "Captures per-collection segment stats (numDocs, deletedDocs, segmentCount, sizeInBytes) via the Solr Luke API."
 
-    def __init__(self, log_root, client):
+    def __init__(self, log_root, host, port):
         super().__init__()
         self.log_root = log_root
-        self.client = client
+        self.host = host
+        self.port = port
 
     def on_benchmark_stop(self):
         # noinspection PyBroadException
         try:
-            segment_stats = self.client.cat.segments(index="_all", v=True)
+            import requests as _requests
+            session = _requests.Session()
+            session.trust_env = False
+
+            list_url = f"http://{self.host}:{self.port}/solr/admin/collections?action=LIST&wt=json"
+            resp = session.get(list_url, timeout=10)
+            resp.raise_for_status()
+            collections = resp.json().get("collections", [])
+
             stats_file = os.path.join(self.log_root, "segment_stats.log")
             console.info(f"{self.human_name}: Writing segment stats to [{stats_file}]", logger=self.logger)
+            io.ensure_dir(self.log_root)
             with open(stats_file, "wt") as f:
-                f.write(segment_stats)
+                for coll in collections:
+                    luke_url = f"http://{self.host}:{self.port}/solr/{coll}/admin/luke?numTerms=0&wt=json"
+                    try:
+                        lr = session.get(luke_url, timeout=10)
+                        lr.raise_for_status()
+                        idx = lr.json().get("index", {})
+                        row = {
+                            "collection": coll,
+                            "numDocs": idx.get("numDocs"),
+                            "maxDoc": idx.get("maxDoc"),
+                            "deletedDocs": idx.get("deletedDocs"),
+                            "segmentCount": idx.get("segmentCount"),
+                            "sizeInBytes": idx.get("sizeInBytes"),
+                        }
+                        f.write(json.dumps(row) + "\n")
+                    except BaseException:
+                        self.logger.warning("Could not retrieve Luke stats for collection [%s].", coll)
         except BaseException:
             self.logger.exception("Could not retrieve segment stats.")
 
@@ -632,79 +650,66 @@ class RecoveryStatsRecorder:
 
 class ShardStats(TelemetryDevice):
     """
-    Collects and pushes shard stats for the specified cluster to the metric store.
+    Collects per-shard document count and index size for SolrCloud clusters.
+    Skipped silently on standalone Solr (no cluster.collections in CLUSTERSTATUS).
     """
 
     internal = False
     command = "shard-stats"
     human_name = "Shard Stats"
-    help = "Regularly samples nodes stats at shard level"
-    warning = """You have enabled the shard-stats telemetry device with OpenSearch < 1.1.0. Requests to the
-          _nodes/stats OpenSearch endpoint trigger additional refreshes and WILL SKEW results.
-    """
-    opensearch_distribution_name = "opensearch"
+    help = "Regularly samples per-shard document count and index size (SolrCloud only)."
 
-    def __init__(self, telemetry_params, clients, metrics_store):
+    def __init__(self, telemetry_params, admin_client, metrics_store):
         """
-        :param telemetry_params: The configuration object for telemetry_params.
-            May optionally specify:
-            ``shard-stats-sample-interval``: positive integer controlling the sampling interval. Default: 60 seconds.
-        :param clients: A dict of clients to all clusters.
+        :param telemetry_params: May optionally specify
+            ``shard-stats-sample-interval``: positive integer, seconds between polls. Default: 60.
+        :param admin_client: A SolrAdminClient instance used for V1 admin API calls.
         :param metrics_store: The configured metrics store we write to.
         """
         super().__init__()
-
-        self.telemetry_params = telemetry_params
-        self.clients = clients
-        self.specified_cluster_names = self.clients.keys()
+        self.admin_client = admin_client
+        self.metrics_store = metrics_store
         self.sample_interval = telemetry_params.get("shard-stats-sample-interval", 60)
         if self.sample_interval <= 0:
             raise exceptions.SystemSetupError(
                 f"The telemetry parameter 'shard-stats-sample-interval' must be greater than zero but was {self.sample_interval}."
             )
-
-        self.metrics_store = metrics_store
         self.samplers = []
 
     def on_benchmark_start(self):
-        default_client = self.clients["default"]
-        # ElasticSearch does not supply a value for the distribution field
-        distribution_name = default_client.info()["version"].get("distribution", "")
-        distribution_version = default_client.info()["version"]["number"]
-        major, minor = components(distribution_version)[:2]
+        # noinspection PyBroadException
+        try:
+            session = self.admin_client._get_session()
+            cs_url = f"{self.admin_client.base_url}/solr/admin/collections?action=CLUSTERSTATUS&wt=json"
+            resp = session.get(cs_url, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+        except BaseException:
+            self.logger.exception("ShardStats: could not retrieve CLUSTERSTATUS; device will not run.")
+            return
 
-        if distribution_name != NodeStats.opensearch_distribution_name and (major < 7 or (major == 7 and minor < 2)):
-            console.warn(NodeStats.warning, logger=self.logger)
+        if "cluster" not in data or "collections" not in data.get("cluster", {}):
+            self.logger.info("ShardStats: no cluster.collections in CLUSTERSTATUS — skipping (standalone Solr).")
+            return
 
-        for cluster_name in self.specified_cluster_names:
-            recorder = ShardStatsRecorder(cluster_name, self.clients[cluster_name], self.metrics_store, self.sample_interval)
-            sampler = SamplerThread(recorder)
-            self.samplers.append(sampler)
-            sampler.daemon = True
-            # we don't require starting recorders precisely at the same time
-            sampler.start()
+        recorder = ShardStatsRecorder(self.admin_client, self.metrics_store, self.sample_interval)
+        sampler = SamplerThread(recorder)
+        self.samplers.append(sampler)
+        sampler.daemon = True
+        sampler.start()
 
     def on_benchmark_stop(self):
-        if self.samplers:
-            for sampler in self.samplers:
-                sampler.finish()
+        for sampler in self.samplers:
+            sampler.finish()
 
 
 class ShardStatsRecorder:
     """
-    Collects and pushes shard stats for the specified cluster to the metric store.
+    Polls CLUSTERSTATUS and Core STATUS for each shard leader; pushes metrics per shard.
     """
 
-    def __init__(self, cluster_name, client, metrics_store, sample_interval):
-        """
-        :param cluster_name: The cluster_name that the client connects to, as specified in target.hosts.
-        :param client: The Elasticsearch client for this cluster.
-        :param metrics_store: The configured metrics store we write to.
-        :param sample_interval: integer controlling the interval, in seconds, between collecting samples.
-        """
-
-        self.cluster_name = cluster_name
-        self.client = client
+    def __init__(self, admin_client, metrics_store, sample_interval):
+        self.admin_client = admin_client
         self.metrics_store = metrics_store
         self.sample_interval = sample_interval
         self.logger = logging.getLogger(__name__)
@@ -713,44 +718,47 @@ class ShardStatsRecorder:
         return "shard stats"
 
     def record(self):
-        """
-        Collect node-stats?level=shards and push to metrics store.
-        """
-
-
-        current_sample = self.sample()
-
-        shard_metadata = {"cluster": self.cluster_name}
-
-        for node_stats in current_sample:
-            node_name = node_stats["name"]
-            collected_node_stats = collections.OrderedDict()
-            collected_node_stats["name"] = "shard-stats"
-            shard_stats = node_stats["indices"].get("shards")
-
-            for index_name, stats in shard_stats.items():
-                for curr_shard in stats:
-                    for shard_id, curr_stats in curr_shard.items():
-                        doc = {
-                            "name": "shard-stats",
-                            "shard-id": shard_id,
-                            "index": index_name,
-                            "primary": curr_stats.get("routing", {}).get("primary"),
-                            "docs": curr_stats.get("docs", {}).get("count", -1),
-                            "store": curr_stats.get("store", {}).get("size_in_bytes", -1),
-                            "segments-count": curr_stats.get("segments", {}).get("count", -1),
-                            "node": node_name,
-                            "index-total-size": curr_stats.get("indexing", {}).get("index_total", -1),
-                            "polling-ingest-processed": curr_stats.get("polling_ingest_stats", {}).get("message_processor_stats", {}).get("total_processed_count", -1),
-                        }
-                        self.metrics_store.put_doc(doc, level=MetaInfoScope.cluster, meta_data=shard_metadata)
-    def sample(self):
+        # noinspection PyBroadException
         try:
-            stats = self.client.nodes.stats(metric="_all", level="shards")
-        except opensearchpy.TransportError:
-            logging.getLogger(__name__).exception("Could not retrieve node stats at shard level.")
-            return {}
-        return stats["nodes"].values()
+            session = self.admin_client._get_session()
+            cs_url = f"{self.admin_client.base_url}/solr/admin/collections?action=CLUSTERSTATUS&wt=json"
+            cs_resp = session.get(cs_url, timeout=30)
+            cs_resp.raise_for_status()
+            cluster = cs_resp.json().get("cluster", {})
+            collections = cluster.get("collections", {})
+        except BaseException:
+            self.logger.exception("ShardStats: could not retrieve CLUSTERSTATUS.")
+            return
+
+        session = self.admin_client._get_session()
+        for _coll_name, coll_data in collections.items():
+            shards = coll_data.get("shards", {})
+            for shard_name, shard_data in shards.items():
+                replicas = shard_data.get("replicas", {})
+                for _replica_key, replica in replicas.items():
+                    if replica.get("state") == "active" and replica.get("leader") == "true":
+                        core_name = replica.get("core")
+                        if not core_name:
+                            continue
+                        # noinspection PyBroadException
+                        try:
+                            status_url = (
+                                f"{self.admin_client.base_url}/solr/admin/cores"
+                                f"?action=STATUS&core={core_name}&wt=json"
+                            )
+                            sr = session.get(status_url, timeout=30)
+                            sr.raise_for_status()
+                            core_status = sr.json().get("status", {}).get(core_name, {})
+                            idx = core_status.get("index", {})
+                            num_docs = idx.get("numDocs", 0)
+                            size_bytes = idx.get("sizeInBytes", 0)
+                            self.metrics_store.put_value_cluster_level(
+                                f"shard_{shard_name}_num_docs", num_docs, "")
+                            self.metrics_store.put_value_cluster_level(
+                                f"shard_{shard_name}_size_bytes", size_bytes, "byte")
+                        except BaseException:
+                            self.logger.warning("ShardStats: could not get core STATUS for [%s].", core_name)
+                        break  # only need the leader replica per shard
 
 class NodeStats(TelemetryDevice):
     """
@@ -1429,42 +1437,56 @@ def extract_value(node, path, fallback="unknown"):
     return value
 
 
-class ClusterEnvironmentInfo(InternalTelemetryDevice):
+class ClusterEnvironmentInfo(TelemetryDevice):
     """
-    Gathers static environment information on a cluster level (e.g. version numbers).
+    Gathers static environment information on a cluster level (Solr version, JVM, CPU).
+    Called once at benchmark start; stores results as run metadata.
     """
-    def __init__(self, client, metrics_store):
+    internal = False
+    command = "cluster-environment-info"
+    human_name = "Cluster Environment Info"
+    help = "Stores Solr version, JVM version, and CPU core count as benchmark metadata."
+
+    def __init__(self, admin_client, metrics_store):
         super().__init__()
+        self.admin_client = admin_client
         self.metrics_store = metrics_store
-        self.client = client
 
     def on_benchmark_start(self):
         # noinspection PyBroadException
         try:
-            client_info = self.client.info()
+            session = self.admin_client._get_session()
+            system_url = f"{self.admin_client.base_url}/api/node/system"
+            resp = session.get(system_url, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
         except BaseException:
-            self.logger.exception("Could not retrieve cluster version info")
+            self.logger.exception("ClusterEnvironmentInfo: could not retrieve /api/node/system")
             return
-        revision = client_info["version"]["build_hash"]
-        distribution_version = client_info["version"]["number"]
-        # older versions (pre 6.3.0) don't expose a build_flavor property because the only (implicit) flavor was "oss".
-        distribution_flavor = client_info["version"].get("build_flavor", "oss")
-        self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "source_revision", revision)
+
+        lucene = data.get("lucene", {})
+        jvm = data.get("jvm", {})
+        system = data.get("system", {})
+        distribution_version = lucene.get("solr-spec-version", "unknown")
+        jvm_version = jvm.get("version", "unknown")
+        jvm_vendor = jvm.get("name", "unknown")
+        cpu_logical_cores = system.get("availableProcessors", -1)
+
         self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "distribution_version", distribution_version)
-        self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "distribution_flavor", distribution_flavor)
+        self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "jvm_version", jvm_version)
+        self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "jvm_vendor", jvm_vendor)
+        self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "cpu_logical_cores", cpu_logical_cores)
 
-        info = self.client.nodes.info(node_id="_all")
-        nodes_info = info["nodes"].values()
-        for node in nodes_info:
-            node_name = node["name"]
-            # while we could determine this for bare-metal nodes that are
-            # provisioned by OSB, there are other cases (Docker, externally
-            # provisioned clusters) where it's not that easy.
-            self.metrics_store.add_meta_info(metrics.MetaInfoScope.node, node_name, "jvm_vendor", extract_value(node, ["jvm", "vm_vendor"]))
-            self.metrics_store.add_meta_info(metrics.MetaInfoScope.node, node_name, "jvm_version", extract_value(node, ["jvm", "version"]))
-
-        store_plugin_metadata(self.metrics_store, nodes_info)
-        store_node_attribute_metadata(self.metrics_store, nodes_info)
+        # noinspection PyBroadException
+        try:
+            cs_url = f"{self.admin_client.base_url}/solr/admin/collections?action=CLUSTERSTATUS&wt=json"
+            cs_resp = session.get(cs_url, timeout=30)
+            cs_resp.raise_for_status()
+            cluster = cs_resp.json().get("cluster", {})
+            live_nodes = cluster.get("liveNodes", [])
+            self.metrics_store.add_meta_info(metrics.MetaInfoScope.cluster, None, "cluster_node_count", len(live_nodes))
+        except BaseException:
+            self.logger.warning("ClusterEnvironmentInfo: could not retrieve CLUSTERSTATUS node count.")
 
 
 def add_metadata_for_node(metrics_store, node_name, host_name):

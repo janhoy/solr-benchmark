@@ -2,18 +2,9 @@
 
 Apache Solr Benchmark is a macrobenchmarking framework for [Apache Solr](https://solr.apache.org/).
 
-It is a fork of [OpenSearch Benchmark](https://github.com/opensearch-project/opensearch-benchmark),
-itself derived from [Elastic Rally](https://github.com/elastic/rally).
-
-**DISCLAIMER**: Work in progress
-
-**NOTE**: This is a pure Solr benchmarking tool. It does NOT support benchmarking OpenSearch or Elasticsearch clusters. OpenSearch compatibility is limited to workload import — you can convert existing OpenSearch Benchmark workloads to Solr format using the included `convert-workload` command.
-
 ## Documentation
 
-Full documentation is available at **[https://janhoy.github.io/solr-benchmark/](https://janhoy.github.io/solr-benchmark/)**.
-
-The documentation source lives in the [`docs/`](docs/) folder of this repository.
+Full documentation is available in [`docs/`](docs/) folder of this repository. Build the docs with jekyll.
 
 ## What is Apache Solr Benchmark?
 
@@ -71,85 +62,22 @@ solr-benchmark run \
   --test-mode
 ```
 
-### Convert an existing OSB workload to Solr format
-
-```bash
-solr-benchmark convert-workload \
-  --workload-path /path/to/osb-workload \
-  --output-path /path/to/solr-workload
-```
-
-See the [Converter Tool documentation](https://janhoy.github.io/solr-benchmark/converter/) for details on what is converted automatically and what requires manual review.
-
 ## Workload format
 
 See [Workload Reference](https://janhoy.github.io/solr-benchmark/reference/workloads/) in the documentation for the full `workload.json` format, including `collections`, `corpora`, `operations`, and `test-procedures`.
 
 Pre-built workloads are available at [https://github.com/janhoy/solr-benchmark-workloads](https://github.com/janhoy/solr-benchmark-workloads).
 
-## Telemetry devices
-
-| Device | Metrics collected |
-|---|---|
-| `solr-jvm-stats` | JVM heap used/max, GC count/time |
-| `solr-node-stats` | CPU load, free OS memory, query handler counts |
-| `solr-collection-stats` | Document count, index size, segment count per collection |
-
-See [Telemetry Devices](https://janhoy.github.io/solr-benchmark/reference/telemetry) for full device documentation.
-
 ## Result output
 
-Results are written to timestamped directories under `~/.solr-benchmark/results/` by default.
-
-Each benchmark run creates a directory named `YYYYMMDD_HHMMSS_<run-id-prefix>/` containing:
-
-- **test_run.json** — Complete canonical record of the benchmark run including:
+Each test-run outputs a **test_run.json**, a complete canonical record of the benchmark run including:
   - Benchmark metadata (version, environment, pipeline, user tags)
   - Workload and test procedure information
   - Cluster configuration specification (heap size, GC settings, all variables)
-  - Distribution version and flavor
   - Detailed operation metrics (throughput, latency, error rates)
   - System metrics (GC times, merge times, segment counts, etc.)
-- **results.csv** — Flattened CSV export of key metrics for spreadsheet analysis
-- **summary.txt** — Human-readable markdown table (also printed to console)
 
-### Time-Series Analysis
-
-The `test_run.json` file includes complete cluster-config specification, making it easy to:
-- Compare performance across different configurations (4GB heap vs 8GB heap)
-- Filter and group results by configuration in a results portal/dashboard
-- Correlate configuration changes with performance changes
-- Track performance trends over time with custom user tags (`--user-tag "key:value"`)
-
-### Example: Analyzing Results
-
-```bash
-# Run benchmark with specific config and tag
-solr-benchmark run --cluster-config 4gheap --user-tag "baseline:true" \
-  --workload nyc_taxis --test-mode
-
-# Results stored in ~/.solr-benchmark/results/20260222_143052_a34ff090/
-# Inspect complete metadata:
-cat ~/.solr-benchmark/results/20260222_143052_a34ff090/test_run.json | jq .
-
-# Extract cluster-config specification:
-cat ~/.solr-benchmark/results/20260222_143052_a34ff090/test_run.json | \
-  jq '."cluster-config-spec"'
-
-# Extract throughput metrics:
-cat ~/.solr-benchmark/results/20260222_143052_a34ff090/test_run.json | \
-  jq '.results.op_metrics[] | {task, throughput}'
-```
-
-## Development
-
-```bash
-# Install in editable mode with dev dependencies
-pip install -e ".[develop]"
-
-# Run Solr-specific unit tests
-python -m pytest tests/unit/solr/ -v
-```
+This output can be used for further analysis, comparison and dashboarding.
 
 ## License
 

@@ -6,7 +6,7 @@ nav_order: 45
 
 # Telemetry Devices
 
-Apache Solr Benchmark includes six telemetry devices for collecting server-side metrics. All devices are enabled automatically during a benchmark run. Enable specific devices with `--telemetry` at run time.
+Apache Solr Benchmark includes telemetry devices for collecting server-side metrics. Six devices are always enabled. Eight additional devices can be enabled on demand with `--telemetry`.
 
 Both Solr 9.x (JSON format) and Solr 10.x (Prometheus text format) are supported. Format detection is automatic via the HTTP `Content-Type` header.
 
@@ -150,12 +150,146 @@ solr-benchmark run --telemetry solr-cache-stats ...
 
 ---
 
+## Optional devices
+
+Optional devices must be explicitly requested with `--telemetry <name>`. REST-based optional
+devices work with all pipelines. JVM/process devices inject flags into `SOLR_OPTS` before Solr
+starts and require the `docker` or `from-distribution` pipeline — they are silently skipped on
+`benchmark-only`.
+
+---
+
+### segment-stats
+
+Captures per-collection segment statistics via the Solr Luke request handler.
+
+**Pipeline:** All pipelines
+**Enable:** `--telemetry segment-stats`
+
+Collected on benchmark stop. Results are written to `segment_stats.log` in the benchmark log directory.
+
+| Metric (in log file) | Description |
+|----------------------|-------------|
+| `numDocs` | Current document count |
+| `maxDoc` | Maximum doc ID (includes deleted docs) |
+| `deletedDocs` | Number of soft-deleted documents |
+| `segmentCount` | Number of Lucene segments |
+| `sizeInBytes` | Total index size on disk |
+
+---
+
+### shard-stats
+
+Polls CLUSTERSTATUS and Core STATUS for each shard leader and records per-shard metrics. Skipped silently on standalone (non-SolrCloud) Solr.
+
+**Pipeline:** All pipelines
+**Enable:** `--telemetry shard-stats`
+
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `shard_{name}_num_docs` | count | Document count for the named shard |
+| `shard_{name}_size_bytes` | bytes | Index size for the named shard |
+
+The default poll interval is 60 seconds. Override with `--telemetry-params shard-stats-sample-interval:30`.
+
+---
+
+### cluster-environment-info
+
+Records Solr version, JVM version, and hardware info as run metadata. Called once at benchmark start.
+
+**Pipeline:** All pipelines
+**Enable:** `--telemetry cluster-environment-info`
+
+| Metadata key | Description |
+|--------------|-------------|
+| `distribution_version` | Solr version string (e.g. `9.7.0`) |
+| `jvm_version` | JVM version (e.g. `21.0.1`) |
+| `jvm_vendor` | JVM vendor name (e.g. `OpenJDK 21`) |
+| `cpu_logical_cores` | Number of logical CPU cores on the node |
+| `cluster_node_count` | Number of live SolrCloud nodes |
+
+---
+
+### jfr
+
+Enables Java Flight Recorder. Injects `-XX:StartFlightRecording=...` into `SOLR_OPTS`.
+
+**Pipeline:** `docker` or `from-distribution` only
+**Enable:** `--telemetry jfr`
+
+The flight recording is written to `profile.jfr` in the benchmark log directory. Requires OpenJDK 11 or later. To use a custom recording template, pass `--telemetry-params recording-template:/path/to/template.jfc`.
+
+---
+
+### gc
+
+Enables GC logging (Java 9+ `-Xlog:` format). Injects the GC log flags into `SOLR_OPTS`.
+
+**Pipeline:** `docker` or `from-distribution` only
+**Enable:** `--telemetry gc`
+
+GC output is written to `gc.log` in the benchmark log directory. The default log configuration is `gc*=info,safepoint=info,age*=trace`. Override with `--telemetry-params gc-log-config:gc*=debug`.
+
+---
+
+### jit
+
+Enables JIT compiler logging. Injects `-XX:+LogCompilation` and related flags into `SOLR_OPTS`.
+
+**Pipeline:** `docker` or `from-distribution` only
+**Enable:** `--telemetry jit`
+
+JIT output is written to `jit.log` in the benchmark log directory.
+
+---
+
+### heapdump
+
+Captures a heap dump (`jmap -dump`) from the Solr JVM when the benchmark finishes.
+
+**Pipeline:** `docker` or `from-distribution` only
+**Enable:** `--telemetry heapdump`
+
+The heap dump is written to `heap_at_exit_{pid}.hprof` in the benchmark log directory. On Docker pipelines, `docker exec` is used automatically.
+
+---
+
+### disk-io
+
+Measures disk I/O consumed by the Solr process during the benchmark run. Always active on provisioned pipelines (not opt-in).
+
+**Pipeline:** `docker` or `from-distribution` (always active)
+
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `disk_io_read_bytes` | bytes | Bytes read by the Solr process |
+| `disk_io_write_bytes` | bytes | Bytes written by the Solr process |
+
+---
+
 ## Using multiple devices
 
 ```bash
+# Always-on devices (no --telemetry needed):
 solr-benchmark run \
-  --telemetry solr-jvm-stats,solr-node-stats,solr-collection-stats,solr-query-stats,solr-indexing-stats,solr-cache-stats \
-  ...
+  --pipeline benchmark-only \
+  --target-hosts localhost:8983 \
+  --workload nyc_taxis
+
+# Add optional REST devices on any pipeline:
+solr-benchmark run \
+  --pipeline benchmark-only \
+  --target-hosts localhost:8983 \
+  --workload nyc_taxis \
+  --telemetry segment-stats,shard-stats,cluster-environment-info
+
+# Add JVM profiling devices on provisioned pipelines:
+solr-benchmark run \
+  --pipeline docker \
+  --distribution-version 9.10.1 \
+  --workload nyc_taxis \
+  --telemetry gc,jfr
 ```
 
 ## Telemetry output location

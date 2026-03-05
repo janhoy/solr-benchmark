@@ -98,12 +98,16 @@ class SolrProvisioner:
     """
 
     def __init__(self, cache_dir: str = None, port: int = 8983,
-                 startup_timeout: int = 120, cluster_config=None, solr_modules: str = ""):
+                 startup_timeout: int = 120, cluster_config=None, solr_modules: str = "",
+                 telemetry_devices: list = None):
         self.cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".solr-benchmark", "cache")
         self.port = port
         self.startup_timeout = startup_timeout
         self.cluster_config = cluster_config
         self.solr_modules = solr_modules
+        self.telemetry_devices = telemetry_devices or []
+        # PID of the Solr process; set by start() after Solr is ready
+        self.pid = None
         os.makedirs(self.cache_dir, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -199,6 +203,17 @@ class SolrProvisioner:
             )
 
         self._wait_for_ready()
+
+        # Read the PID file so telemetry devices (DiskIo, Heapdump) can attach to the process
+        pid_path = os.path.join(solr_root, "bin", f"solr-{self.port}.pid")
+        try:
+            with open(pid_path) as f:
+                self.pid = int(f.read().strip())
+            logger.info("Solr PID = %d (from %s)", self.pid, pid_path)
+        except Exception:
+            self.pid = None
+            logger.warning("Could not read Solr PID file at %s", pid_path)
+
         logger.info("Solr started on port %d", self.port)
 
     def stop(self, solr_root: str) -> None:
@@ -225,7 +240,7 @@ class SolrProvisioner:
     # ------------------------------------------------------------------
 
     def _build_env(self) -> dict:
-        """Build subprocess environment with Solr env vars from cluster_config."""
+        """Build subprocess environment with Solr env vars from cluster_config and telemetry devices."""
         env = os.environ.copy()
         if self.cluster_config:
             vars_ = self.cluster_config.variables
@@ -237,6 +252,15 @@ class SolrProvisioner:
         if self.solr_modules:
             env["SOLR_MODULES"] = self.solr_modules
             logger.info("Applying SOLR_MODULES=%s", self.solr_modules)
+        # Collect JVM flags from enabled telemetry devices (FlightRecorder, Gc, JitCompiler)
+        jvm_extra = []
+        for device in self.telemetry_devices:
+            if hasattr(device, "instrument_java_opts"):
+                jvm_extra.extend(device.instrument_java_opts())
+        if jvm_extra:
+            existing = env.get("SOLR_OPTS", "")
+            env["SOLR_OPTS"] = (existing + " " + " ".join(jvm_extra)).strip()
+            logger.info("Added JVM telemetry flags to SOLR_OPTS: %s", " ".join(jvm_extra))
         return env
 
     def _bin_solr(self, solr_root: str) -> str:
@@ -298,12 +322,16 @@ class SolrDockerLauncher:
     DEFAULT_CONTAINER_NAME = "solr-benchmark"
 
     def __init__(self, port: int = 8983, startup_timeout: int = 60,
-                 container_name: str = None, cluster_config=None, solr_modules: str = ""):
+                 container_name: str = None, cluster_config=None, solr_modules: str = "",
+                 telemetry_devices: list = None):
         self.port = port
         self.startup_timeout = startup_timeout
         self.container_name = container_name or self.DEFAULT_CONTAINER_NAME
         self.cluster_config = cluster_config
         self.solr_modules = solr_modules
+        self.telemetry_devices = telemetry_devices or []
+        # PID of the Solr process inside the container; set by start() after Solr is ready
+        self.pid = None
 
     def start(self, version_tag: str = "9", mode: str = None) -> None:
         """
@@ -354,21 +382,48 @@ class SolrDockerLauncher:
             )
 
         self._wait_for_ready()
+
+        # Capture the Solr JVM PID from inside the container for DiskIo / Heapdump telemetry
+        try:
+            pid_result = subprocess.run(
+                ["docker", "inspect", self.container_name, "--format={{.State.Pid}}"],
+                capture_output=True, text=True, check=True,
+            )
+            self.pid = int(pid_result.stdout.strip())
+            logger.info("Solr container PID = %d", self.pid)
+        except Exception as exc:
+            self.pid = None
+            logger.warning("Could not determine Solr container PID: %s", exc)
+
         logger.info("Solr Docker container '%s' ready on port %d", self.container_name, self.port)
 
     def _cluster_config_env_flags(self) -> list:
-        """Return ``-e KEY=VALUE`` flags for docker run from cluster_config variables."""
+        """Return ``-e KEY=VALUE`` flags for docker run from cluster_config variables and telemetry devices."""
         flags = []
+        solr_opts = ""
         if self.cluster_config:
             vars_ = self.cluster_config.variables
             mapping = {"heap_size": "SOLR_HEAP", "gc_tune": "GC_TUNE", "solr_opts": "SOLR_OPTS"}
             for ini_key, env_key in mapping.items():
                 if ini_key in vars_:
-                    flags += ["-e", f"{env_key}={vars_[ini_key]}"]
+                    if env_key == "SOLR_OPTS":
+                        solr_opts = vars_[ini_key]
+                    else:
+                        flags += ["-e", f"{env_key}={vars_[ini_key]}"]
                     logger.info("Applying cluster_config: %s=%s", env_key, vars_[ini_key])
         if self.solr_modules:
             flags += ["-e", f"SOLR_MODULES={self.solr_modules}"]
             logger.info("Applying SOLR_MODULES=%s", self.solr_modules)
+        # Collect JVM flags from enabled telemetry devices (FlightRecorder, Gc, JitCompiler)
+        jvm_extra = []
+        for device in self.telemetry_devices:
+            if hasattr(device, "instrument_java_opts"):
+                jvm_extra.extend(device.instrument_java_opts())
+        if jvm_extra:
+            solr_opts = (solr_opts + " " + " ".join(jvm_extra)).strip()
+            logger.info("Added JVM telemetry flags to SOLR_OPTS: %s", " ".join(jvm_extra))
+        if solr_opts:
+            flags += ["-e", f"SOLR_OPTS={solr_opts}"]
         return flags
 
     def stop(self) -> None:

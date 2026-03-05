@@ -1,28 +1,34 @@
-# Implementation Plan: Documentation Site (US5)
+# Implementation Plan: Remaining Telemetry Devices
 
-**Branch**: `001-solr-benchmark-fork` | **Date**: 2026-02-25 | **Spec**: `specs/001-solr-benchmark-fork/spec.md`
-**Input**: Feature specification User Story 5 — Self-Contained Documentation Site (FR-035–FR-041)
+**Branch**: `001-solr-benchmark-fork` | **Date**: 2026-02-28 | **Spec**: `specs/001-solr-benchmark-fork/spec.md`
+**Input**: Feature specification from `/specs/001-solr-benchmark-fork/spec.md`
 
 ## Summary
 
-Build a self-contained Jekyll documentation site in `docs/` using the `just-the-docs` theme.
-Content is migrated from the OpenSearch Benchmark `_benchmark/` documentation section and
-fully adapted for Apache Solr Benchmark: Solr-native terminology throughout, OpenSearch-only
-sections removed, new Solr workload format and converter-tool sections added, ASF licensing
-and attribution page included. The site is deployed to GitHub Pages via GitHub Actions on
-every push to `main`.
+Port the remaining OSB telemetry devices to Solr Benchmark by editing the existing OSB device
+classes in `osbenchmark/telemetry.py` to use Solr APIs and Solr PID file instead of OpenSearch
+equivalents. Add one new Solr-only device (`ShardStats`) in `osbenchmark/solr/telemetry.py`.
+Wire JVM-flag devices into the provisioner's `SOLR_OPTS` injection path.
+
+Phase 1 (6 always-on Solr devices: `SolrJvmStats`, `SolrNodeStats`, `SolrCollectionStats`,
+`SolrQueryStats`, `SolrIndexingStats`, `SolrCacheStats`) is **already complete**.
+
+This plan covers Phase 2 (REST-based opt-in devices) and Phase 3 (JVM/PID opt-in devices):
+- **Phase 2**: Edit `SegmentStats`, add `ShardStats`, edit `ClusterEnvironmentInfo`
+- **Phase 3**: Edit `FlightRecorder`, `Gc`, `JitCompiler`, `Heapdump`, `DiskIo`
+- **Supporting**: Update `list_telemetry()`, provisioner JVM opts injection, and tests
 
 ## Technical Context
 
-**Language/Version**: Ruby 3.3 (Jekyll runtime); Python 3.10+ (source tool — unchanged)
-**Primary Dependencies**: Jekyll 4.4.1, just-the-docs 0.12.0 gem
-**Storage**: Static files in `docs/` — no database
-**Testing**: Manual `bundle exec jekyll build --strict` + broken-link check; no Python unit tests
-**Target Platform**: GitHub Pages (`https://janhoy.github.io/solr-benchmark/`)
-**Project Type**: Static documentation site (Jekyll)
-**Performance Goals**: Site builds in < 60s; page load < 2s on standard connection
-**Constraints**: Must pass `jekyll build` with zero warnings/errors; no external CDN deps
-**Scale/Scope**: ~35 Markdown pages; 6 navigation sections; 1 GitHub Actions workflow
+**Language/Version**: Python 3.10+
+**Primary Dependencies**: `pysolr` 3.x (data ops), `requests` (HTTP admin), `psutil` (process I/O for DiskIo), `thespian` (actor model)
+**Storage**: N/A (telemetry data written to local result files via existing ResultWriter)
+**Testing**: pytest (`tests/unit/test_telemetry.py`, `tests/unit/solr/test_telemetry.py`)
+**Target Platform**: Linux/macOS — runs against local or remote Solr clusters
+**Project Type**: Single Python package
+**Performance Goals**: N/A — telemetry devices run asynchronously, outside the measured path
+**Constraints**: JVM devices MUST be skipped gracefully on `benchmark-only` pipeline (no provisioner); REST devices MUST work on all pipelines
+**Scale/Scope**: 8 devices edited/added; ~5 files changed; ~25 new unit tests
 
 ## Constitution Check
 
@@ -30,287 +36,180 @@ every push to `main`.
 
 | Gate | Principle | Status |
 |------|-----------|--------|
-| All new doc files carry ASF copyright in footer include | III. Source File License Headers | ✅ PASS — enforced by `_includes/footer_custom.html` |
-| No OpenSearch trademarks in content outside `about.md` credits page | VIII. Branding + Trademark Rules | ✅ PASS — OSB references confined to `about.md` |
-| No new runtime Python dependency introduced | V. Solr-Native Scope | ✅ PASS — docs are static Jekyll only |
-| New files placed in `docs/` and `.github/workflows/` only | IV. Architecture Fidelity | ✅ PASS |
-| No Python unit test suite changes required | VII. Code Quality & Testing | ✅ PASS — no Python code modified |
-| Canonical Solr terminology used throughout (collection, configset, etc.) | VI. Terminology Consistency | ✅ PASS — enforced by content review task |
-| No `@author` tags | VII. Code Quality | ✅ PASS — not applicable to Markdown |
-| Apache 2.0 license; NOTICE attribution chain preserved in `about.md` | I. ASF Compliance + II. Attribution | ✅ PASS — dedicated credits page |
+| All new/modified source files have correct license headers (ASF for new; OSB + ASF for carried-over files) | III. Source File License Headers | [X] PASS |
+| No OpenSearch trademarks in user-facing code, docs, or output (outside permitted contexts) | VIII. Documentation & Branding + Trademark Rules | [X] PASS |
+| No new runtime dependency on `opensearchpy` or any OpenSearch client | V. Solr-Native Scope | [X] PASS |
+| New Solr-specific modules live under `osbenchmark/solr/` (`ShardStats` only) | IV. Architecture Fidelity | [X] PASS |
+| Unit tests exist or are planned for all new `osbenchmark/solr/` modules | VII. Code Quality & Testing | [X] PASS |
+| Terminology uses canonical Solr Benchmark terms (see Principle VI table) | VI. Terminology Consistency | [X] PASS |
+| No `@author` tags added to any file | VII. Code Quality & Testing | [X] PASS |
+| License is Apache 2.0; no incompatible dependency introduced | I. ASF Compliance + II. License & Attribution | [X] PASS |
 
 **Gate result**: All PASS → proceed.
 
+**Notes**:
+- `telemetry.py` (OSB root) = Category B files (substantially modified for Solr) — OSB header + Solr attribution line
+- `ShardStats` in `osbenchmark/solr/telemetry.py` = Category C (new Solr file) — full ASF header
+- `psutil` is already in `setup.py` as an existing dependency; no new dependency added
+
 ## Project Structure
 
-### Specification Artifacts (this feature)
+### Documentation (this feature)
 
 ```text
 specs/001-solr-benchmark-fork/
-├── plan.md              ← this file
-├── research.md          ← Phase 0 output
-├── data-model.md        ← Phase 1 output (content inventory + nav structure)
-├── quickstart.md        ← Phase 1 output (local dev instructions)
-└── tasks.md             ← Phase 2 output (/speckit.tasks — not created here)
+├── plan.md              # This file
+├── research.md          # Phase 0 output (sections 1–7 complete)
+├── data-model.md        # N/A — no new data entities; telemetry API shapes documented in research.md §7
+├── quickstart.md        # Phase 1 output (below)
+└── tasks.md             # Phase 2 output (/speckit.tasks command)
 ```
 
-### Repository Files Added/Changed
+### Source Code (repository root)
 
 ```text
-docs/                              ← Jekyll site root (NEW)
-├── Gemfile
-├── Gemfile.lock
-├── _config.yml
-├── index.md                       ← Home / landing page
-├── about.md                       ← License, credits, trademark notices
-├── quickstart.md
-├── glossary.md
-├── faq.md
-├── _includes/
-│   └── footer_custom.html         ← ASF copyright + attribution footer
-├── assets/
-│   └── images/
-│       └── logo.png               ← project logo (placeholder)
-├── user-guide/
-│   ├── index.md
-│   ├── concepts.md
-│   ├── install-and-configure/
-│   │   ├── index.md
-│   │   ├── installing.md
-│   │   └── configuring.md
-│   ├── understanding-workloads/
-│   │   ├── index.md
-│   │   ├── anatomy-of-a-workload.md
-│   │   └── common-operations.md
-│   ├── working-with-workloads/
-│   │   ├── index.md
-│   │   ├── running-workloads.md
-│   │   ├── creating-custom-workloads.md
-│   │   └── finetune-workloads.md
-│   └── understanding-results/
-│       ├── index.md
-│       ├── summary-reports.md
-│       └── telemetry.md
-├── reference/
-│   ├── index.md
-│   ├── workloads/
-│   │   ├── index.md
-│   │   ├── collections.md         ← NEW (replaces OSB indices.md)
-│   │   ├── corpora.md
-│   │   ├── operations.md          ← Solr-native ops only
-│   │   └── test-procedures.md
-│   ├── commands/
-│   │   ├── index.md
-│   │   ├── run.md
-│   │   ├── list.md
-│   │   ├── info.md
-│   │   ├── compare.md
-│   │   └── command-flags.md
-│   ├── telemetry.md               ← Solr telemetry devices
-│   └── summary-report.md          ← JSON/CSV output format
-├── cluster-config/                ← NEW section
-│   ├── index.md
-│   └── available-configs.md
-└── converter/                     ← NEW section
-    ├── index.md
-    ├── usage.md
-    └── what-converts.md
+osbenchmark/
+├── telemetry.py               # Edit: SegmentStats, FlightRecorder, Gc, JitCompiler, Heapdump, DiskIo, ClusterEnvironmentInfo
+├── solr/
+│   ├── telemetry.py           # Add: ShardStats class
+│   └── provisioner.py         # Edit: JVM opts injection in _build_env() and _cluster_config_env_flags()
+└── worker_coordinator/
+    └── worker_coordinator.py  # Edit: _create_solr_telemetry_devices() — register ShardStats + updated devices
 
-.github/
-└── workflows/
-    └── docs.yml                   ← NEW GitHub Actions deploy workflow
+tests/
+├── unit/
+│   ├── test_telemetry.py      # Edit: update SegmentStats, DiskIo, Heapdump, ClusterEnvironmentInfo tests
+│   └── solr/
+│       └── test_telemetry.py  # Add: ShardStats tests
 ```
 
-**Structure Decision**: Single static Jekyll site in `docs/` at repository root.
-No backend, no API contracts. 6 top-level sections mirror the adapted OSB navigation.
-GitHub Actions handles build and GitHub Pages deployment.
+**Structure Decision**: No new directories or packages needed. This is a focused edit pass — existing modules receive Solr API calls in place of OpenSearch client calls.
 
-## Complexity Tracking
+## Phase 0: Research Findings
 
-> No constitution violations — no justification required.
+> Research is complete. See `research.md` §7 (Telemetry Device Portability Research).
 
----
+Key decisions:
+1. **Class names unchanged** — device flag values (`--telemetry=segment-stats`) keep OSB names
+2. **Edit, don't dual-mode** — old OpenSearch code paths are removed, not kept alongside Solr
+3. **`ShardStats` is new** — no OSB equivalent; goes in `osbenchmark/solr/telemetry.py`
+4. **JVM opts via SOLR_OPTS** — `instrument_java_opts()` return values appended to `SOLR_OPTS` env var
+5. **PID from file** — `{solr_root}/bin/solr-{port}.pid`; Docker via `docker inspect`
+6. **Metrics format dual-support** — `_fetch_node_metrics_parsed()` already handles Solr 9.x JSON and 10.x Prometheus
 
-## Phase 0: Research Findings Summary
+## Phase 1: Design
 
-Full details in `research.md`. Key resolved decisions:
+### Device Inventory
 
-| Decision | Chosen | Rationale |
-|----------|--------|-----------|
-| Jekyll theme | `just-the-docs` 0.12.0 | Sidebar nav, search, same family as OSB docs |
-| Deployment | GitHub Pages via Actions | Zero-infra, automatic, standard for OSS |
-| Build method | `bundle exec jekyll build` (not `jekyll-build-pages` action) | Works with gem-based theme; `baseurl` injected by `configure-pages` |
-| OSB pages to include | ~35 of 55 | Exclude synthetic-data-gen, generate-data cmd, vector-search workload, contributing-workloads, migration-assistance, redline-test |
-| New pages | collections.md, converter/ (3), cluster-config/ (2), about.md | No OSB equivalent |
-| Copyright approach | ASF footer include + dedicated `about.md` | Constitution Principles I–III |
+| Device | Class location (after port) | Pipeline support |
+|--------|----------------------------|------------------|
+| `segment-stats` | `osbenchmark/telemetry.py` — edit `SegmentStats` | All |
+| `shard-stats` | `osbenchmark/solr/telemetry.py` — new `ShardStats` | All |
+| `cluster-environment-info` | `osbenchmark/telemetry.py` — edit `ClusterEnvironmentInfo` | All |
+| `jfr` | `osbenchmark/telemetry.py` — edit `FlightRecorder` | Provisioned only |
+| `gc` | `osbenchmark/telemetry.py` — edit `Gc` | Provisioned only |
+| `jit` | `osbenchmark/telemetry.py` — edit `JitCompiler` | Provisioned only |
+| `heapdump` | `osbenchmark/telemetry.py` — edit `Heapdump` | Provisioned only |
+| `disk-io` | `osbenchmark/telemetry.py` — edit `DiskIo` | Provisioned only |
 
----
+### Devices NOT to port (remove from list_telemetry if present)
 
-## Phase 1: Design Details
+`ccr-stats`, `transform-stats`, `searchable-snapshots-stats`, `segment-replication-stats`, `MlBucketProcessingTime` — OpenSearch-only concepts; no Solr equivalent.
 
-### Navigation Hierarchy
+### API Specifications
 
-```text
-Home                                   nav_order: 1
-Quickstart                             nav_order: 2
-User Guide                             nav_order: 5
-  Concepts                               nav_order: 3
-  Install and Configure                  nav_order: 5
-    Installing                             nav_order: 5
-    Configuring                            nav_order: 7
-  Understanding Workloads                nav_order: 10
-    Anatomy of a Workload                  nav_order: 15
-    Common Operations                      nav_order: 16
-  Working with Workloads                 nav_order: 15
-    Running a Workload                     nav_order: 9
-    Creating Custom Workloads              nav_order: 10
-    Fine-tuning Workloads                  nav_order: 12
-  Understanding Results                  nav_order: 20
-    Summary Reports                        nav_order: 22
-    Telemetry                              nav_order: 30
-Reference                              nav_order: 25
-  Workload Reference                     nav_order: 60
-    collections                            nav_order: 65
-    corpora                                nav_order: 70
-    operations                             nav_order: 100
-    test_procedures                        nav_order: 110
-  Command Reference                      nav_order: 50
-    run                                    nav_order: 90
-    list                                   nav_order: 80
-    info                                   nav_order: 70
-    compare                                nav_order: 20
-    Command flags                          nav_order: 150
-  Telemetry devices                      nav_order: 45
-  Summary report                         nav_order: 40
-Cluster Config                         nav_order: 27
-  Overview                               nav_order: 1
-  Available Configs                      nav_order: 2
-Converter Tool                         nav_order: 28
-  Overview                               nav_order: 1
-  Usage                                  nav_order: 2
-  What Gets Converted                    nav_order: 3
-Glossary                               nav_order: 100
-FAQ                                    nav_order: 101
-About / Credits                        nav_order: 102
+**SegmentStats** — per collection, called each `record()` iteration:
+```
+GET /solr/{collection}/admin/luke?numTerms=0&wt=json
+Response: {"index": {"numDocs": N, "maxDoc": N, "deletedDocs": N, "segmentCount": N, "indexHeapUsageBytes": N}}
+Emit: segment_numdocs, segment_maxdoc, segment_deleteddocs, segment_segmentcount, segment_indexheapusagebytes
 ```
 
-### `_config.yml`
-
-```yaml
-title: Apache Solr Benchmark
-description: >-
-  A performance benchmarking tool for Apache Solr clusters, forked from
-  OpenSearch Benchmark.
-theme: just-the-docs
-url: https://janhoy.github.io
-# baseurl injected automatically by actions/configure-pages
-
-aux_links:
-  "GitHub": https://github.com/janhoy/solr-benchmark
-  "Apache Solr": https://solr.apache.org
-
-search_enabled: true
-
-callouts:
-  note:
-    title: Note
-    color: blue
-  warning:
-    title: Warning
-    color: yellow
-  important:
-    title: Important
-    color: red
+**ShardStats** — per collection, called each `record()` iteration:
+```
+GET /solr/admin/collections?action=CLUSTERSTATUS
+  → enumerate active shard leaders → list of (core_name, node_host, node_port)
+GET /solr/admin/cores?action=STATUS&core={core_name}
+  → status.{core}.index.{numDocs, sizeInBytes}
+Emit: shard_num_docs, shard_size_bytes (labelled by shard name)
+SolrCloud check: if CLUSTERSTATUS cluster.collections is absent/empty → skip silently
 ```
 
-### `Gemfile`
-
-```ruby
-source 'https://rubygems.org'
-gem "jekyll", "~> 4.4.1"
-gem "just-the-docs", "0.12.0"
+**ClusterEnvironmentInfo** — called once at `on_benchmark_start()`:
+```
+GET /api/node/system
+  → lucene.solr-spec-version, jvm.version, jvm.name, system.name, system.availableProcessors
+GET /solr/admin/collections?action=CLUSTERSTATUS
+  → node count, collection list
+Emit as environment info key-value pairs (not time-series metrics)
 ```
 
-### GitHub Actions Workflow (`.github/workflows/docs.yml`)
+**JVM devices (FlightRecorder, Gc, JitCompiler)** — called at `instrument_java_opts()`:
+- Return list of JVM flags (strings)
+- Provisioner collects from all active JVM devices and appends to `SOLR_OPTS`
+- Device detects `benchmark-only` via `self.telemetry_params.get("pipeline", "")` and returns `[]` with a WARNING log
 
-```yaml
-name: Deploy docs to GitHub Pages
-on:
-  push:
-    branches: ["main"]
-  workflow_dispatch:
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
-          bundler-cache: true
-          cache-version: 0
-          working-directory: docs
-      - uses: actions/configure-pages@v5
-        id: pages
-      - name: Build
-        run: bundle exec jekyll build --baseurl "${{ steps.pages.outputs.base_path }}"
-        env:
-          JEKYLL_ENV: production
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: docs/_site
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/deploy-pages@v4
-        id: deployment
+**Heapdump** — called at `on_benchmark_stop()`:
+```
+Read PID from provisioner-supplied node.pid (set via SolrProvisioner.start())
+Execute: jmap -dump:format=b,file={output}.hprof {pid}
+Docker: docker exec {container_name} jmap -dump:format=b,file={output}.hprof {pid}
 ```
 
-### Footer Include (`docs/_includes/footer_custom.html`)
-
-```html
-<p>Copyright &copy; 2024 The Apache Software Foundation. Licensed under the
-<a href="https://www.apache.org/licenses/LICENSE-2.0">Apache License, Version 2.0</a>.
-Apache, Apache Solr, and the Apache feather logo are trademarks of
-The Apache Software Foundation. See <a href="{{ '/about' | relative_url }}">About</a>
-for full attribution.</p>
+**DiskIo** — called each `record()` iteration:
+```
+Read PID from provisioner-supplied node.pid
+psutil.Process(pid).io_counters() → read_bytes, write_bytes, read_count, write_count
+Emit: disk_io_read_bytes, disk_io_write_bytes, disk_io_read_count, disk_io_write_count
 ```
 
-### `about.md` Structure
+### JVM Opts Injection Architecture
 
-1. **License** — Apache 2.0 with link to full text and the NOTICE file
-2. **Attribution** — "Apache Solr Benchmark is derived from OpenSearch Benchmark
-   (Copyright 2022 OpenSearch Contributors, licensed under Apache 2.0), which in turn
-   derives from Elasticsearch Rally (Copyright Elasticsearch bv)."
-3. **Trademarks** — "Apache Solr is a trademark of The Apache Software Foundation.
-   OpenSearch® is a registered trademark of the OpenSearch Software Foundation."
-4. **Links** — apache.org, solr.apache.org, opensearch.org
+```python
+# In SolrProvisioner._build_env() / SolrDockerLauncher._cluster_config_env_flags():
+jvm_extra = []
+for device in self.telemetry_devices:
+    if hasattr(device, "instrument_java_opts"):
+        jvm_extra.extend(device.instrument_java_opts())
+# Append to existing SOLR_OPTS value:
+existing_opts = env.get("SOLR_OPTS", "")
+env["SOLR_OPTS"] = (existing_opts + " " + " ".join(jvm_extra)).strip()
+```
 
-### Content Adaptation Rules (applied to every migrated page)
+`self.telemetry_devices` is passed to the provisioner by the orchestrator before `prepare()` is called.
 
-| Rule | Action |
-|------|--------|
-| "OpenSearch Benchmark" in body text | Replace with "Apache Solr Benchmark" |
-| "index" (as Solr collection) | Replace with "collection" |
-| "indices" | Replace with "collections" |
-| "OpenSearch cluster" | Replace with "Apache Solr cluster" |
-| Links to opensearch.org documentation | Remove or replace with Solr equivalent |
-| `create-index` / `delete-index` operations | Replace with `create-collection` / `delete-collection` |
-| "aggregations" | Replace with "facets" |
-| Workload examples using `indices` key | Update to `collections` key |
-| OSB workload repository URL | Replace with `https://github.com/janhoy/solr-benchmark-workloads` |
-| "benchmark.ini" default URL | Update to `https://github.com/janhoy/solr-benchmark-workloads` |
+### list_telemetry() Update
+
+Current `list_telemetry()` incorrectly labels ported devices as "OpenSearch-only". After this implementation:
+
+- **Section "Always-on Solr devices"**: `SolrJvmStats`, `SolrNodeStats`, `SolrCollectionStats`, `SolrQueryStats`, `SolrIndexingStats`, `SolrCacheStats`
+- **Section "Optional REST devices (all pipelines)"**: `SegmentStats`, `ShardStats`, `ClusterEnvironmentInfo`
+- **Section "Optional JVM/process devices (provisioned pipelines only)"**: `FlightRecorder`, `Gc`, `JitCompiler`, `Heapdump`, `DiskIo`
+- **Remove entirely**: `ccr-stats`, `transform-stats`, `searchable-snapshots-stats`, `segment-replication-stats`, `MlBucketProcessingTime`
+
+## Quickstart: Enabling Optional Telemetry Devices
+
+After implementation, users enable optional devices with `--telemetry`:
+
+```bash
+# Enable segment statistics collection
+solr-benchmark run \
+  --pipeline benchmark-only \
+  --target-hosts localhost:8983 \
+  --workload nyc_taxis \
+  --telemetry segment-stats,cluster-environment-info
+
+# Enable GC logging on a provisioned cluster (flags injected into SOLR_OPTS)
+solr-benchmark run \
+  --pipeline docker \
+  --distribution-version 9.10.1 \
+  --workload nyc_taxis \
+  --telemetry gc,jfr
+```
+
+Results appear in the test-run JSON alongside metrics from always-on devices.
+
+```bash
+# View telemetry output for the most recent run
+cat ~/.solr-benchmark/benchmarks/test-runs/$(ls -t ~/.solr-benchmark/benchmarks/test-runs/ | head -1)/test_run.json | python3 -m json.tool | grep segment_
+```
