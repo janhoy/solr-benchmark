@@ -57,7 +57,7 @@ class BareProvisionerTests(TestCase):
             all_node_ips=["10.17.22.22", "10.17.22.23"],
             all_node_names=["benchmark-node-0", "benchmark-node-1"],
             ip="10.17.22.23",
-            http_port=9200)
+            http_port=8983)
 
         p = provisioner.BareProvisioner(os_installer=installer,
                                         plugin_installers=[],

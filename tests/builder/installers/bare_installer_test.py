@@ -29,7 +29,7 @@ class BareInstallerTests(TestCase):
                 "test_run_root": self.test_run_root,
                 "cluster_name": self.cluster_name,
                 "node": {
-                    "port": "9200"
+                    "port": "8983"
                 },
                 "preserve_install": False
             }

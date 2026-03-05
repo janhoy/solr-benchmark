@@ -274,11 +274,11 @@ def cluster_distribution_version(cfg, client_factory=client.ClientFactory):
     """
     hosts = cfg.opts("client", "hosts").default
     client_options = cfg.opts("client", "options").default
-    opensearch = client_factory(hosts, client_options).create()
-    if isinstance(opensearch, client.SolrClient):
-        return "2.11.0"
+    client = client_factory(hosts, client_options).create()
+    if isinstance(client, client.SolrClient):
+        return "9.10.1"
     try:
-        info = opensearch.info()
+        info = client.info()
         distribution_version = info["version"]["number"]
     except NotFoundError as e:
         if e.status_code == 404:
@@ -297,10 +297,10 @@ def to_ip_port(hosts):
     for host in hosts:
         host = host.copy()
         host_or_ip = host.pop("host")
-        port = host.pop("port", 9200)
+        port = host.pop("port", 8983)
         if host:
             raise exceptions.SystemSetupError("When specifying nodes to be managed by solr-benchmark you can only supply "
-                                              "hostname:port pairs (e.g. 'localhost:9200'), any additional options cannot "
+                                              "hostname:port pairs (e.g. 'localhost:8983'), any additional options cannot "
                                               "be supported.")
         ip = net.resolve(host_or_ip)
         ip_port_pairs.append((ip, port))
