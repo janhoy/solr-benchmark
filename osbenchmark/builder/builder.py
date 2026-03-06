@@ -48,7 +48,7 @@ METRIC_FLUSH_INTERVAL_SECONDS = 30
 
 
 def download(cfg):
-    cluster_config, plugins = load_cluster_config(cfg, external=False)
+    cluster_config, _ = load_cluster_config(cfg, external=False)
 
     s = supplier.create(cfg, sources=False, cluster_config=cluster_config)
     binaries = s()
@@ -86,7 +86,7 @@ def install(cfg):
     elif build_type == "docker":
         if len(plugins) > 0:
             raise exceptions.SystemSetupError("You cannot specify any plugins for Docker clusters. Please remove "
-                                              "\"--plugin-params\" and try again.")
+                                              "\"--plugins\" and try again.")
         p = provisioner.docker(
             cfg=cfg, cluster_config=cluster_config,
             ip=ip, http_port=http_port, target_root=root_path, node_name=node_name)
@@ -277,22 +277,10 @@ def cluster_distribution_version(cfg, client_factory=client.ClientFactory):
     """
     hosts = cfg.opts("client", "hosts").default
     client_options = cfg.opts("client", "options").default
-    client = client_factory(hosts, client_options).create()
-    if isinstance(client, client.SolrClient):
+    client_instance = client_factory(hosts, client_options).create()
+    if isinstance(client_instance, client.SolrClient):
         return "9.10.1"
-    try:
-        info = client.info()
-        distribution_version = info["version"]["number"]
-    except NotFoundError as e:
-        if e.status_code == 404:
-            console.info("Root url not found, setting distribution version to oss")
-            distribution_version = "oss"
-        else:
-            distribution_version = None
-    except Exception:
-        console.warn("Could not determine distribution version from endpoint, use --distribution-version to specify")
-        distribution_version = None
-    return distribution_version
+    return None
 
 
 def to_ip_port(hosts):

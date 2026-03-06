@@ -258,9 +258,9 @@ class ProcessLauncher:
             raise exceptions.LaunchError(msg)
 
         # Solr creates PID file at solr-<port>.pid in the bin directory
-        # For now, return a dummy PID since Solr manages its own process
-        # TODO: Parse the actual PID from Solr's PID file
-        return 0
+        port = env.get("SOLR_PORT", "8983")
+        pid_file = os.path.join(binary_path, "bin", f"solr-{port}.pid")
+        return wait_for_pidfile(pid_file)
 
     def stop(self, nodes, metrics_store):
         self.logger.info("Shutting down [%d] nodes on this host.", len(nodes))

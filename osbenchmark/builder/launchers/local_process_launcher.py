@@ -102,11 +102,24 @@ class LocalProcessLauncher(Launcher):
             raise LaunchError("Cannot launch Solr as root. Please run as a non-root user.")
 
         cmd = [io.escape_path(os.path.join(binary_path, "bin", "solr"))]
-        cmd.extend(["start", "-p", "pid"])
+        cmd.append("start")
+
+        # Solr 9.x requires --cloud flag for SolrCloud mode; Solr 10+ uses it by default
+        distribution_version = self.cluster_config.variables.get("distribution", {}).get("version")
+        if distribution_version is None:
+            cmd.append("--cloud")
+        else:
+            version_parts = str(distribution_version).split("-")[0].split(".")
+            try:
+                if int(version_parts[0]) < 10:
+                    cmd.append("--cloud")
+            except (ValueError, IndexError):
+                cmd.append("--cloud")
 
         self.shell_executor.execute(host, " ".join(cmd), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, detach=True)
 
-        pid_file_name = io.escape_path(os.path.join(binary_path, "pid"))
+        port = env.get("SOLR_PORT", "8983")
+        pid_file_name = io.escape_path(os.path.join(binary_path, "bin", f"solr-{port}.pid"))
         self._wait_for_pid_file(pid_file_name)
 
         return self._get_pid_from_file(pid_file_name)

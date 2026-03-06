@@ -1730,4 +1730,3 @@ class SearchParamSourceTests(TestCase):
                     }
                 }
             })
-

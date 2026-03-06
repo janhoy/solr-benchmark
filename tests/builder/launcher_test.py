@@ -195,7 +195,7 @@ class ProcessLauncherTests(TestCase):
 
         nodes = proc_launcher.start(node_configs)
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(nodes[0].pid, 0)
+        self.assertEqual(nodes[0].pid, MOCK_PID_VALUE)
 
         stopped_nodes = proc_launcher.stop(nodes, ms)
         # all nodes should be stopped
