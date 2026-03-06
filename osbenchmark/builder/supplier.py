@@ -47,7 +47,7 @@ def create(cfg, sources, distribution, cluster_config, plugins=None):
     distribution_version = cfg.opts("builder", "distribution.version", mandatory=False)
     supply_requirements = _supply_requirements(sources, distribution, plugins, revisions, distribution_version)
     build_needed = any([build for _, _, build in supply_requirements.values()])
-    os_supplier_type, os_version, _ = supply_requirements["opensearch"]
+    os_supplier_type, os_version, _ = supply_requirements["solr"]
     src_config = cfg.all_opts("source")
     suppliers = []
 
@@ -158,40 +158,18 @@ def _required_revision(revisions, key, name=None):
 
 
 def _supply_requirements(sources, distribution, plugins, revisions, distribution_version):
-    # per artifact (OpenSearch or a specific plugin):
-    #   * key: artifact
-    #   * value: ("source" | "distribution", distribution_version | revision, build = True | False)
+    # * key: artifact
+    # * value: ("source" | "distribution", distribution_version | revision, build = True | False)
     supply_requirements = {}
 
-    # can only build OpenSearch with source-related pipelines -> ignore revision in that case
-    if "opensearch" in revisions and sources:
-        supply_requirements["opensearch"] = ("source", _required_revision(revisions, "opensearch", "OpenSearch"), True)
+    # can only build Solr with source-related pipelines -> ignore revision in that case
+    if "solr" in revisions and sources:
+        supply_requirements["solr"] = ("source", _required_revision(revisions, "solr", "Solr"), True)
     else:
         # no revision given or explicitly specified that it's from a distribution -> must use a distribution
-        supply_requirements["opensearch"] = ("distribution", _required_version(distribution_version), False)
+        supply_requirements["solr"] = ("distribution", _required_version(distribution_version), False)
 
-    for plugin in plugins:
-        if plugin.core_plugin:
-            # core plugins are entirely dependent upon OpenSearch.
-            supply_requirements[plugin.name] = supply_requirements["opensearch"]
-        else:
-            # allow catch-all only if we're generally building from sources. If it is mixed, the user should tell explicitly.
-            if plugin.name in revisions or ("all" in revisions and sources):
-                # be a bit more lenient when checking for plugin revisions. This allows users to specify `--revision="current"` and
-                # rely on OSB to do the right thing.
-                try:
-                    plugin_revision = revisions[plugin.name]
-                except KeyError:
-                    # maybe we can use the catch-all revision (only if it's not a git revision)
-                    plugin_revision = revisions.get("all")
-                    if not plugin_revision or SourceRepository.is_commit_hash(plugin_revision):
-                        raise exceptions.SystemSetupError("No revision specified for plugin [%s]." % plugin.name)
-                    else:
-                        logging.getLogger(__name__).info("Revision for [%s] is not explicitly defined. Using catch-all revision [%s].",
-                                                         plugin.name, plugin_revision)
-                supply_requirements[plugin.name] = ("source", plugin_revision, True)
-            else:
-                supply_requirements[plugin.name] = (distribution, _required_version(distribution_version), False)
+    # Solr does not support plugin installation via the benchmark tool
     return supply_requirements
 
 
@@ -200,8 +178,8 @@ def _src_dir(cfg, mandatory=True):
     try:
         return cfg.opts("node", "src.root.dir", mandatory=mandatory)
     except exceptions.ConfigError:
-        raise exceptions.SystemSetupError("You cannot benchmark OpenSearch from sources. Did you install Gradle? Please install"
-                                          " all prerequisites and reconfigure OSB with %s configure" % PROGRAM_NAME)
+        raise exceptions.SystemSetupError("You cannot benchmark Solr from sources. Did you install Gradle? Please install"
+                                          " all prerequisites and reconfigure with %s configure" % PROGRAM_NAME)
 
 
 def _prune(root_path, max_age_days):
@@ -544,8 +522,8 @@ def _extract_revisions(revision):
     revisions = revision.split(",") if revision else []
     if len(revisions) == 1:
         r = revisions[0]
-        if r.startswith("opensearch:"):
-            r = r[len("opensearch:"):]
+        if r.startswith("solr:"):
+            r = r[len("solr:"):]
         # may as well be just a single plugin
         m = re.match(REVISION_PATTERN, r)
         if m:
@@ -554,7 +532,7 @@ def _extract_revisions(revision):
             }
         else:
             return {
-                "opensearch": r,
+                "solr": r,
                 # use a catch-all value
                 "all": r
             }

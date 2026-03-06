@@ -17,9 +17,6 @@
 import os
 import logging
 
-import boto3
-from botocore.credentials import Credentials
-
 from osbenchmark import exceptions
 from ..cloud_provider import CloudProvider
 

@@ -904,7 +904,7 @@ def num_cores(cfg):
 
 
 class WorkerCoordinator:
-    def __init__(self, target, config, os_client_factory_class=client.ClientFactory):
+    def __init__(self, target, config, client_factory_class=client.ClientFactory):
         """
         Coordinates all workers. It is technology-agnostic, i.e. it does not know anything about actors. To allow us to hook in an actor,
         we provide a ``target`` parameter which will be called whenever some event has occurred. The ``target`` can use this to send
@@ -917,7 +917,7 @@ class WorkerCoordinator:
         self.target = target
         self.config = config
         ingestion_manager.IngestionManager.config = config
-        self.os_client_factory = os_client_factory_class
+        self.client_factory = client_factory_class
         self.workload = None
         self.test_procedure = None
         self.metrics_store = None
@@ -949,48 +949,20 @@ class WorkerCoordinator:
 
         self.telemetry = None
 
-    def create_os_clients(self):
+    def create_clients(self):
         all_hosts = self.config.opts("client", "hosts").all_hosts
-        opensearch = {}
+        clients = {}
         for cluster_name, cluster_hosts in all_hosts.items():
             all_client_options = self.config.opts("client", "options").all_client_options
             cluster_client_options = dict(all_client_options[cluster_name])
             # Use retries to avoid aborts on long living connections for telemetry devices
             cluster_client_options["retry-on-timeout"] = True
-            opensearch[cluster_name] = self.os_client_factory(cluster_hosts, cluster_client_options).create()
-        return opensearch
+            clients[cluster_name] = self.client_factory(cluster_hosts, cluster_client_options).create()
+        return clients
 
-    # TODO: Remove opensearch telemetry and implement custom Solr ones
-    def prepare_telemetry(self, opensearch, enable):
+    def prepare_telemetry(self, clients, enable):
         enabled_devices = self.config.opts("telemetry", "devices")
-        telemetry_params = self.config.opts("telemetry", "params")
-        _log_root = paths.test_run_root(self.config)
-
-        os_default = opensearch.get("default") if opensearch else None
-
-        if isinstance(os_default, client.SolrClient):
-            # Solr mode — use Solr telemetry devices instead of OpenSearch ones.
-            self.telemetry = telemetry.Telemetry(enabled_devices, devices=self._create_solr_telemetry_devices())
-            return
-
-        if enable and os_default is not None:
-            devices = [
-                telemetry.NodeStats(telemetry_params, opensearch, self.metrics_store),
-                telemetry.ExternalEnvironmentInfo(os_default, self.metrics_store),
-                telemetry.ClusterEnvironmentInfo(os_default, self.metrics_store),
-                telemetry.JvmStatsSummary(os_default, self.metrics_store),
-                telemetry.IndexStats(os_default, self.metrics_store),
-                telemetry.MlBucketProcessingTime(os_default, self.metrics_store),
-                telemetry.CcrStats(telemetry_params, opensearch, self.metrics_store),
-                telemetry.RecoveryStats(telemetry_params, opensearch, self.metrics_store),
-                telemetry.TransformStats(telemetry_params, opensearch, self.metrics_store),
-                telemetry.SearchableSnapshotsStats(telemetry_params, opensearch, self.metrics_store),
-                telemetry.SegmentReplicationStats(telemetry_params, opensearch, self.metrics_store),
-                telemetry.ShardStats(telemetry_params, opensearch, self.metrics_store)
-            ]
-        else:
-            devices = []
-        self.telemetry = telemetry.Telemetry(enabled_devices, devices=devices)
+        self.telemetry = telemetry.Telemetry(enabled_devices, devices=self._create_solr_telemetry_devices() if enable else [])
 
     def _create_solr_telemetry_devices(self):
         """Create Solr telemetry devices from the target-hosts configuration."""
@@ -1014,12 +986,12 @@ class WorkerCoordinator:
             solr_telemetry.SolrCacheStats(admin, self.metrics_store),
         ]
 
-    def wait_for_rest_api(self, opensearch):
+    def wait_for_rest_api(self, clients):
         self.logger.info("REST API is available (Solr health check delegated to SolrAdminClient).")
 
-    def retrieve_cluster_info(self, opensearch):
+    def retrieve_cluster_info(self, clients):
         try:
-            return opensearch["default"].info()
+            return clients["default"].info()
         except BaseException:
             self.logger.exception("Could not retrieve cluster info on benchmark start")
             return None
@@ -1041,7 +1013,7 @@ class WorkerCoordinator:
                                                          self.workload.meta_data,
                                                          self.test_procedure.meta_data)
 
-        os_clients = self.create_os_clients()
+        clients = self.create_clients()
 
         # Solr benchmark - skip REST API check (Solr health checked separately via SolrAdminClient)
         skip_rest_api_check = self.config.opts("builder", "skip.rest.api.check")
@@ -1068,7 +1040,7 @@ class WorkerCoordinator:
 
         # Telemetry devices wired for Solr (SolrJvmStats, SolrNodeStats, SolrCollectionStats).
         # In static-response mode, telemetry is disabled to avoid connecting to the cluster.
-        self.prepare_telemetry(os_clients, enable=not uses_static_responses)
+        self.prepare_telemetry(clients, enable=not uses_static_responses)
 
         for host in self.config.opts("worker_coordinator", "worker_ips"):
             host_config = {
@@ -1085,7 +1057,7 @@ class WorkerCoordinator:
         self.target.prepare_workload([h["host"] for h in self.worker_ips], self.config, self.workload)
 
     def start_benchmark(self):
-        self.logger.info("OSB is about to start.")
+        self.logger.info("Benchmark is about to start.")
         # ensure relative time starts when the benchmark starts.
         self.reset_relative_time()
         self.logger.info("Attaching cluster-level telemetry devices.")
@@ -2163,18 +2135,18 @@ class AsyncIoAdapter:
         self.logger.error("Uncaught exception in event loop: %s", context)
 
     async def run(self):
-        def os_clients(all_hosts, all_client_options):
-            opensearch = {}
+        def build_clients(all_hosts, all_client_options):
+            clients = {}
             for cluster_name, cluster_hosts in all_hosts.items():
                 rest_client_factory = client.ClientFactory(cluster_hosts, all_client_options[cluster_name])
                 unified_client_factory = client.UnifiedClientFactory(rest_client_factory)
-                opensearch[cluster_name] = unified_client_factory.create_async()
-            return opensearch
+                clients[cluster_name] = unified_client_factory.create_async()
+            return clients
 
         # Properly size the internal connection pool to match the number of expected clients but allow the user
         # to override it if needed.
         client_count = len(self.task_allocations)
-        opensearch = os_clients(self.cfg.opts("client", "hosts").all_hosts,
+        clients = build_clients(self.cfg.opts("client", "hosts").all_hosts,
                         self.cfg.opts("client", "options").with_max_connections(client_count))
 
         self.logger.info("Task assertions enabled: %s", str(self.assertions_enabled))
@@ -2198,7 +2170,7 @@ class AsyncIoAdapter:
             # need to start from (client) index 0 in both cases instead of 0 for indexA and 4 for indexB.
             schedule = schedule_for(task_allocation, params_per_task[task])
             async_executor = AsyncExecutor(
-                client_id, task, schedule, opensearch, self.sampler, self.profile_sampler, self.cancel, self.complete,
+                client_id, task, schedule, clients, self.sampler, self.profile_sampler, self.cancel, self.complete,
                 task.error_behavior(self.abort_on_error), self.cfg, self.shared_states, self.feedback_actor, self.error_queue, self.queue_lock)
             final_executor = AsyncProfiler(async_executor) if self.profiling_enabled else async_executor
             aws.append(final_executor())
@@ -2211,7 +2183,7 @@ class AsyncIoAdapter:
             await asyncio.get_event_loop().shutdown_asyncgens()
             shutdown_asyncgens_end = time.perf_counter()
             self.logger.info("Total time to shutdown asyncgens: %f seconds.", (shutdown_asyncgens_end - run_end))
-            for s in opensearch.values():
+            for s in clients.values():
                 await s.transport.close()
             transport_close_end = time.perf_counter()
             self.logger.info("Total time to close transports: %f seconds.", (shutdown_asyncgens_end - transport_close_end))
@@ -2251,7 +2223,7 @@ class AsyncProfiler:
 
 
 class AsyncExecutor:
-    def __init__(self, client_id, task, schedule, opensearch, sampler, profile_sampler, cancel, complete, on_error,
+    def __init__(self, client_id, task, schedule, clients, sampler, profile_sampler, cancel, complete, on_error,
                  config=None, shared_states=None, feedback_actor=None, error_queue=None, queue_lock=None):
         """
         Executes tasks according to the schedule for a given operation.
@@ -2260,7 +2232,7 @@ class AsyncExecutor:
         self.task = task
         self.op = task.operation
         self.schedule_handle = schedule
-        self.opensearch = opensearch
+        self.clients = clients
         self.sampler = sampler
         self.profile_sampler = profile_sampler
         self.cancel = cancel
@@ -2304,7 +2276,7 @@ class AsyncExecutor:
 
     async def _prepare_context_manager(self, params: dict):
         """Prepare the appropriate context manager for the request."""
-        return self.opensearch["default"].new_request_context()
+        return self.clients["default"].new_request_context()
 
     async def _execute_request(self, params: dict, expected_scheduled_time: float, total_start: float,
                                client_state: bool) -> dict:
@@ -2330,7 +2302,7 @@ class AsyncExecutor:
             try:
                 total_ops, total_ops_unit, request_meta_data = await asyncio.wait_for(
                     execute_single(
-                        self.runner, self.opensearch, params, self.on_error,
+                        self.runner, self.clients, params, self.on_error,
                         redline_enabled=self.redline_enabled, client_enabled=client_state
                     ),
                     timeout=self.base_timeout if request_timeout is None else request_timeout
@@ -2520,7 +2492,7 @@ class AsyncExecutor:
 request_context_holder = client.RequestContextHolder()
 
 
-async def execute_single(runner, opensearch, params, on_error, redline_enabled=False, client_enabled=True):
+async def execute_single(runner, clients, params, on_error, redline_enabled=False, client_enabled=True):
     """
     Invokes the given runner once and provides the runner's return value in a uniform structure.
 
@@ -2530,7 +2502,7 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
     if client_enabled:
         try:
             async with runner:
-                return_value = await runner(opensearch, params)
+                return_value = await runner(clients, params)
             if isinstance(return_value, tuple) and len(return_value) == 2:
                 total_ops, total_ops_unit = return_value
                 request_meta_data = {"success": True}
@@ -2593,9 +2565,9 @@ async def execute_single(runner, opensearch, params, on_error, redline_enabled=F
                 try:
                     error_metadata = json.loads(request_meta_data["error-description"])
                     # parse error-description metadata
-                    opensearch_operation_error = parse_error(error_metadata)
+                    operation_error = parse_error(error_metadata)
                     if not redline_enabled:
-                        console.error(opensearch_operation_error.get_error_message())
+                        console.error(operation_error.get_error_message())
                 except Exception as e:
                     # error-description is not a valid json so we just print it
                     if not redline_enabled:

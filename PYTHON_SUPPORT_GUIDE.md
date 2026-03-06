@@ -32,7 +32,7 @@ Make changes to the following files and open a PR titled
 * `osbenchmark/__init__.py`: Update the minimum version in the error message:
 
   ```python
-  raise RuntimeError("OSB requires at least Python <MIN_VERSION> but you are using:\n\nPython %s" % str(sys.version))
+  raise RuntimeError("Solr Benchmark requires at least Python <MIN_VERSION> but you are using:\n\nPython %s" % str(sys.version))
   ```
 
 ## Testing new Python versions

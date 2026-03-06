@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Setup
 
-Prerequisites: `pyenv`, JDK 21 (JDK 17 for older OpenSearch), Docker, `docker-compose`, `jq`
+Prerequisites: `pyenv`, JDK 21, Docker, `docker-compose`, `jq`
 
 ```bash
 make develop          # Install Python 3.10 via pyenv, create .venv, install all deps
@@ -33,12 +33,12 @@ make clean            # Remove build artifacts, caches, tox environments
 
 ## Architecture
 
-OpenSearch Benchmark (OSB) is a **macrobenchmarking framework** for OpenSearch clusters, using an **actor-based concurrent execution model** via the [Thespian](https://thespianpy.com/) library.
+Apache Solr Benchmark (ASB) is a **macrobenchmarking framework** for Apache Solr clusters, using an **actor-based concurrent execution model** via the [Thespian](https://thespianpy.com/) library.
 
 ### Entry Points
 
-- `opensearch-benchmark` / `osb` → `osbenchmark/benchmark.py:main` — CLI for running benchmarks
-- `opensearch-benchmarkd` / `osbd` → `osbenchmark/benchmarkd.py:main` — Daemon for distributed worker nodes
+- `solr-benchmark` / `sb` → `osbenchmark/benchmark.py:main` — CLI for running benchmarks
+- `solr-benchmarkd` / `sbd` → `osbenchmark/benchmarkd.py:main` — Daemon for distributed worker nodes
 
 ### Core Package (`osbenchmark/`)
 
@@ -50,8 +50,8 @@ OpenSearch Benchmark (OSB) is a **macrobenchmarking framework** for OpenSearch c
 
 **Cluster management (`builder/`):**
 - `provisioners/` — Provision cluster nodes (bare metal, Docker, cloud)
-- `downloaders/` — Download OpenSearch distributions
-- `installers/` — Install OpenSearch on provisioned nodes
+- `downloaders/` — Download Solr distributions
+- `installers/` — Install Solr on provisioned nodes
 - `launchers/` — Start/stop cluster nodes
 - `executors/` — Execute remote commands on cluster nodes
 - `configs/` — Jinja2 templates for cluster configuration
@@ -64,7 +64,7 @@ OpenSearch Benchmark (OSB) is a **macrobenchmarking framework** for OpenSearch c
 - `publisher.py` — Publish and format benchmark results
 
 **Data and connectivity:**
-- `client.py`, `async_connection.py` — OpenSearch client wrappers
+- `client.py`, `async_connection.py` — Solr client wrappers
 - `kafka_client.py`, `data_streaming/` — Kafka-based data streaming support
 - `synthetic_data_generator/` — Generate synthetic test datasets
 - `workload_generator/` — Generate workload definition files from existing indices
@@ -77,8 +77,8 @@ OpenSearch Benchmark (OSB) is a **macrobenchmarking framework** for OpenSearch c
 ### Test Structure
 
 - `tests/` — Unit tests mirroring `osbenchmark/` structure
-- `it/` — Integration tests (spin up real OpenSearch clusters via Docker/provisioning)
-- `benchmarks/` — Performance benchmarks for OSB itself
+- `it/` — Integration tests (spin up real Solr clusters via Docker/provisioning)
+- `benchmarks/` — Performance benchmarks for Solr Benchmark itself
 
 ### Workload System
 
@@ -87,12 +87,12 @@ Workloads are defined as JSON/YAML files with:
 - **Test procedures** (formerly "challenges"): sequences of operations with parameters
 - **Schedules**: timing and throughput targets
 
-Workloads can be loaded from a git repository (`--workload-repository`), local path (`--workload-path`), or the default [opensearch-benchmark-workloads](https://github.com/opensearch-project/opensearch-benchmark-workloads) repo.
+Workloads must be in Solr format (use `solr-benchmark convert-workload` to convert from OpenSearch Benchmark format). They can be loaded from a local path (`--workload-path`) or from a git workload repository (`--workload-repository`).
 
 ### Pipeline Execution Flow
 
 1. **Prepare** — Load workload, configure metrics store
-2. **Build** (optional) — Download and provision OpenSearch cluster
+2. **Build** (optional) — Download and provision Solr cluster
 3. **Run** — Execute test procedure via worker coordinator and drivers
 4. **Publish** — Store metrics, generate report
 

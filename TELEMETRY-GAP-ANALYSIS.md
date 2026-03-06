@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-**Current Status**: Solr telemetry has 3 basic devices covering ~15% of OpenSearch telemetry capabilities.
+**Current Status**: Solr telemetry has 6 devices covering ~40% of OpenSearch telemetry capabilities.
 
 **Goal**: Achieve feature parity with OpenSearch telemetry to enable comprehensive performance analysis.
 
@@ -10,7 +10,7 @@
 
 ## Current Implementation
 
-### Solr Telemetry Devices (3 total):
+### Solr Telemetry Devices (6 total):
 
 1. **SolrJvmStats** - JVM heap and GC metrics
    - ✅ jvm_heap_used_bytes
@@ -29,28 +29,49 @@
    - ✅ index_size_bytes (per collection)
    - ✅ segment_count (per collection)
 
+4. **SolrQueryStats** - Query performance metrics
+   - ✅ query latency percentiles (p50, p75, p95, p99)
+   - ✅ per-handler request/error counts
+   - ✅ query result cache stats
+
+5. **SolrIndexingStats** - Indexing performance metrics
+   - ✅ indexing rate (docs/sec)
+   - ✅ update handler errors
+   - ✅ merge statistics
+
+6. **SolrCacheStats** - Cache hit/miss metrics
+   - ✅ query cache, filter cache, document cache
+   - ✅ hit/miss rates and eviction counts
+   - ✅ memory usage per cache
+
 ---
 
 ## OpenSearch Telemetry Devices (14 total)
 
-### ✅ Implemented in Solr (partial):
-1. **NodeStats** - Partial (basic CPU/memory only)
-2. **JVM Stats** - Partial (basic heap/GC only)
+### ✅ Implemented in Solr:
+1. **SolrNodeStats** - CPU, memory, query handler metrics
+2. **SolrJvmStats** - JVM heap and GC metrics
+3. **SolrCollectionStats** - Doc counts, index size, segment count
+4. **SolrQueryStats** - Query latency percentiles, per-handler counts
+5. **SolrIndexingStats** - Indexing rate, merge stats, errors
+6. **SolrCacheStats** - Cache hit/miss/eviction stats
 
-### ❌ Missing from Solr:
-3. **FlightRecorder** - Java Flight Recorder profiling
-4. **JitCompiler** - JIT compilation stats
-5. **Gc** - Advanced garbage collection analysis
-6. **Heapdump** - Heap dump on demand
-7. **SegmentStats** - Lucene segment details
-8. **CcrStats** - Cross-cluster replication (N/A for Solr)
-9. **RecoveryStats** - Shard recovery tracking
-10. **ShardStats** - Per-shard metrics
-11. **TransformStats** - Data transforms (N/A for Solr)
-12. **SearchableSnapshotsStats** - Snapshot stats (different in Solr)
-13. **StartupTime** - Startup duration tracking
-14. **DiskIo** - Disk I/O statistics
-15. **ClusterEnvironmentInfo** - Cluster metadata
+### ❌ Not Yet Implemented:
+7. **FlightRecorder** - Java Flight Recorder profiling
+8. **JitCompiler** - JIT compilation stats
+9. **Gc** - Advanced per-collector GC analysis
+10. **Heapdump** - Heap dump on demand
+11. **SolrSegmentStats** - Detailed Lucene segment breakdown
+12. **SolrShardStats** - Per-shard metrics
+13. **SolrReplicationStats** - SolrCloud replication lag
+14. **StartupTime** - Startup duration tracking
+15. **DiskIo** - OS-level disk I/O statistics
+16. **ClusterEnvironmentInfo** - Cluster metadata
+
+### N/A for Solr:
+- **CcrStats** - Solr uses SolrCloud replication instead
+- **TransformStats** - No equivalent in Solr
+- **SearchableSnapshotsStats** - Different mechanism in Solr
 
 ---
 
@@ -82,23 +103,23 @@
 
 | Metric | OpenSearch | Solr | Gap | Solr API |
 |--------|-----------|------|-----|----------|
-| **Query Requests** | ✅ Per-node | ✅ Aggregate | ⚠️ Missing per-handler | `/admin/metrics` → `QUERY.*` |
-| **Query Errors** | ✅ Tracked | ✅ Aggregate | ⚠️ Missing per-handler | `/admin/metrics` → `QUERY.*.errors` |
-| **Query Latency** | ✅ Percentiles | ❌ None | ❌ Missing | `/admin/metrics` → `QUERY.*.requestTimes.*` |
-| **Indexing Rate** | ✅ Detailed | ❌ None | ❌ Missing | `/admin/metrics` → `UPDATE.*` |
-| **Indexing Errors** | ✅ Tracked | ❌ None | ❌ Missing | `/admin/metrics` → `UPDATE.*.errors` |
-| **Merge Stats** | ✅ Detailed | ❌ None | ❌ Missing | `/admin/metrics` → `INDEX.merge.*` |
+| **Query Requests** | ✅ Per-node | ✅ Per-handler | ✅ Covered | `/admin/metrics` → `QUERY.*` |
+| **Query Errors** | ✅ Tracked | ✅ Per-handler | ✅ Covered | `/admin/metrics` → `QUERY.*.errors` |
+| **Query Latency** | ✅ Percentiles | ✅ Percentiles (p50/p99) | ✅ Covered | `/admin/metrics` → `QUERY.*.requestTimes.*` |
+| **Indexing Rate** | ✅ Detailed | ✅ Basic | ⚠️ Missing detailed breakdown | `/admin/metrics` → `UPDATE.*` |
+| **Indexing Errors** | ✅ Tracked | ✅ Tracked | ✅ Covered | `/admin/metrics` → `UPDATE.*.errors` |
+| **Merge Stats** | ✅ Detailed | ✅ Basic | ⚠️ Missing detailed breakdown | `/admin/metrics` → `INDEX.merge.*` |
 | **Refresh Stats** | ✅ Tracked | ❌ None | ❌ Missing | `/admin/mbeans` |
 
 ### Category 4: Memory & Cache
 
 | Metric | OpenSearch | Solr | Gap | Solr API |
 |--------|-----------|------|-----|----------|
-| **Query Cache** | ✅ Hit/miss/size | ❌ None | ❌ Missing | `/admin/metrics` → `CACHE.*.stats` |
-| **Filter Cache** | ✅ Hit/miss/size | ❌ None | ❌ Missing | `/admin/metrics` → `CACHE.filterCache.*` |
-| **Doc Values Cache** | ✅ Tracked | ❌ None | ❌ Missing | `/admin/metrics` → `CACHE.*` |
-| **Circuit Breakers** | ✅ Trip counts | ❌ None | ❌ Missing | N/A (Solr doesn't have equivalent) |
-| **Fielddata** | ✅ Size/evictions | ❌ None | ❌ Missing | `/admin/metrics` → `CACHE.*` |
+| **Query Cache** | ✅ Hit/miss/size | ✅ Hit/miss/eviction | ⚠️ Missing size bytes | `/admin/metrics` → `CACHE.queryResultCache.*` |
+| **Filter Cache** | ✅ Hit/miss/size | ✅ Hit/miss/eviction | ⚠️ Missing size bytes | `/admin/metrics` → `CACHE.filterCache.*` |
+| **Document Cache** | ✅ Tracked | ✅ Hit/miss/eviction | ⚠️ Missing size bytes | `/admin/metrics` → `CACHE.documentCache.*` |
+| **Circuit Breakers** | ✅ Trip counts | N/A | N/A | Solr doesn't have circuit breakers |
+| **Fielddata** | ✅ Size/evictions | N/A | N/A | Solr uses docValues differently |
 
 ### Category 5: Network & Transport
 
@@ -166,52 +187,44 @@
 
 ## Implementation Priority
 
-### Phase 1: Critical Gaps (High Priority)
-**Goal**: Expand NodeStats to match OpenSearch parity
+### Phase 1: Core Metrics — ✅ COMPLETE
 
-1. **Enhanced JVM Stats** - Thread pools, buffer pools, detailed GC
-   - API: `/admin/metrics` → `solr.jvm.*`
-   - Effort: Medium (parsing existing API)
+All Phase 1 devices are implemented in `osbenchmark/solr/telemetry.py`:
 
-2. **Query Latency Metrics** - Percentiles (p50, p99, p999)
-   - API: `/admin/metrics` → `QUERY.*.requestTimes.*`
-   - Effort: Medium (histogram parsing)
-
-3. **Indexing Metrics** - Rate, errors, merge stats
-   - API: `/admin/metrics` → `UPDATE.*`, `INDEX.merge.*`
-   - Effort: Medium
-
-4. **Cache Metrics** - Hit/miss rates, sizes, evictions
-   - API: `/admin/metrics` → `CACHE.*`
-   - Effort: Low
+1. ✅ **SolrJvmStats** - JVM heap (used/max) and GC (count/time)
+2. ✅ **SolrNodeStats** - CPU, OS memory, query handler request/error counts
+3. ✅ **SolrCollectionStats** - Doc counts, index size, segment count per collection
+4. ✅ **SolrQueryStats** - Query latency percentiles (p50/p75/p95/p99), per-handler counts
+5. ✅ **SolrIndexingStats** - Indexing rate, update handler errors, merge statistics
+6. ✅ **SolrCacheStats** - Query/filter/document cache hit rates, eviction counts, memory usage
 
 ### Phase 2: Advanced Metrics (Medium Priority)
 
-5. **Shard-Level Stats** - Per-shard doc counts, sizes, states
+7. **Shard-Level Stats** - Per-shard doc counts, sizes, states
    - API: CLUSTERSTATUS + per-core APIs
    - Effort: High (requires per-shard iteration)
 
-6. **Segment Details** - Detailed segment breakdown
+8. **Segment Details** - Detailed segment breakdown (deleted docs, memory usage)
    - API: `/admin/luke` per core
    - Effort: Medium
 
-7. **Replication Lag** - Track leader/replica sync
+9. **Replication Lag** - Track leader/replica sync
    - API: REPLICATIONDETAILS
    - Effort: Medium
 
-8. **HTTP/Network Stats** - Request counts, sizes
-   - API: Jetty metrics via `/admin/metrics`
-   - Effort: Low
+10. **Enhanced JVM Stats** - Thread pools, buffer pools, per-collector GC
+    - API: `/admin/metrics` → `solr.jvm.*`
+    - Effort: Medium
 
 ### Phase 3: Operational Tools (Lower Priority)
 
-9. **StartupTime** - Internal device (no API changes)
-   - Effort: Low (framework already exists)
-
-10. **DiskIo** - Internal device (OS-level stats)
+11. **StartupTime** - Internal device (no API changes)
     - Effort: Low (framework already exists)
 
-11. **Heapdump** - On-demand heap dumps
+12. **DiskIo** - Internal device (OS-level stats)
+    - Effort: Low (framework already exists)
+
+13. **Heapdump** - On-demand heap dumps
     - Effort: Medium (requires JMX or custom endpoint)
 
 ### Out of Scope (N/A for Solr):
@@ -224,38 +237,20 @@
 
 ## Implementation Strategy
 
-### 1. Extend Existing Devices
+### 1. Extend Existing Devices (Phase 2)
 
-**SolrNodeStats** → Add:
+**SolrNodeStats** → Could add:
 - Thread pool metrics
 - Buffer pool metrics
 - Detailed GC stats (per collector)
 - File descriptor counts
-- Network transport stats
 
-**SolrCollectionStats** → Add:
-- Deleted document counts
+**SolrCollectionStats** → Could add:
+- Deleted document counts (via `/admin/luke`)
 - Segment memory usage
 - Per-shard breakdown (optional)
 
-### 2. New Devices to Create
-
-**SolrQueryStats**:
-- Query latency percentiles
-- Per-handler request/error counts
-- Query result cache hit rates
-
-**SolrIndexingStats**:
-- Indexing rate (docs/sec)
-- Update handler errors
-- Merge statistics
-- Refresh statistics
-
-**SolrCacheStats**:
-- Query cache, filter cache, document cache
-- Hit/miss rates
-- Eviction counts
-- Memory usage
+### 2. New Devices to Create (Phase 2)
 
 **SolrShardStats** (optional, high cost):
 - Per-shard document counts
@@ -267,30 +262,22 @@
 - Replication errors
 - Recovery progress
 
-### 3. Code Structure
+### 3. Implemented Devices (Phase 1 — Complete)
+
+All 6 devices are in `osbenchmark/solr/telemetry.py`:
 
 ```python
-# osbenchmark/solr/telemetry.py
-
-class SolrQueryStats(SolrTelemetryDevice):
-    """Query performance metrics (latency, throughput, errors)"""
-
-class SolrIndexingStats(SolrTelemetryDevice):
-    """Indexing performance metrics (rate, merges, refreshes)"""
-
-class SolrCacheStats(SolrTelemetryDevice):
-    """Cache hit rates and memory usage"""
-
-class SolrShardStats(SolrTelemetryDevice):
-    """Per-shard statistics (optional, expensive)"""
-
-class SolrReplicationStats(SolrTelemetryDevice):
-    """Replication lag and recovery tracking"""
+class SolrJvmStats     # JVM heap and GC metrics
+class SolrNodeStats    # OS CPU, memory, query handler counts
+class SolrCollectionStats  # Doc counts, index size, segment count
+class SolrQueryStats   # Query latency percentiles, per-handler counts
+class SolrIndexingStats    # Indexing rate, merge stats, errors
+class SolrCacheStats   # Query/filter/document cache hit rates
 ```
 
 ### 4. Testing Strategy
 
-- Unit tests for metric parsing (JSON vs Prometheus)
+- Unit tests for metric parsing (JSON vs Prometheus) — **pending** (see TODO.md)
 - Integration tests with live Solr 9.x and 10.x
 - Verify metric names match OpenSearch conventions
 - Test with multi-node SolrCloud clusters
@@ -332,9 +319,9 @@ class SolrReplicationStats(SolrTelemetryDevice):
 ## Next Steps
 
 1. ✅ Complete gap analysis (this document)
-2. ⬜ Implement Phase 1 devices (SolrQueryStats, SolrIndexingStats, SolrCacheStats)
-3. ⬜ Add unit tests for new telemetry devices
-4. ⬜ Test with NYC taxis workload + telemetry enabled
+2. ✅ Implement Phase 1 devices (SolrQueryStats, SolrIndexingStats, SolrCacheStats)
+3. ⬜ Add unit tests for all 6 telemetry devices
+4. ⬜ Test with NYC taxis workload + telemetry enabled on multi-node cluster
 5. ⬜ Document telemetry usage in DEVELOPER_GUIDE.md
 6. ⬜ Consider Phase 2 implementation based on user feedback
 

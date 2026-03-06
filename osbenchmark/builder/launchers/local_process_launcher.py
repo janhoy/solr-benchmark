@@ -77,9 +77,6 @@ class LocalProcessLauncher(Launcher):
                opts.csv_to_list(self.cluster_config.variables["system"]["env"]["passenv"])}
         if java_home:
             self._set_env(env, "PATH", os.path.join(java_home, "bin"), separator=os.pathsep, prepend=True)
-            # This property is the higher priority starting in ES 7.12.0, and is the only supported java home in >=8.0
-            env["OPENSEARCH_JAVA_HOME"] = java_home
-            # TODO remove this when ES <8.0 becomes unsupported by OSB
             env["JAVA_HOME"] = java_home
             self.logger.info("JAVA HOME: %s", env["JAVA_HOME"])
         if not env.get("SOLR_JAVA_OPTS"):
@@ -103,9 +100,9 @@ class LocalProcessLauncher(Launcher):
 
     def _start_process(self, host, binary_path, env):
         if os.name == "posix" and os.geteuid() == 0:
-            raise LaunchError("Cannot launch OpenSearch as root. Please run OSB as a non-root user.")
+            raise LaunchError("Cannot launch Solr as root. Please run as a non-root user.")
 
-        cmd = [io.escape_path(os.path.join(binary_path, "bin", "opensearch"))]
+        cmd = [io.escape_path(os.path.join(binary_path, "bin", "solr"))]
         cmd.extend(["-d", "-p", "pid"])
 
         self.shell_executor.execute(host, " ".join(cmd), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, detach=True)
@@ -149,10 +146,10 @@ class LocalProcessLauncher(Launcher):
         if self.metrics_store:
             telemetry.add_metadata_for_node(self.metrics_store, node.node_name, node.host_name)
 
-        opensearch_process = self._get_opensearch_process(node)
-        if opensearch_process:
+        node_process = self._get_node_process(node)
+        if node_process:
             node.telemetry.detach_from_node(node, running=True)
-            node_stopped = self._stop_process(opensearch_process, node)
+            node_stopped = self._stop_process(node_process, node)
             node.telemetry.detach_from_node(node, running=False)
         # store system metrics in any case (telemetry devices may derive system metrics while the node is running)
         if self.metrics_store:
@@ -160,29 +157,29 @@ class LocalProcessLauncher(Launcher):
 
         return node_stopped
 
-    def _get_opensearch_process(self, node):
+    def _get_node_process(self, node):
         try:
             return psutil.Process(pid=node.pid)
         except psutil.NoSuchProcess:
             self.logger.warning("No process found with PID [%s] for node [%s].", node.pid, node.node_name)
 
-    def _stop_process(self, opensearch_process, node):
+    def _stop_process(self, node_process, node):
         process_stopped = False
 
         try:
-            opensearch_process.terminate()
-            opensearch_process.wait(10.0)
+            node_process.terminate()
+            node_process.wait(10.0)
             process_stopped = True
         except psutil.NoSuchProcess:
-            self.logger.warning("No process found with PID [%s] for node [%s].", opensearch_process.pid, node.node_name)
+            self.logger.warning("No process found with PID [%s] for node [%s].", node_process.pid, node.node_name)
         except psutil.TimeoutExpired:
             self.logger.info("kill -KILL node [%s]", node.node_name)
             try:
                 # kill -9
-                opensearch_process.kill()
+                node_process.kill()
                 process_stopped = True
             except psutil.NoSuchProcess:
-                self.logger.warning("No process found with PID [%s] for node [%s].", opensearch_process.pid, node.node_name)
+                self.logger.warning("No process found with PID [%s] for node [%s].", node_process.pid, node.node_name)
         self.logger.info("Done shutting down node [%s].", node.node_name)
 
         return process_stopped
