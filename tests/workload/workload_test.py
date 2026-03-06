@@ -77,38 +77,6 @@ class WorkloadTests(TestCase):
         self.assertEqual("Unknown test_procedure [unknown-name] for workload [unittest]", ctx.exception.args[0])
 
 
-class IndexTests(TestCase):
-    def test_matches_exactly(self):
-        self.assertTrue(workload.Index("test").matches("test"))
-        self.assertFalse(workload.Index("test").matches(" test"))
-
-    def test_matches_if_no_pattern_is_defined(self):
-        self.assertTrue(workload.Index("test").matches(pattern=None))
-
-    def test_matches_if_catch_all_pattern_is_defined(self):
-        self.assertTrue(workload.Index("test").matches(pattern="*"))
-        self.assertTrue(workload.Index("test").matches(pattern="_all"))
-
-    def test_str(self):
-        self.assertEqual("test", str(workload.Index("test")))
-
-
-class DataStreamTests(TestCase):
-    def test_matches_exactly(self):
-        self.assertTrue(workload.DataStream("test").matches("test"))
-        self.assertFalse(workload.DataStream("test").matches(" test"))
-
-    def test_matches_if_no_pattern_is_defined(self):
-        self.assertTrue(workload.DataStream("test").matches(pattern=None))
-
-    def test_matches_if_catch_all_pattern_is_defined(self):
-        self.assertTrue(workload.DataStream("test").matches(pattern="*"))
-        self.assertTrue(workload.DataStream("test").matches(pattern="_all"))
-
-    def test_str(self):
-        self.assertEqual("test", str(workload.DataStream("test")))
-
-
 class DocumentCorpusTests(TestCase):
     def test_do_not_filter(self):
         corpus = workload.DocumentCorpus("test", documents=[

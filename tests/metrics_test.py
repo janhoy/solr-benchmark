@@ -396,7 +396,7 @@ class FileTestRunStoreTests(TestCase):
         ]
 
         t = workload.Workload(name="unittest",
-                        indices=[workload.Index(name="tests", types=["_doc"])],
+                        collections=[workload.Collection(name="tests")],
                         test_procedures=[workload.TestProcedure(name="index", default=True, schedule=schedule)])
 
         test_run = metrics.TestRun(

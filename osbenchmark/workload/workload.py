@@ -30,53 +30,6 @@ from enum import Enum, unique, auto, IntEnum
 from osbenchmark import exceptions
 
 
-class Index:
-    """
-    Defines an index in OpenSearch.
-    """
-
-    def __init__(self, name, body=None, types=None):
-        """
-
-        Creates a new index.
-
-        :param name: The index name. Mandatory.
-        :param body: A dict representation of the index body. Optional.
-        :param types: A list of types. Should contain at least one type.
-        """
-        if types is None:
-            types = []
-        if body is None:
-            body = {}
-        self.name = name
-        self.body = body
-        self.types = types
-
-    def matches(self, pattern):
-        if pattern is None:
-            return True
-        elif pattern in ["_all", "*"]:
-            return True
-        elif self.name == pattern:
-            return True
-        else:
-            return False
-
-    def __str__(self):
-        return self.name
-
-    def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
-        return ", ".join(r)
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        return self.name == other.name
-
 
 class Collection:
     """
@@ -129,111 +82,6 @@ class Collection:
     def __eq__(self, other):
         return self.name == other.name
 
-
-class DataStream:
-    """
-    Defines a data stream in OpenSearch.
-    """
-
-    def __init__(self, name):
-        """
-
-        Creates a new data stream.
-
-        :param name: The data stream name. Mandatory.
-        """
-        self.name = name
-
-    def matches(self, pattern):
-        if pattern is None:
-            return True
-        elif pattern in ["_all", "*"]:
-            return True
-        elif self.name == pattern:
-            return True
-        else:
-            return False
-
-    def __str__(self):
-        return self.name
-
-    def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
-        return ", ".join(r)
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        return self.name == other.name
-
-
-class IndexTemplate:
-    """
-    Defines an index template in OpenSearch.
-    """
-
-    def __init__(self, name, pattern, content, delete_matching_indices=False):
-        """
-
-        Creates a new index template.
-
-        :param name: Name of the index template. Mandatory.
-        :param pattern: The index pattern to which the index template applies. Mandatory.
-        :param content: The content of the corresponding template. Mandatory.
-        :param delete_matching_indices: Delete all indices that match the pattern before the benchmark iff True.
-        """
-        self.name = name
-        self.pattern = pattern
-        self.content = content
-        self.delete_matching_indices = delete_matching_indices
-
-    def __str__(self, *args, **kwargs):
-        return self.name
-
-    def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
-        return ", ".join(r)
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        return self.name == other.name
-
-
-class ComponentTemplate:
-    """
-    Defines a component template in OpenSearch.
-    """
-
-    def __init__(self, name, content):
-        """
-        Creates a new index template.
-        :param name: Name of the index template. Mandatory.
-        :param content: The content of the corresponding template. Mandatory.
-        """
-        self.name = name
-        self.content = content
-
-    def __str__(self, *args, **kwargs):
-        return self.name
-
-    def __repr__(self):
-        r = []
-        for prop, value in vars(self).items():
-            r.append("%s = [%s]" % (prop, repr(value)))
-        return ", ".join(r)
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        return self.name == other.name
 
 
 class Documents:
@@ -463,9 +311,8 @@ class Workload:
     A workload defines the data set that is used. It corresponds loosely to a use case (e.g. logging, event processing, analytics, ...)
     """
 
-    def __init__(self, name, description=None, meta_data=None, test_procedures=None, indices=None, data_streams=None,
-                 templates=None, composable_templates=None, component_templates=None, corpora=None, has_plugins=False,
-                 collections=None):
+    def __init__(self, name, description=None, meta_data=None, test_procedures=None,
+                 corpora=None, has_plugins=False, collections=None):
         """
 
         Creates a new workload.
@@ -476,23 +323,16 @@ class Workload:
         :param test_procedures: A list of one or more test_procedures to use.
         Precondition: If the list is non-empty it contains exactly one element
         with its ``default`` property set to ``True``.
-        :param indices: A list of indices for this workload. May be None.
-        :param data_streams: A list of data streams for this workload. May be None.
-        :param templates: A list of index templates for this workload. May be None.
         :param corpora: A list of document corpus definitions for this workload. May be None.
         :param has_plugins: True iff the workload also defines plugins (e.g. custom runners or parameter sources).
+        :param collections: A list of Solr collections for this workload. May be None.
         """
         self.name = name
         self.meta_data = meta_data if meta_data else {}
         self.description = description if description is not None else ""
         self.test_procedures = test_procedures if test_procedures else []
-        self.indices = indices if indices else []
-        self.data_streams = data_streams if data_streams else []
         self.collections = collections if collections else []
         self.corpora = corpora if corpora else []
-        self.templates = templates if templates else []
-        self.composable_templates = composable_templates if composable_templates else []
-        self.component_templates = component_templates if component_templates else []
         self.has_plugins = has_plugins
 
     @property
@@ -574,15 +414,12 @@ class Workload:
 
     def __hash__(self):
         return hash(self.name) ^ hash(self.meta_data) ^ hash(self.description) ^ hash(self.test_procedures) ^ \
-               hash(self.indices) ^ hash(self.templates) ^ hash(self.composable_templates) ^ hash(self.component_templates) \
-               ^ hash(self.corpora)
+               hash(self.corpora)
 
     def __eq__(self, othr):
         return (isinstance(othr, type(self)) and
-                (self.name, self.meta_data, self.description, self.test_procedures, self.indices, self.data_streams,
-                 self.templates, self.composable_templates, self.component_templates, self.corpora) ==
-                (othr.name, othr.meta_data, othr.description, othr.test_procedures, othr.indices, othr.data_streams,
-                 othr.templates, othr.composable_templates, othr.component_templates, othr.corpora))
+                (self.name, self.meta_data, self.description, self.test_procedures, self.collections, self.corpora) ==
+                (othr.name, othr.meta_data, othr.description, othr.test_procedures, othr.collections, othr.corpora))
 
 
 class TestProcedure:

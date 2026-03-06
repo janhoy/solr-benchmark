@@ -424,7 +424,7 @@ class CcrStatsRecorder:
     def __init__(self, cluster_name, client, metrics_store, sample_interval, max_replication_lag_seconds, indices=None):
         """
         :param cluster_name: The cluster_name that the client connects to, as specified in target.hosts.
-        :param client: The OpenSearch client for this cluster.
+        :param client: The Solr client for this cluster.
         :param metrics_store: The configured metrics store we write to.
         :param sample_interval: integer controlling the interval, in seconds, between collecting samples.
         :param indices: optional list of indices to filter results from.
@@ -601,7 +601,7 @@ class RecoveryStatsRecorder:
     def __init__(self, cluster_name, client, metrics_store, sample_interval, indices=None):
         """
         :param cluster_name: The cluster_name that the client connects to, as specified in target.hosts.
-        :param client: The OpenSearch client for this cluster.
+        :param client: The Solr client for this cluster.
         :param metrics_store: The configured metrics store we write to.
         :param sample_interval: integer controlling the interval, in seconds, between collecting samples.
         :param indices: optional list of indices to filter results from.

@@ -28,7 +28,7 @@ from osbenchmark import exceptions
 from osbenchmark.utils import jvm
 
 
-def java_home(cluster_config_runtime_jdks, specified_runtime_jdk=None, provides_bundled_jdk=False):
+def java_home(cluster_config_runtime_jdks, specified_runtime_jdk=None):
     def determine_runtime_jdks():
         if specified_runtime_jdk:
             return [specified_runtime_jdk]

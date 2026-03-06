@@ -382,27 +382,6 @@ class SolrFileNameResolverTests(TestCase):
         self.assertEqual(artifact_path, self.resolver.to_file_system_path(artifact_path))
 
 
-class PluginFileNameResolverTests(TestCase):
-    def setUp(self):
-        super().setUp()
-        self.resolver = supplier.PluginFileNameResolver("test-plugin")
-
-    def test_resolve(self):
-        self.resolver.revision = "abc123"
-        self.assertEqual("test-plugin-abc123.zip", self.resolver.file_name)
-
-    def test_artifact_key(self):
-        self.assertEqual("test-plugin", self.resolver.artifact_key)
-
-    def test_to_artifact_path(self):
-        file_system_path = "/tmp/test"
-        self.assertEqual(f"file://{file_system_path}", self.resolver.to_artifact_path(file_system_path))
-
-    def test_to_file_system_path(self):
-        file_system_path = "/tmp/test"
-        self.assertEqual(file_system_path, self.resolver.to_file_system_path(f"file://{file_system_path}"))
-
-
 class PruneTests(TestCase):
     LStat = collections.namedtuple("LStat", "st_ctime")
 
@@ -515,121 +494,17 @@ class SolrSourceSupplierTests(TestCase):
         self.assertEqual(binaries, {"solr": "opensearch.tar.gz"})
 
 
-class ExternalPluginSourceSupplierTests(TestCase):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.along_opensearch = None
-        self.standalone = None
-
-    def setUp(self):
-        self.along_opensearch = supplier.ExternalPluginSourceSupplier(
-            plugin=cluster_config.PluginDescriptor("some-plugin", core_plugin=False),
-                                                              revision="abc",
-                                                              # built along-side OS
-                                                              src_dir="/src",
-                                                              src_config={
-                                                                  "plugin.some-plugin.src.subdir": "opensearch-extra/some-plugin",
-                                                                  "plugin.some-plugin.build.artifact.subdir": "plugin/build/distributions"
-                                                              },
-                                                              builder=None)
-
-        self.standalone = supplier.ExternalPluginSourceSupplier(plugin=cluster_config.PluginDescriptor("some-plugin", core_plugin=False),
-                                                                revision="abc",
-                                                                # built separately
-                                                                src_dir=None,
-                                                                src_config={
-                                                                    "plugin.some-plugin.src.dir": "/Projects/src/some-plugin",
-                                                                    "plugin.some-plugin.build.artifact.subdir": "build/distributions"
-                                                                },
-                                                                builder=None)
-
-    def test_invalid_config_no_source(self):
-        with self.assertRaisesRegex(exceptions.SystemSetupError,
-                                    "Neither plugin.some-plugin.src.dir nor plugin.some-plugin.src.subdir are set for plugin some-plugin."):
-            supplier.ExternalPluginSourceSupplier(plugin=cluster_config.PluginDescriptor("some-plugin", core_plugin=False),
-                                                  revision="abc",
-                                                  # built separately
-                                                  src_dir=None,
-                                                  src_config={
-                                                      # but no source config
-                                                      # "plugin.some-plugin.src.dir": "/Projects/src/some-plugin",
-                                                      "plugin.some-plugin.build.artifact.subdir": "build/distributions"
-                                                  },
-                                                  builder=None)
-
-    def test_invalid_config_duplicate_source(self):
-        with self.assertRaisesRegex(exceptions.SystemSetupError,
-                                    "Can only specify one of plugin.duplicate.src.dir and plugin.duplicate.src.subdir but both are set."):
-            supplier.ExternalPluginSourceSupplier(plugin=cluster_config.PluginDescriptor("duplicate", core_plugin=False),
-                                                  revision="abc",
-                                                  src_dir=None,
-                                                  src_config={
-                                                      "plugin.duplicate.src.subdir": "opensearch-extra/some-plugin",
-                                                      "plugin.duplicate.src.dir": "/Projects/src/some-plugin",
-                                                      "plugin.duplicate.build.artifact.subdir": "build/distributions"
-                                                  },
-                                                  builder=None)
-
-    def test_standalone_plugin_overrides_build_dir(self):
-        self.assertEqual("/Projects/src/some-plugin", self.standalone.override_build_dir)
-
-    def test_along_os_plugin_keeps_build_dir(self):
-        self.assertIsNone(self.along_opensearch.override_build_dir)
-
-    @mock.patch("glob.glob", lambda p: ["/src/opensearch-extra/some-plugin/plugin/build/distributions/some-plugin.zip"])
-    def test_add_binary_built_along_opensearch(self):
-        binaries = {}
-        self.along_opensearch.add(binaries)
-        self.assertDictEqual(binaries,
-                             {"some-plugin": "file:///src/opensearch-extra/some-plugin/plugin/build/distributions/some-plugin.zip"})
-
-    @mock.patch("glob.glob", lambda p: ["/Projects/src/some-plugin/build/distributions/some-plugin.zip"])
-    def test_resolve_plugin_binary_built_standalone(self):
-        binaries = {}
-        self.along_opensearch.add(binaries)
-        self.assertDictEqual(binaries,
-                             {"some-plugin": "file:///Projects/src/some-plugin/build/distributions/some-plugin.zip"})
-
-
-class CorePluginSourceSupplierTests(TestCase):
-    @mock.patch("glob.glob", lambda p: ["/src/opensearch/core-plugin/build/distributions/core-plugin.zip"])
-    def test_resolve_plugin_binary(self):
-        s = supplier.CorePluginSourceSupplier(plugin=cluster_config.PluginDescriptor("core-plugin", core_plugin=True),
-                                              # built separately
-                                              os_src_dir="/src/opensearch",
-                                              builder=None)
-        binaries = {}
-        s.add(binaries)
-        self.assertDictEqual(binaries, {"core-plugin": "file:///src/opensearch/core-plugin/build/distributions/core-plugin.zip"})
-
-
-class PluginDistributionSupplierTests(TestCase):
-    def test_resolve_plugin_url(self):
-        v = {"plugin_logstash_release_url":
-            "https://artifacts.opensearch.org/logstash/logstash-oss-with-opensearch-output-plugin-{{VERSION}}-linux-x64.tar.gz"}
-        renderer = supplier.TemplateRenderer(version="7.13.2")
-        s = supplier.PluginDistributionSupplier(repo=supplier.DistributionRepository(name="release",
-                                                                                     distribution_config=v,
-                                                                                     template_renderer=renderer),
-                                                plugin=cluster_config.PluginDescriptor("logstash"))
-        binaries = {}
-        s.add(binaries)
-        self.assertDictEqual(
-            binaries, {"logstash":
-                "https://artifacts.opensearch.org/logstash/logstash-oss-with-opensearch-output-plugin-7.13.2-linux-x64.tar.gz"})
-
-
 class CreateSupplierTests(TestCase):
     def test_derive_supply_requirements_source_build(self):
         # corresponds to --revision="abc"
         requirements = supplier._supply_requirements(
-            sources=True, distribution=False, plugins=[], revisions={"solr": "abc"}, distribution_version=None)
+            sources=True, revisions={"solr": "abc"}, distribution_version=None)
         self.assertDictEqual({"solr": ("source", "abc", True)}, requirements)
 
     def test_derive_supply_requirements_distribution(self):
         # corresponds to --distribution-version=1.0.0
         requirements = supplier._supply_requirements(
-            sources=False, distribution=True, plugins=[], revisions={}, distribution_version="1.0.0")
+            sources=False, revisions={}, distribution_version="1.0.0")
         self.assertDictEqual({"solr": ("distribution", "1.0.0", False)}, requirements)
 
     def test_create_suppliers_for_os_only_config(self):
@@ -645,7 +520,7 @@ class CreateSupplierTests(TestCase):
 
         cluster_config_instance = cluster_config.ClusterConfigInstance("default", root_path=None, config_paths=[])
 
-        composite_supplier = supplier.create(cfg, sources=False, distribution=True, cluster_config=cluster_config_instance)
+        composite_supplier = supplier.create(cfg, sources=False, cluster_config=cluster_config_instance)
 
         self.assertEqual(1, len(composite_supplier.suppliers))
         self.assertIsInstance(composite_supplier.suppliers[0], supplier.DistributionSupplier)

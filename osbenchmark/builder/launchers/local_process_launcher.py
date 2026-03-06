@@ -34,8 +34,7 @@ class LocalProcessLauncher(Launcher):
         binary_path = node_configuration.binary_path
 
         java_major_version, java_home = java_resolver.java_home(node_configuration.cluster_config_runtime_jdks,
-                                                                self.cluster_config.variables["system"]["runtime"]["jdk"],
-                                                                node_configuration.cluster_config_provides_bundled_jdk)
+                                                                self.cluster_config.variables["system"]["runtime"]["jdk"])
         self.logger.info("Java major version: %s", java_major_version)
         self.logger.info("Java home: %s", java_home)
         self.logger.info("Starting node [%s].", node_name)
@@ -103,7 +102,7 @@ class LocalProcessLauncher(Launcher):
             raise LaunchError("Cannot launch Solr as root. Please run as a non-root user.")
 
         cmd = [io.escape_path(os.path.join(binary_path, "bin", "solr"))]
-        cmd.extend(["-d", "-p", "pid"])
+        cmd.extend(["start", "-p", "pid"])
 
         self.shell_executor.execute(host, " ".join(cmd), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, detach=True)
 

@@ -52,7 +52,6 @@ class LocalProcessLauncherTests(TestCase):
         for node in range(2):
             node_configs.append(NodeConfiguration(build_type="tar",
                                                   cluster_config_runtime_jdks="12,11",
-                                                  cluster_config_provides_bundled_jdk=True,
                                                   ip="127.0.0.1",
                                                   node_name=f"testnode-{node}",
                                                   node_root_path="/tmp",

@@ -1044,6 +1044,11 @@ class TestRunStore:
         return int(self.cfg.opts("system", "list.test_runs.max_results"))
 
 
+# NOTE: OpenSearch as a metrics/test-run store is not supported in Solr Benchmark.
+# The CompositeTestRunStore and OsClient classes below are retained from the upstream
+# OpenSearch Benchmark codebase but are not wired into any active code path.
+# A future task is to implement a native Solr metrics store (see TODO.md).
+
 # Does not inherit from TestRunStore as it is only a delegator with the same API.
 class CompositeTestRunStore:
     """

@@ -27,6 +27,9 @@
 - [ ] Improve schema auto-generation for complex field types
 - [ ] Support for nested documents (child docs in Solr)
 
+### Metrics Store
+- [ ] Implement native Solr metrics store (currently OpenSearch metrics store is not supported; only local filesystem JSON/CSV is used)
+
 ### Performance
 - [ ] Benchmark large corpus indexing (100M+ docs)
 - [ ] Profile memory usage with large workloads

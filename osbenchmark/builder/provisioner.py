@@ -34,17 +34,16 @@ from jinja2 import select_autoescape
 
 from osbenchmark import exceptions
 from osbenchmark.builder import cluster_config, java_resolver
-from osbenchmark.utils import console, convert, io
+from osbenchmark.utils import console, io
 
 
-def local(cfg, cluster_config, plugins, ip, http_port, all_node_ips, all_node_names, target_root, node_name):
+def local(cfg, cluster_config, ip, http_port, all_node_ips, all_node_names, target_root, node_name):
     distribution_version = cfg.opts("builder", "distribution.version", mandatory=False)
 
     node_root_dir = os.path.join(target_root, node_name)
 
-    runtime_jdk_bundled = convert.to_bool(cluster_config.mandatory_var("runtime.jdk.bundled"))
     runtime_jdk = cluster_config.mandatory_var("runtime.jdk")
-    _, java_home = java_resolver.java_home(runtime_jdk, cfg.opts("builder", "runtime.jdk"), runtime_jdk_bundled)
+    _, java_home = java_resolver.java_home(runtime_jdk, cfg.opts("builder", "runtime.jdk"))
 
     os_installer = NodeInstaller(
         cluster_config, java_home, node_name,
@@ -62,13 +61,9 @@ def docker(cfg, cluster_config, ip, http_port, target_root, node_name):
 
 
 class NodeConfiguration:
-    def __init__(self, build_type, cluster_config_runtime_jdks, \
-        cluster_config_provides_bundled_jdk, ip, node_name, \
-            node_root_path,
-                 binary_path, data_paths):
+    def __init__(self, build_type, cluster_config_runtime_jdks, ip, node_name, node_root_path, binary_path, data_paths):
         self.build_type = build_type
         self.cluster_config_runtime_jdks = cluster_config_runtime_jdks
-        self.cluster_config_provides_bundled_jdk = cluster_config_provides_bundled_jdk
         self.ip = ip
         self.node_name = node_name
         self.node_root_path = node_root_path
@@ -79,7 +74,6 @@ class NodeConfiguration:
         return {
             "build-type": self.build_type,
             "cluster-config-instance-runtime-jdks": self.cluster_config_runtime_jdks,
-            "cluster-config-instance-provides-bundled-jdk": self.cluster_config_provides_bundled_jdk,
             "ip": self.ip,
             "node-name": self.node_name,
             "node-root-path": self.node_root_path,
@@ -90,9 +84,8 @@ class NodeConfiguration:
     @staticmethod
     def from_dict(d):
         return NodeConfiguration(
-            d["build-type"], d["cluster-config-instance-runtime-jdks"],
-            d["cluster-config-instance-provides-bundled-jdk"], d["ip"],
-                                 d["node-name"], d["node-root-path"], d["binary-path"], d["data-paths"])
+            d["build-type"], d["cluster-config-instance-runtime-jdks"], d["ip"],
+            d["node-name"], d["node-root-path"], d["binary-path"], d["data-paths"])
 
 
 def save_node_configuration(path, n):
@@ -197,7 +190,6 @@ class BareProvisioner:
         self.os_installer.invoke_install_hook(cluster_config.BootstrapPhase.post_install, provisioner_vars.copy())
 
         return NodeConfiguration("tar", self.os_installer.cluster_config.mandatory_var("runtime.jdk"),
-                                 convert.to_bool(self.os_installer.cluster_config.mandatory_var("runtime.jdk.bundled")),
                                  self.os_installer.node_ip, self.os_installer.node_name,
                                  self.os_installer.node_root_dir, self.os_installer.os_home_path,
                                  self.os_installer.data_paths)
@@ -382,8 +374,7 @@ class DockerProvisioner:
             f.write(docker_cfg)
 
         return NodeConfiguration("docker", self.cluster_config.mandatory_var("runtime.jdk"),
-                                 convert.to_bool(self.cluster_config.mandatory_var("runtime.jdk.bundled")), self.node_ip,
-                                 self.node_name, self.node_root_dir, self.binary_path, self.data_paths)
+                                 self.node_ip, self.node_name, self.node_root_dir, self.binary_path, self.data_paths)
 
     def docker_vars(self, mounts):
         # Determine Docker image based on version type

@@ -50,7 +50,7 @@ METRIC_FLUSH_INTERVAL_SECONDS = 30
 def download(cfg):
     cluster_config, plugins = load_cluster_config(cfg, external=False)
 
-    s = supplier.create(cfg, sources=False, distribution=True, cluster_config=cluster_config, plugins=plugins)
+    s = supplier.create(cfg, sources=False, cluster_config=cluster_config)
     binaries = s()
     console.println(json.dumps(binaries, indent=2), force=True)
 
@@ -78,8 +78,8 @@ def install(cfg):
         master_nodes = [node_name]
 
     if build_type == "tar":
-        binary_supplier = supplier.create(cfg, sources, distribution, cluster_config, plugins)
-        p = provisioner.local(cfg=cfg, cluster_config=cluster_config, plugins=plugins, ip=ip, http_port=http_port,
+        binary_supplier = supplier.create(cfg, sources, cluster_config)
+        p = provisioner.local(cfg=cfg, cluster_config=cluster_config, ip=ip, http_port=http_port,
                               all_node_ips=seed_hosts, all_node_names=master_nodes, target_root=root_path,
                               node_name=node_name)
         node_config = p.prepare(binary=binary_supplier())
@@ -658,13 +658,13 @@ def create(cfg, metrics_store, node_ip, node_http_port, all_node_ips, all_node_i
     cluster_config, plugins = load_cluster_config(cfg, external)
 
     if sources or distribution:
-        s = supplier.create(cfg, sources, distribution, cluster_config, plugins)
+        s = supplier.create(cfg, sources, cluster_config)
         p = []
         all_node_names = ["%s-%s" % (node_name_prefix, n) for n in all_node_ids]
         for node_id in node_ids:
             node_name = "%s-%s" % (node_name_prefix, node_id)
             p.append(
-                provisioner.local(cfg, cluster_config, plugins, node_ip, node_http_port, all_node_ips,
+                provisioner.local(cfg, cluster_config, node_ip, node_http_port, all_node_ips,
                                   all_node_names, test_run_root_path, node_name))
         l = launcher.ProcessLauncher(cfg)
     elif external:

@@ -186,8 +186,7 @@ class ProcessLauncherTests(TestCase):
         node_configs = []
         for node in range(2):
             node_configs.append(NodeConfiguration(build_type="tar",
-            cluster_config_runtime_jdks="12,11",
-            cluster_config_provides_bundled_jdk=True,
+                                                  cluster_config_runtime_jdks="12,11",
                                                   ip="127.0.0.1",
                                                   node_name="testnode-{}".format(node),
                                                   node_root_path="/tmp",
@@ -371,8 +370,7 @@ class DockerLauncherTests(TestCase):
         docker = launcher.DockerLauncher(cfg)
 
         node_config = NodeConfiguration(build_type="docker",
-        cluster_config_runtime_jdks="12,11",
-        cluster_config_provides_bundled_jdk=True,
+                                        cluster_config_runtime_jdks="12,11",
                                         ip="127.0.0.1", node_name="testnode",
                                         node_root_path="/tmp", binary_path="/bin",
                                         data_paths="/tmp")
@@ -407,10 +405,9 @@ class DockerLauncherTests(TestCase):
 
         node_config = NodeConfiguration(
             build_type="docker", cluster_config_runtime_jdks="12,11",
-            cluster_config_provides_bundled_jdk=True,
-                                        ip="127.0.0.1", node_name="testnode",
-                                        node_root_path="/tmp", binary_path="/bin",
-                                        data_paths="/tmp")
+            ip="127.0.0.1", node_name="testnode",
+            node_root_path="/tmp", binary_path="/bin",
+            data_paths="/tmp")
 
         with self.assertRaisesRegex(exceptions.LaunchError, "No healthy running container after 600 seconds!"):
             docker.start([node_config])

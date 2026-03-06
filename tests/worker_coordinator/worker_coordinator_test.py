@@ -55,7 +55,7 @@ class WorkerCoordinatorTestParamSource:
     def __init__(self, workload=None, params=None, **kwargs):
         if params is None:
             params = {}
-        self._indices = workload.indices
+        self._indices = list(getattr(workload, "collections", []))
         self._params = params
         self._current = 1
         self._total = params.get("size")
@@ -1337,7 +1337,6 @@ class AsyncExecutorTests(TestCase):
 
         params.register_param_source_for_name("worker-coordinator-test-param-source", WorkerCoordinatorTestParamSource)
         test_workload = workload.Workload(name="unittest", description="unittest workload",
-                                 indices=None,
                                  test_procedures=None)
 
         task = workload.Task("time-based", workload.Operation("time-based", workload.OperationType.Bulk.to_hyphenated_string(),
@@ -1406,7 +1405,6 @@ class AsyncExecutorTests(TestCase):
 
         params.register_param_source_for_name("worker-coordinator-test-param-source", WorkerCoordinatorTestParamSource)
         test_workload = workload.Workload(name="unittest", description="unittest workload",
-                                 indices=None,
                                  test_procedures=None)
 
         task = workload.Task("time-based", workload.Operation("time-based", operation_type="unit-test-recovery", params={
@@ -1472,7 +1470,6 @@ class AsyncExecutorTests(TestCase):
 
         params.register_param_source_for_name("worker-coordinator-test-param-source", WorkerCoordinatorTestParamSource)
         test_workload = workload.Workload(name="unittest", description="unittest workload",
-                                 indices=None,
                                  test_procedures=None)
 
         task = workload.Task("override-throughput", workload.Operation("override-throughput",
@@ -1538,7 +1535,6 @@ class AsyncExecutorTests(TestCase):
 
         params.register_param_source_for_name("worker-coordinator-test-param-source", WorkerCoordinatorTestParamSource)
         test_workload = workload.Workload(name="unittest", description="unittest workload",
-                                 indices=None,
                                  test_procedures=None)
 
         # in one second (0.5 warmup + 0.5 measurement) we should get 1000 [ops/s] / 4 [clients] = 250 samples

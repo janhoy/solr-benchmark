@@ -10,15 +10,8 @@ class DistributionRepositoryProvider:
         self.repository_url_provider = repository_url_provider
 
     def get_download_url(self, host):
-        is_runtime_jdk_bundled = self.cluster_config.variables["system"]["runtime"]["jdk"]["bundled"]
         distribution_repository = self.cluster_config.variables["distribution"]["repository"]
-
-        self.logger.info("runtime_jdk_bundled? [%s]", is_runtime_jdk_bundled)
-        if is_runtime_jdk_bundled:
-            url_key = f"distribution.jdk.bundled.{distribution_repository}_url"
-        else:
-            url_key = f"distribution.jdk.unbundled.{distribution_repository}_url"
-
+        url_key = f"distribution.{distribution_repository}_url"
         self.logger.info("key: [%s]", url_key)
         return self.repository_url_provider.render_url_for_key(host, self.cluster_config.variables, url_key)
 

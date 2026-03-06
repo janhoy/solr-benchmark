@@ -50,7 +50,7 @@ class Pipeline:
     Describes a whole test run pipeline. A pipeline can consist of one or more steps. Each pipeline should contain roughly of the following
     steps:
 
-    * Prepare the benchmark candidate: It can build OpenSearch from sources, download a ZIP from somewhere etc.
+    * Prepare the benchmark candidate: It can build Solr from sources, download a ZIP from somewhere etc.
     * Launch the benchmark candidate: This can be done directly, with tools like Ansible or it can assume the candidate is already launched
     * Run the benchmark
     * Publish results

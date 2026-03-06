@@ -34,7 +34,7 @@ class JavaResolverTests(TestCase):
         resolve_jvm_path.return_value = (12, "/opt/jdk12")
         major, java_home = java_resolver.java_home("12,11,10,9,8",
                                                    specified_runtime_jdk=None,
-                                                   provides_bundled_jdk=True)
+                                                   )
 
         self.assertEqual(major, 12)
         self.assertEqual(java_home, "/opt/jdk12")
@@ -44,7 +44,7 @@ class JavaResolverTests(TestCase):
         resolve_jvm_path.return_value = (8, "/opt/jdk8")
         major, java_home = java_resolver.java_home("12,11,10,9,8",
                                                    specified_runtime_jdk=8,
-                                                   provides_bundled_jdk=True)
+                                                   )
 
         self.assertEqual(major, 8)
         self.assertEqual(java_home, "/opt/jdk8")

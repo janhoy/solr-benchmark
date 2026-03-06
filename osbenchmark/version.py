@@ -75,6 +75,6 @@ def release_version():
 
 def minimum_os_version():
     """
-    :return: A string identifying the minimum version of OpenSearch that is supported by OSB.
+    :return: A string identifying the minimum version of Solr that is supported.
     """
     return resources.read_text("osbenchmark", "min-os-version.txt").strip()

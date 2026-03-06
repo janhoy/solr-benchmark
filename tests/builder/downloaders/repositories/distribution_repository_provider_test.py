@@ -10,13 +10,6 @@ class DistributionRepositoryProviderTest(TestCase):
     def setUp(self):
         self.host = None
         self.cluster_config = ClusterConfigInstance(names=None, config_paths=None, root_path=None, variables={
-            "system": {
-                "runtime": {
-                    "jdk": {
-                        "bundled": True
-                    }
-                }
-            },
             "distribution": {
                 "repository": "release",
                 "release": {
@@ -28,26 +21,17 @@ class DistributionRepositoryProviderTest(TestCase):
         self.os_distro_repo_provider = DistributionRepositoryProvider(self.cluster_config,
                                                                                 self.repository_url_provider)
 
-
-    def test_get_url_bundled_jdk(self):
+    def test_get_download_url(self):
         self.os_distro_repo_provider.get_download_url(self.host)
         self.os_distro_repo_provider.repository_url_provider.render_url_for_key.assert_has_calls([
-            mock.call(None, self.cluster_config.variables, "distribution.jdk.bundled.release_url")
-        ])
-
-    def test_get_url_unbundled_jdk(self):
-        self.cluster_config.variables["system"]["runtime"]["jdk"]["bundled"] = False
-
-        self.os_distro_repo_provider.get_download_url(self.host)
-        self.os_distro_repo_provider.repository_url_provider.render_url_for_key.assert_has_calls([
-            mock.call(None, self.cluster_config.variables, "distribution.jdk.unbundled.release_url")
+            mock.call(None, self.cluster_config.variables, "distribution.release_url")
         ])
 
     def test_get_file_name(self):
         file_name = self.os_distro_repo_provider.get_file_name_from_download_url(
-            "https://artifacts.opensearch.org/releases/bundle/opensearch/1.2.3/opensearch-1.2.3-linux-arm64.tar.gz")
+            "https://archive.apache.org/dist/solr/solr/9.10.1/solr-9.10.1.tgz")
 
-        self.assertEqual(file_name, "opensearch-1.2.3-linux-arm64.tar.gz")
+        self.assertEqual(file_name, "solr-9.10.1.tgz")
 
     def test_is_cache_enabled_true(self):
         is_cache_enabled = self.os_distro_repo_provider.is_cache_enabled()
