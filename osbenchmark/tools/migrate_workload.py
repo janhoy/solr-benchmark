@@ -40,9 +40,8 @@ Usage:
 
 import argparse
 import json
-import sys
 from copy import deepcopy
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 # Operations that can be directly translated
 _OP_MAP = {
@@ -106,7 +105,7 @@ def _translate_operation(op: Dict[str, Any]) -> Dict[str, Any]:
         if "type" in result and result.get("type") == op_type:
             result["type"] = _OP_MAP[op_type]
     # else: unknown type — leave as-is with a todo
-    elif op_type and op_type not in {v for v in _OP_MAP.values()}:
+    elif op_type and op_type not in set(_OP_MAP.values()):
         result["_migration_todo"] = (
             f"TODO: Unknown operation type '{op_type}'. "
             "Verify this operation is supported by Solr Benchmark."

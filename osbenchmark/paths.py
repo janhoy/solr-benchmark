@@ -22,8 +22,7 @@
 # specific language governing permissions and limitations
 # under the License.
 import os
-from osbenchmark.utils.io import ensure_dir, ensure_symlink
-from osbenchmark.utils import console
+from osbenchmark.utils.io import ensure_dir
 
 def benchmark_confdir():
     default_home = os.path.expanduser("~")

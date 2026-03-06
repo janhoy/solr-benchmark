@@ -24,7 +24,6 @@ offloaded to a thread-pool executor so they do not block the event loop.
 """
 
 import asyncio
-from datetime import datetime
 import json
 import logging
 import time

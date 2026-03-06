@@ -25,20 +25,14 @@
 
 import collections
 import datetime
-import json
-import logging
 import os
-import random
-import string
 import tempfile
 import unittest.mock as mock
 import uuid
 from unittest import TestCase
 from collections import namedtuple
 
-import pytest
-
-from osbenchmark import config, metrics, workload, exceptions, paths
+from osbenchmark import config, metrics, workload, exceptions
 from osbenchmark.metrics import GlobalStatsCalculator
 from osbenchmark.workload import Task, Operation, TestProcedure, Workload
 
@@ -1009,4 +1003,3 @@ class SystemStatsTests(TestCase):
                 "single": 833 * 1024 * 1024
             }
         }, select(metric_list, "bytes_written", node="benchmark-node-1"))
-

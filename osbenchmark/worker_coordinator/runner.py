@@ -26,30 +26,16 @@ import asyncio
 import contextvars
 import json
 import logging
-import random
-import re
 import sys
 import time
 import types
-from collections import Counter, OrderedDict
-from copy import deepcopy
-from enum import Enum
-from functools import total_ordering
 from io import BytesIO
-from os.path import commonprefix
-import multiprocessing
-from typing import Any, Dict, List, Optional
+from typing import List
 
 import ijson
 
-from osbenchmark.exceptions import BenchmarkConnectionTimeout as ConnectionTimeout
-from osbenchmark.exceptions import BenchmarkNotFoundError as NotFoundError
-
 from osbenchmark import exceptions, workload
-from osbenchmark.utils import convert
 from osbenchmark.client import RequestContextHolder
-# Mapping from operation type to specific runner
-from osbenchmark.utils.parse import parse_int_parameter, parse_string_parameter, parse_float_parameter
 from osbenchmark.solr import runner as solr_runner
 
 __RUNNERS = {}

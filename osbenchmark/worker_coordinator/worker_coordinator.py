@@ -45,7 +45,6 @@ from enum import Enum
 
 import thespian.actors
 
-from osbenchmark.utils import opts
 from osbenchmark import actor, config, exceptions, metrics, workload, client, paths, PROGRAM_NAME, telemetry
 from osbenchmark.worker_coordinator import runner, scheduler
 from osbenchmark.workload import WorkloadProcessorRegistry, load_workload, load_workload_plugins, ingestion_manager
@@ -965,7 +964,7 @@ class WorkerCoordinator:
     def prepare_telemetry(self, opensearch, enable):
         enabled_devices = self.config.opts("telemetry", "devices")
         telemetry_params = self.config.opts("telemetry", "params")
-        log_root = paths.test_run_root(self.config)
+        _log_root = paths.test_run_root(self.config)
 
         os_default = opensearch.get("default") if opensearch else None
 
@@ -2456,7 +2455,6 @@ class AsyncExecutor:
 
     async def _cleanup(self) -> None:
         """Clean up resources after task execution."""
-        pass
 
     def report_error(self, error_info: dict) -> None:
         """Report an error to the error queue."""

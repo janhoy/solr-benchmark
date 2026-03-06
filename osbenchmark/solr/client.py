@@ -208,6 +208,21 @@ class SolrAdminClient:
         resp = self._get("/api/cluster")
         return resp.json().get("cluster", resp.json())
 
+    def count_documents(self, collection: str) -> int:
+        """Return the number of documents in a collection via rows=0 select query."""
+        resp = self._get_session().get(
+            f"{self.base_url}/solr/{collection}/select",
+            params={"q": "*:*", "rows": 0, "wt": "json"},
+            timeout=self.timeout,
+        )
+        self._raise_for_solr_error(resp, f"count documents in '{collection}'")
+        return resp.json()["response"]["numFound"]
+
+    def get_schema(self, collection: str) -> dict:
+        """Return the schema of a collection via GET /solr/{collection}/schema."""
+        resp = self._get(f"/solr/{collection}/schema")
+        return resp.json().get("schema", resp.json())
+
     # ------------------------------------------------------------------
     # Metrics
     # ------------------------------------------------------------------

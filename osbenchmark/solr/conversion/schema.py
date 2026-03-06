@@ -249,7 +249,7 @@ def generate_schema_xml(field_defs: Dict[str, Dict[str, Any]],
             copy_fields_xml.append(f'  <copyField source="{source}" dest="{dest}" />')
 
     # Complete schema XML
-    schema_xml = f'''<?xml version="1.0" encoding="UTF-8" ?>
+    schema_xml = f"""<?xml version="1.0" encoding="UTF-8" ?>
 <!--
   AUTO-GENERATED SCHEMA (OpenSearch → Solr translation)
 
@@ -309,7 +309,7 @@ def generate_schema_xml(field_defs: Dict[str, Dict[str, Any]],
   <!-- Copy field for default search -->
   <copyField source="*" dest="_text_" />
 </schema>
-'''
+"""
 
     return schema_xml
 
@@ -344,7 +344,7 @@ def create_configset_from_schema(schema_xml: str,
 
     # Create minimal solrconfig.xml
     # This is a bare-bones config that works for basic indexing/searching
-    solrconfig_xml = '''<?xml version="1.0" encoding="UTF-8" ?>
+    solrconfig_xml = """<?xml version="1.0" encoding="UTF-8" ?>
 <config>
   <luceneMatchVersion>9.0</luceneMatchVersion>
 
@@ -430,7 +430,7 @@ def create_configset_from_schema(schema_xml: str,
     </lst>
   </requestHandler>
 </config>
-'''
+"""
 
     # Write solrconfig.xml at root level
     solrconfig_path = os.path.join(configset_dir, "solrconfig.xml")

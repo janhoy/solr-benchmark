@@ -17,7 +17,6 @@
 
 """Unit tests for osbenchmark/solr/result_writer.py"""
 
-import json
 import os
 import tempfile
 import unittest

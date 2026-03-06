@@ -18,19 +18,15 @@
 """Unit tests for osbenchmark/solr/runner.py"""
 
 import asyncio
-import json
 import unittest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 from osbenchmark.solr.runner import (
     _translate_ndjson_batch,
     SolrBulkIndex,
     SolrSearch,
-    SolrCommit,
-    SolrOptimize,
     SolrCreateCollection,
     SolrDeleteCollection,
-    SolrRawRequest,
 )
 from osbenchmark.solr.conversion.field import normalize_field_name
 from osbenchmark.solr.conversion.query import translate_opensearch_query
@@ -300,7 +296,7 @@ class TestSolrSearch(unittest.TestCase):
 class TestSolrCreateCollection(unittest.TestCase):
     @patch("osbenchmark.solr.runner.SolrAdminClient")
     def test_two_step_sequence(self, mock_admin_cls):
-        import tempfile, os
+        import tempfile
         mock_admin = MagicMock()
         mock_admin.upload_configset = MagicMock()
         mock_admin.create_collection = MagicMock()

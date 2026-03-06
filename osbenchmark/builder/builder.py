@@ -32,7 +32,10 @@ import traceback
 from collections import defaultdict
 
 import thespian.actors
-class NotFoundError(Exception): pass
+
+
+class NotFoundError(Exception):
+    pass
 
 from osbenchmark import (PROGRAM_NAME, actor, client, config, exceptions,
                          metrics, paths)

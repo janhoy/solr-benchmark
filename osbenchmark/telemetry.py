@@ -29,12 +29,6 @@ import fnmatch
 import os
 import threading
 from collections import deque
-try:
-    import opensearchpy
-    _OPENSEARCHPY_AVAILABLE = True
-except ImportError:
-    opensearchpy = None
-    _OPENSEARCHPY_AVAILABLE = False
 import tabulate
 
 from osbenchmark import metrics, time, exceptions
@@ -463,7 +457,7 @@ class CcrStatsRecorder:
         try:
             stats = self.client.transport.perform_request("GET", "/_plugins/_replication/leader_stats")
             self.record_cluster_level_stats(stats)
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             msg = "A transport error occurred while collecting CCR leader stats"
             self.logger.exception(msg)
             raise exceptions.BenchmarkError(msg)
@@ -472,7 +466,7 @@ class CcrStatsRecorder:
         try:
             stats = self.client.transport.perform_request("GET", "/_plugins/_replication/follower_stats")
             self.record_cluster_level_stats(stats)
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             msg = "A transport error occurred while collecting follower stats for remote cluster: {}".format(self.cluster_name)
             self.logger.exception(msg)
             raise exceptions.BenchmarkError(msg)
@@ -486,7 +480,7 @@ class CcrStatsRecorder:
                     self.record_stats_per_index(index, stats)
                 else:
                     self.logger.info("CCR Status is not syncing. Ignoring for now!")
-            except opensearchpy.TransportError:
+            except exceptions.BenchmarkTransportError:
                 msg = "A transport error occurred while collecting CCR stats for remote cluster: {}".format(self.cluster_name)
                 self.logger.exception(msg)
                 raise exceptions.BenchmarkError(msg)
@@ -629,7 +623,7 @@ class RecoveryStatsRecorder:
         """
         try:
             stats = self.client.indices.recovery(index=self.indices, active_only=True, detailed=False)
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             msg = "A transport error occurred while collecting recovery stats on cluster [{}]".format(self.cluster_name)
             self.logger.exception(msg)
             raise exceptions.BenchmarkError(msg)
@@ -945,7 +939,7 @@ class NodeStatsRecorder:
     def sample(self):
         try:
             stats = self.client.nodes.stats(metric="_all")
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             logging.getLogger(__name__).exception("Could not retrieve node stats.")
             return {}
         return stats["nodes"].values()
@@ -1055,7 +1049,7 @@ class TransformStatsRecorder:
         try:
             stats = self.client.transform.get_transform_stats("_all")
 
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             msg = f"A transport error occurred while collecting transform stats on " \
                   f"cluster [{self.cluster_name}]"
             self.logger.exception(msg)
@@ -1254,14 +1248,14 @@ class SearchableSnapshotsStatsRecorder:
             # we don't use the existing client support (searchable_snapshots.stats())
             # as the API is deliberately undocumented and might change:
             stats = self.client.transport.perform_request("GET", stats_api_endpoint, params={"level": level})
-        except opensearchpy.NotFoundError as e:
-            if "No searchable snapshots indices found" in e.info.get("error").get("reason"):
+        except exceptions.BenchmarkNotFoundError as e:
+            if "No searchable snapshots indices found" in str(e):
                 self.logger.info(
                     "Unable to find valid indices while collecting searchable snapshots stats "
                     "on cluster [%s]", self.cluster_name)
                 # allow collection, indices might be mounted later on
                 return
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             raise exceptions.BenchmarkError(
                 f"A transport error occurred while collecting searchable snapshots stats on cluster "
                 f"[{self.cluster_name}]") from None
@@ -1609,7 +1603,7 @@ class JvmStatsSummary(InternalTelemetryDevice):
         jvm_stats = {}
         try:
             stats = self.client.nodes.stats(metric="_all")
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             self.logger.exception("Could not retrieve GC times.")
             return jvm_stats
         nodes = stats["nodes"]
@@ -1802,7 +1796,7 @@ class MlBucketProcessingTime(InternalTelemetryDevice):
                     }
                 }
             })
-        except opensearchpy.TransportError:
+        except exceptions.BenchmarkTransportError:
             self.logger.exception("Could not retrieve ML bucket processing time.")
             return
         try:
@@ -1965,7 +1959,7 @@ class SegmentReplicationStatsRecorder:
                 stats_api_endpoint = "/_cat/segment_replication/"
                 stats = self.client.transport.perform_request(
                     "GET", stats_api_endpoint + index, params={"time": "ms", "bytes": "b", "format": "JSON"})
-            except opensearchpy.TransportError:
+            except exceptions.BenchmarkTransportError:
                 raise exceptions.BenchmarkError(
                     f"A transport error occurred while collecting segment replication stats on cluster "
                     f"[{self.cluster_name}]") from None

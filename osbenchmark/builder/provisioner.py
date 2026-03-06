@@ -34,7 +34,7 @@ from jinja2 import select_autoescape
 
 from osbenchmark import exceptions
 from osbenchmark.builder import cluster_config, java_resolver
-from osbenchmark.utils import console, convert, io, process, versions
+from osbenchmark.utils import console, convert, io
 
 
 def local(cfg, cluster_config, plugins, ip, http_port, all_node_ips, all_node_names, target_root, node_name):

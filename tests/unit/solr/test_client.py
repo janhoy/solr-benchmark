@@ -19,7 +19,7 @@
 
 import io
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 from osbenchmark.solr.client import (
     SolrAdminClient,

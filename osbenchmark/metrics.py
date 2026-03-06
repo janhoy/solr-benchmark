@@ -29,7 +29,6 @@ import logging
 import math
 import os
 import pickle
-import random
 import statistics
 import sys
 import time
@@ -39,7 +38,7 @@ from enum import Enum, IntEnum
 import psutil
 import tabulate
 
-from osbenchmark import time, exceptions, config, version, paths
+from osbenchmark import time, exceptions, version, paths
 from osbenchmark.utils import convert, console, io, versions
 from osbenchmark.visualizations.benchmark_report_renderer import render_results_html
 class MetaInfoScope(Enum):

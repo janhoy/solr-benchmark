@@ -24,8 +24,6 @@
 
 import asyncio
 import io
-import json
-import random
 import unittest.mock as mock
 from unittest import TestCase
 
@@ -1173,4 +1171,3 @@ class RemovePrefixTests(TestCase):
         suffix = runner.remove_prefix(index_name, "unrelatedprefix")
 
         self.assertEqual(suffix, index_name)
-

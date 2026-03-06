@@ -530,7 +530,7 @@ def solr_from_distribution(cfg):
     solr_modules = cfg.opts("solr", "modules", mandatory=False, default_value="")
     provisioner = SolrProvisioner(cache_dir=cache_dir, port=port, cluster_config=cc_instance,
                                   solr_modules=solr_modules)
-    tarball = provisioner.download(version_str)
+    _tarball = provisioner.download(version_str)
     solr_root = provisioner.install(version_str, install_dir)
 
     try:

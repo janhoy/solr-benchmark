@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from boto3 import client
 
 from osbenchmark import exceptions
-from osbenchmark.data_streaming.data_producer import DataProducer
+from osbenchmark.data_streaming.data_producer import DataProducer  # pylint: disable=import-error,no-name-in-module
 from osbenchmark.workload.ingestion_manager import IngestionManager
 
 class S3DataProducer(DataProducer):

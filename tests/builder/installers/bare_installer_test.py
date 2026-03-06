@@ -85,4 +85,3 @@ class BareInstallerTests(TestCase):
 
         with self.assertRaises(AssertionError):
             self.installer.install(self.host, self.binaries, self.all_node_ips)
-

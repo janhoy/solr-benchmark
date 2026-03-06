@@ -38,12 +38,10 @@ import logging
 import os
 import re
 import shutil
-from copy import deepcopy
 from datetime import datetime
 
 from .detector import is_opensearch_workload
 from .query import translate_to_solr_json_dsl
-from .schema import translate_opensearch_mapping, generate_schema_xml
 
 logger = logging.getLogger(__name__)
 
@@ -850,7 +848,7 @@ Re-running `convert-workload` with `--force` will overwrite this directory.
 
 def _minimal_solrconfig() -> str:
     """Return a minimal solrconfig.xml suitable for benchmark workloads."""
-    return '''<?xml version="1.0" encoding="UTF-8" ?>
+    return """<?xml version="1.0" encoding="UTF-8" ?>
 <config>
   <luceneMatchVersion>9.0</luceneMatchVersion>
   <dataDir>${solr.data.dir:}</dataDir>
@@ -912,4 +910,4 @@ def _minimal_solrconfig() -> str:
     </lst>
   </requestHandler>
 </config>
-'''
+"""

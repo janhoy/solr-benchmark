@@ -52,7 +52,7 @@ class TestTranslateOpenSearchMapping(unittest.TestCase):
             "country_code": {"type": "keyword"},
         }
 
-        field_defs, copy_fields = translate_opensearch_mapping(properties)
+        field_defs, _copy_fields = translate_opensearch_mapping(properties)
 
         self.assertEqual("string", field_defs["country_code"]["type"])
         self.assertTrue(field_defs["country_code"]["docValues"])

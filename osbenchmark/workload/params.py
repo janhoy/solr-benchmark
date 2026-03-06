@@ -38,7 +38,7 @@ import time
 import multiprocessing
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
+from typing import List, Dict, Any, Optional, Tuple
 
 import numpy as np
 

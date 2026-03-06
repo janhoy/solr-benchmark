@@ -28,7 +28,6 @@ import tempfile
 import unittest.mock as mock
 from unittest import TestCase
 
-from osbenchmark import exceptions
 from osbenchmark.builder import provisioner, cluster_config
 
 HOME_DIR = os.path.expanduser("~")
