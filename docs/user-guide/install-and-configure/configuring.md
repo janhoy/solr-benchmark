@@ -79,7 +79,7 @@ This section defines how workloads are retrieved. Keys follow the format
 
 ```ini
 [workloads]
-default.url = https://github.com/apache/solr-benchmark-workloads
+default.url = https://github.com/janhoy/solr-benchmark-workloads
 ```
 
 ## defaults
@@ -125,7 +125,7 @@ use it for downloading workloads and distribution archives.
 4. Verify the proxy is working by cloning the workloads repository:
 
    ```bash
-   git clone https://github.com/apache/solr-benchmark-workloads.git
+   git clone https://github.com/janhoy/solr-benchmark-workloads.git
    ```
 
 5. Confirm Solr Benchmark picks up the proxy setting by checking the log at

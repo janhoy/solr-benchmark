@@ -2,6 +2,8 @@
 
 Apache Solr Benchmark is a macrobenchmarking framework for [Apache Solr](https://solr.apache.org/).
 
+**This POC lives in the `janhoy` github account while evaluating. May be moved to apache later if accepted by the PMC**.
+
 ## Documentation
 
 Full documentation is available in [`docs/`](docs/) folder of this repository. Build the docs with jekyll.

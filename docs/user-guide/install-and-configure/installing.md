@@ -14,7 +14,7 @@ provides general hardware considerations and step-by-step installation instructi
 
 When selecting a host, consider which workloads you want to run. To see a list of available
 benchmark workloads, visit the
-[solr-benchmark-workloads](https://github.com/apache/solr-benchmark-workloads) repository on
+[solr-benchmark-workloads](https://github.com/janhoy/solr-benchmark-workloads) repository on
 GitHub. Make sure that the Solr Benchmark host has enough free storage space to store the
 compressed data corpus and the fully decompressed data once benchmarking begins.
 
@@ -80,7 +80,7 @@ repository.
 Clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/apache/solr-benchmark.git
+git clone https://github.com/janhoy/solr-benchmark.git
 cd solr-benchmark
 pip install -e .
 ```
@@ -97,7 +97,7 @@ Install Solr Benchmark inside a virtual environment to avoid dependency conflict
 Python packages on your system:
 
 ```bash
-git clone https://github.com/apache/solr-benchmark.git
+git clone https://github.com/janhoy/solr-benchmark.git
 cd solr-benchmark
 python3 -m venv .venv
 source .venv/bin/activate

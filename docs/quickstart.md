@@ -39,7 +39,7 @@ Apache Solr Benchmark is not yet published on PyPI. Install it directly from the
 Clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/apache/solr-benchmark.git
+git clone https://github.com/janhoy/solr-benchmark.git
 cd solr-benchmark
 pip install -e .
 ```
