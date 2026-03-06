@@ -29,7 +29,7 @@ class ConfigApplier:
             for name in files:
                 source_file = os.path.join(root, name)
                 target_file = os.path.join(absolute_target_root, name)
-                mounts[target_file] = os.path.join("/usr/share/opensearch", relative_root, name)
+                mounts[target_file] = os.path.join("/var/solr", relative_root, name)
 
                 if io.is_plain_text(source_file):
                     self.logger.info("Reading config template file [%s] and writing to [%s].", source_file, target_file)

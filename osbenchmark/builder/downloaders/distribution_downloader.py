@@ -16,7 +16,7 @@ class DistributionDownloader(Downloader):
 
     def download(self, host):
         binary_path = self._fetch_binary(host)
-        return {BinaryKeys.OPENSEARCH: binary_path}
+        return {BinaryKeys.SOLR: binary_path}
 
     def _fetch_binary(self, host):
         download_url = self.distribution_repository_provider.get_download_url(host)

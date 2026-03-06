@@ -248,7 +248,7 @@ class Config:
             (Scope.application, "benchmarks", "workload.repository.dir"): "workloads",
             (Scope.application, "benchmarks", "workload.default.repository"): "default",
             (Scope.application, "provisioning", "node.name.prefix"): "benchmark-node",
-            (Scope.application, "provisioning", "node.http.port"): 39200,
+            (Scope.application, "provisioning", "node.http.port"): 38983,
             (Scope.application, "builder", "cluster_config.repository.dir"): "cluster_configs",
             (Scope.application, "builder", "cluster_config.default.repository"): "default",
             # Solr-specific defaults

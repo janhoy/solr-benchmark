@@ -49,9 +49,7 @@ def local(cfg, cluster_config, plugins, ip, http_port, all_node_ips, all_node_na
     os_installer = NodeInstaller(
         cluster_config, java_home, node_name,
         node_root_dir, all_node_ips, all_node_names, ip, http_port)
-    plugin_installers = [PluginInstaller(plugin, java_home) for plugin in plugins]
-
-    return BareProvisioner(os_installer, plugin_installers, distribution_version=distribution_version)
+    return BareProvisioner(os_installer, distribution_version=distribution_version)
 
 
 def docker(cfg, cluster_config, ip, http_port, target_root, node_name):
@@ -178,9 +176,8 @@ class BareProvisioner:
     of the benchmark candidate to the appropriate place.
     """
 
-    def __init__(self, os_installer, plugin_installers, distribution_version=None, apply_config=_apply_config):
+    def __init__(self, os_installer, distribution_version=None, apply_config=_apply_config):
         self.os_installer = os_installer
-        self.plugin_installers = plugin_installers
         self.distribution_version = distribution_version
         self.apply_config = apply_config
         self.logger = logging.getLogger(__name__)
@@ -196,15 +193,8 @@ class BareProvisioner:
         for p in self.os_installer.config_source_paths:
             self.apply_config(p, target_root_path, provisioner_vars)
 
-        for installer in self.plugin_installers:
-            installer.install(target_root_path, binary.get(installer.plugin_name))
-            for plugin_config_path in installer.config_source_paths:
-                self.apply_config(plugin_config_path, target_root_path, provisioner_vars)
-
         # Never let install hooks modify our original provisioner variables and just provide a copy!
         self.os_installer.invoke_install_hook(cluster_config.BootstrapPhase.post_install, provisioner_vars.copy())
-        for installer in self.plugin_installers:
-            installer.invoke_install_hook(cluster_config.BootstrapPhase.post_install, provisioner_vars.copy())
 
         return NodeConfiguration("tar", self.os_installer.cluster_config.mandatory_var("runtime.jdk"),
                                  convert.to_bool(self.os_installer.cluster_config.mandatory_var("runtime.jdk.bundled")),
@@ -213,29 +203,9 @@ class BareProvisioner:
                                  self.os_installer.data_paths)
 
     def _provisioner_variables(self):
-        plugin_variables = {}
-        mandatory_plugins = []
-        for installer in self.plugin_installers:
-            try:
-                major, minor, _, _ = versions.components(self.distribution_version)
-                if (major == 6 and minor < 3) or major < 6:
-                    mandatory_plugins.append(installer.sub_plugin_name)
-                else:
-                    mandatory_plugins.append(installer.plugin_name)
-            except (TypeError, exceptions.InvalidSyntax):
-                mandatory_plugins.append(installer.plugin_name)
-            plugin_variables.update(installer.variables)
-
-        cluster_settings = {}
-        if mandatory_plugins:
-            # as a safety measure, prevent the cluster to startup if something went wrong during plugin installation which
-            # we did not detect already here. This ensures we fail fast.
-            cluster_settings["plugin.mandatory"] = mandatory_plugins
-
         provisioner_vars = {}
         provisioner_vars.update(self.os_installer.variables)
-        provisioner_vars.update(plugin_variables)
-        provisioner_vars["cluster_settings"] = cluster_settings
+        provisioner_vars["cluster_settings"] = {}
 
         return provisioner_vars
 
@@ -304,7 +274,7 @@ class NodeInstaller:
             # this is the IP address that the node will be bound to. OSB will bind to the node's IP address (but not to 0.0.0.0). The
             "network_host": network_host,
             "http_port": str(self.http_port),
-            "transport_port": str(self.http_port + 100),
+            "zookeeper_port": str(self.http_port + 1000),
             "all_node_ips": "[\"%s\"]" % "\",\"".join(self.all_node_ips),
             "all_node_names": "[\"%s\"]" % "\",\"".join(self.all_node_names),
             # at the moment we are strict and enforce that all nodes are master eligible nodes
@@ -333,65 +303,6 @@ class NodeInstaller:
             return [os.path.join(self.os_home_path, "data")]
 
 
-class PluginInstaller:
-    def __init__(self, plugin, java_home, hook_handler_class=cluster_config.BootstrapHookHandler):
-        self.plugin = plugin
-        self.java_home = java_home
-        self.hook_handler = hook_handler_class(self.plugin)
-        if self.hook_handler.can_load():
-            self.hook_handler.load()
-        self.logger = logging.getLogger(__name__)
-
-    def install(self, os_home_path, plugin_url=None):
-        installer_binary_path = os.path.join(os_home_path, "bin", "opensearch-plugin")
-        if plugin_url:
-            self.logger.info("Installing [%s] into [%s] from [%s]", self.plugin_name, os_home_path, plugin_url)
-            install_cmd = '%s install --batch "%s"' % (installer_binary_path, plugin_url)
-        else:
-            self.logger.info("Installing [%s] into [%s]", self.plugin_name, os_home_path)
-            install_cmd = '%s install --batch "%s"' % (installer_binary_path, self.plugin_name)
-
-        output, return_code = process.run_subprocess_with_logging(install_cmd, env=self.env(), capture_output=True)
-        if return_code == 0:
-            self.logger.info("Successfully installed [%s].", self.plugin_name)
-        elif return_code == 64:
-            # most likely this is an unknown plugin
-            raise exceptions.SystemSetupError("Unknown plugin [%s]" % self.plugin_name)
-        elif return_code == 74:
-            raise exceptions.SupplyError("I/O error while trying to install [%s]" % self.plugin_name)
-        else:
-            raise exceptions.BenchmarkError(
-                "Unknown error '%s' while trying to install [%s] (installer return code [%s]). "
-                "Please check the logs." %
-                                        (output, self.plugin_name, str(return_code)))
-
-    def invoke_install_hook(self, phase, variables):
-        self.hook_handler.invoke(phase.name, variables=variables, env=self.env())
-
-    def env(self):
-        env = {}
-        if self.java_home:
-            env["JAVA_HOME"] = self.java_home
-        return env
-
-    @property
-    def variables(self):
-        return self.plugin.variables
-
-    @property
-    def config_source_paths(self):
-        return self.plugin.config_paths
-
-    @property
-    def plugin_name(self):
-        return self.plugin.name
-
-    @property
-    def sub_plugin_name(self):
-        # if a plugin consists of multiple plugins we're interested in that name
-        return self.variables.get("plugin_name", self.plugin_name)
-
-
 class DockerProvisioner:
     def __init__(self, cluster_config, node_name, ip, http_port, node_root_dir, distribution_version, benchmark_root):
         self.cluster_config = cluster_config
@@ -412,15 +323,15 @@ class DockerProvisioner:
             "cluster_name": "benchmark-provisioned-cluster",
             "node_name": self.node_name,
             # we bind-mount the directories below on the host to these ones.
-            "install_root_path": "/usr/share/opensearch",
-            "data_paths": ["/usr/share/opensearch/data"],
-            "log_path": "/var/log/opensearch",
-            "heap_dump_path": "/usr/share/opensearch/heapdump",
+            "install_root_path": "/var/solr",
+            "data_paths": ["/var/solr/data"],
+            "log_path": "/var/solr/logs",
+            "heap_dump_path": "/var/solr/heapdump",
             # Docker container needs to expose service on external interfaces
             "network_host": "0.0.0.0",
             "discovery_type": "single-node",
             "http_port": str(self.http_port),
-            "transport_port": str(self.http_port + 100),
+            "zookeeper_port": str(self.http_port + 1000),
             "cluster_settings": {}
         }
 
@@ -455,7 +366,7 @@ class DockerProvisioner:
                 for name in files:
                     source_file = os.path.join(root, name)
                     target_file = os.path.join(absolute_target_root, name)
-                    mounts[target_file] = os.path.join("/usr/share/opensearch", relative_root, name)
+                    mounts[target_file] = os.path.join("/var/solr", relative_root, name)
                     if plain_text(source_file):
                         self.logger.info("Reading config template file [%s] and writing to [%s].", source_file, target_file)
                         with open(target_file, mode="a", encoding="utf-8") as f:
@@ -486,12 +397,12 @@ class DockerProvisioner:
             docker_image = base_docker_image
 
         v = {
-            "os_version": self.distribution_version,
+            "solr_version": self.distribution_version,
             "docker_image": docker_image,
             "http_port": self.http_port,
-            "os_data_dir": self.data_paths[0],
-            "os_log_dir": self.node_log_dir,
-            "os_heap_dump_dir": self.heap_dump_dir,
+            "solr_data_dir": self.data_paths[0],
+            "solr_log_dir": self.node_log_dir,
+            "solr_heap_dump_dir": self.heap_dump_dir,
             "mounts": mounts
         }
         self._add_if_defined_for_cluster_config(v, "docker_mem_limit")

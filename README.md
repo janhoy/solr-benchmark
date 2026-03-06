@@ -62,6 +62,10 @@ solr-benchmark run \
   --test-mode
 ```
 
+## Known TODOs
+
+- `tests/workload/loader_test.py` uses `http://benchmarks.opensearch.org/corpora/` URLs in test data — these should be updated to the correct Solr corpus hosting URL when one is established.
+
 ## Workload format
 
 See [Workload Reference](https://janhoy.github.io/solr-benchmark/reference/workloads/) in the documentation for the full `workload.json` format, including `collections`, `corpora`, `operations`, and `test-procedures`.

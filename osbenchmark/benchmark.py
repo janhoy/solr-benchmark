@@ -458,7 +458,7 @@ def create_arg_parser():
     install_parser.add_argument(
         "--http-port",
         help="The port to expose for HTTP traffic",
-        default="39200"
+        default="38983"
     )
     install_parser.add_argument(
         "--node-name",

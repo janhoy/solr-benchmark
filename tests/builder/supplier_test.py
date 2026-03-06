@@ -59,7 +59,7 @@ class SourceRepositoryTests(TestCase):
         mock_is_working_copy.side_effect = [False, True]
         mock_head_revision.return_value = "HEAD"
 
-        s = supplier.SourceRepository(name="OpenSearch", remote_url="some-github-url", src_dir="/src")
+        s = supplier.SourceRepository(name="Solr", remote_url="some-github-url", src_dir="/src")
         s.fetch("latest")
 
         mock_is_working_copy.assert_called_with("/src")
@@ -75,7 +75,7 @@ class SourceRepositoryTests(TestCase):
         mock_is_working_copy.return_value = True
         mock_head_revision.return_value = "HEAD"
 
-        s = supplier.SourceRepository(name="OpenSearch", remote_url="some-github-url", src_dir="/src")
+        s = supplier.SourceRepository(name="Solr", remote_url="some-github-url", src_dir="/src")
         s.fetch("current")
 
         mock_is_working_copy.assert_called_with("/src")
@@ -94,7 +94,7 @@ class SourceRepositoryTests(TestCase):
         mock_head_revision.return_value = "HEAD"
 
         # local only, we dont specify a remote
-        s = supplier.SourceRepository(name="OpenSearch", remote_url=None, src_dir="/src")
+        s = supplier.SourceRepository(name="Solr", remote_url=None, src_dir="/src")
         s.fetch("67c2f42")
 
         mock_is_working_copy.assert_called_with("/src")
@@ -110,7 +110,7 @@ class SourceRepositoryTests(TestCase):
         mock_is_working_copy.return_value = True
         mock_head_revision.return_value = "HEAD"
 
-        s = supplier.SourceRepository(name="OpenSearch", remote_url="some-github-url", src_dir="/src")
+        s = supplier.SourceRepository(name="Solr", remote_url="some-github-url", src_dir="/src")
         s.fetch("@2015-01-01-01:00:00")
 
         mock_is_working_copy.assert_called_with("/src")
@@ -124,7 +124,7 @@ class SourceRepositoryTests(TestCase):
         mock_is_working_copy.return_value = True
         mock_head_revision.return_value = "HEAD"
 
-        s = supplier.SourceRepository(name="OpenSearch", remote_url="some-github-url", src_dir="/src")
+        s = supplier.SourceRepository(name="Solr", remote_url="some-github-url", src_dir="/src")
         s.fetch("67c2f42")
 
         mock_is_working_copy.assert_called_with("/src")
@@ -191,7 +191,7 @@ class TemplateRendererTests(TestCase):
         self.assertEqual("solr-9.10.1 on {{OSNAME}}", renderer.render("solr-{{VERSION}} on {{OSNAME}}"))
 
 
-class CachedOpenSearchSourceSupplierTests(TestCase):
+class CachedSolrSourceSupplierTests(TestCase):
     @mock.patch("osbenchmark.utils.io.ensure_dir")
     @mock.patch("shutil.copy")
     @mock.patch("osbenchmark.builder.supplier.SourceSupplier")
@@ -352,7 +352,7 @@ class CachedOpenSearchSourceSupplierTests(TestCase):
         self.assertEqual("/path/to/artifact.tar.gz", binaries["solr"])
 
 
-class OpenSearchFileNameResolverTests(TestCase):
+class SolrFileNameResolverTests(TestCase):
     def setUp(self):
         super().setUp()
         renderer = supplier.TemplateRenderer(version="9.10.1")
@@ -444,7 +444,7 @@ class PruneTests(TestCase):
         rm.assert_called_with("/tmp/test/opensearch-1.0.0.tar.gz")
 
 
-class OpenSearchSourceSupplierTests(TestCase):
+class SolrSourceSupplierTests(TestCase):
     def test_no_build(self):
         cluster_config_instance = cluster_config.ClusterConfigInstance("default", root_path=None, config_paths=[], variables={
             "clean_command": "./gradlew clean",

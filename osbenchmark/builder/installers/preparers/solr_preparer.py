@@ -22,7 +22,7 @@ class SolrPreparer(Preparer):
 
     def prepare(self, host, binaries):
         node = self._create_node()
-        self._prepare_node(host, node, binaries[BinaryKeys.OPENSEARCH])
+        self._prepare_node(host, node, binaries[BinaryKeys.SOLR])
 
         return node
 
@@ -84,7 +84,7 @@ class SolrPreparer(Preparer):
             # this is the IP address that the node will be bound to. OSB will bind to the node's IP address (but not to 0.0.0.0). The
             "network_host": host.address,
             "http_port": str(node.port),
-            "transport_port": str(node.port + 100),
+            "zookeeper_port": str(node.port + 1000),
             "all_node_ips": "[\"%s\"]" % "\",\"".join(all_node_ips),
             # at the moment we are strict and enforce that all nodes are master eligible nodes
             "minimum_master_nodes": len(all_node_ips),

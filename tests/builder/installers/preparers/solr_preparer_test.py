@@ -13,10 +13,10 @@ class NodePreparerTests(TestCase):
     def setUp(self):
         self.node_id = "abdefg"
         self.node = Node(binary_path="/fake_binary_path", data_paths=["/fake1", "/fake2"],
-                         name=self.node_id, pid=None, telemetry=None, port=9200, root_dir=None,
+                         name=self.node_id, pid=None, telemetry=None, port=8983, root_dir=None,
                          log_path="/fake/logpath", heap_dump_path="/fake/heap")
         self.host = Host(name="fake", address="10.17.22.23", metadata={}, node=None)
-        self.binaries = {BinaryKeys.OPENSEARCH: "/data/builds/distributions"}
+        self.binaries = {BinaryKeys.SOLR: "/data/builds/distributions"}
         self.all_node_ips = ["10.17.22.22", "10.17.22.23"]
 
         self.test_run_root = "fake_root"
@@ -33,7 +33,7 @@ class NodePreparerTests(TestCase):
                 "test_run_root": self.test_run_root,
                 "cluster_name": self.cluster_name,
                 "node": {
-                    "port": "9200"
+                    "port": "8983"
                 }
             }
         )
@@ -49,7 +49,7 @@ class NodePreparerTests(TestCase):
         node = self.preparer.prepare(self.host, self.binaries)
         self.assertEqual(node.binary_path, os.path.join(self.test_run_root, self.node_id, "install/solr*"))
         self.assertEqual(node.data_paths, [os.path.join(self.test_run_root, self.node_id, "install/solr*/data")])
-        self.assertEqual(node.port, 9200)
+        self.assertEqual(node.port, 8983)
         self.assertEqual(node.root_dir, os.path.join(self.test_run_root, self.node_id))
         self.assertEqual(node.name, self.node_id)
 
@@ -64,11 +64,11 @@ class NodePreparerTests(TestCase):
             "heap_dump_path": "/fake/heap",
             "node_ip": "10.17.22.23",
             "network_host": "10.17.22.23",
-            "http_port": "9200",
-            "transport_port": "9300",
+            "http_port": "8983",
+            "zookeeper_port": "9983",
             "all_node_ips": "[\"10.17.22.22\",\"10.17.22.23\"]",
             "minimum_master_nodes": 2,
             "install_root_path": "/fake_binary_path",
-            "node": {"port": "9200"},
+            "node": {"port": "8983"},
             "test_run_root": self.test_run_root
         }, config_vars)

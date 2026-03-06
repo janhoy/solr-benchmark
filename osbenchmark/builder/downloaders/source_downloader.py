@@ -23,11 +23,11 @@ class SourceDownloader(Downloader):
         artifact_variables = self.artifact_variables_provider.get_artifact_variables(host)
         self._prepare(host, artifact_variables)
 
-        return {BinaryKeys.OPENSEARCH: self._get_zip_path(source_path, artifact_variables)}
+        return {BinaryKeys.SOLR: self._get_zip_path(source_path, artifact_variables)}
 
     def _get_source_path(self):
         node_root_dir = self.cluster_config.variables["source"]["root"]["dir"]
-        source_subdir = self.cluster_config.variables["source"]["opensearch"]["subdir"]
+        source_subdir = self.cluster_config.variables["source"]["solr"]["subdir"]
         return os.path.join(node_root_dir, source_subdir)
 
     def _fetch(self, host, source_path):

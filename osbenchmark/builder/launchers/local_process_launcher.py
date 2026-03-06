@@ -82,12 +82,12 @@ class LocalProcessLauncher(Launcher):
             # TODO remove this when ES <8.0 becomes unsupported by OSB
             env["JAVA_HOME"] = java_home
             self.logger.info("JAVA HOME: %s", env["JAVA_HOME"])
-        if not env.get("OPENSEARCH_JAVA_OPTS"):
-            env["OPENSEARCH_JAVA_OPTS"] = "-XX:+ExitOnOutOfMemoryError"
+        if not env.get("SOLR_JAVA_OPTS"):
+            env["SOLR_JAVA_OPTS"] = "-XX:+ExitOnOutOfMemoryError"
 
         # we just blindly trust telemetry here...
         for jvm_option in telemetry.instrument_candidate_java_opts():
-            self._set_env(env, "OPENSEARCH_JAVA_OPTS", jvm_option)
+            self._set_env(env, "SOLR_JAVA_OPTS", jvm_option)
 
         self.logger.debug("env for [%s]: %s", node_name, str(env))
         return env
