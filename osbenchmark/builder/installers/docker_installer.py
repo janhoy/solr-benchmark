@@ -70,15 +70,15 @@ class DockerInstaller(Installer):
             "cluster_name": self.cluster_config.variables["cluster_name"],
             "node_name": node.name,
             # we bind-mount the directories below on the host to these ones.
-            "install_root_path": "/usr/share/opensearch",
-            "data_paths": ["/usr/share/opensearch/data"],
-            "log_path": "/var/log/opensearch",
-            "heap_dump_path": "/usr/share/opensearch/heapdump",
+            "install_root_path": "/var/solr",
+            "data_paths": ["/var/solr/data"],
+            "log_path": "/var/solr/logs",
+            "heap_dump_path": "/var/solr/heapdump",
             # Docker container needs to expose service on external interfaces
             "network_host": "0.0.0.0",
             "discovery_type": "single-node",
             "http_port": str(node.port),
-            "transport_port": str(node.port + 100),
+            "zookeeper_port": str(node.port + 1000),
             "cluster_settings": {}
         }
 
@@ -90,12 +90,12 @@ class DockerInstaller(Installer):
 
     def _get_docker_vars(self, node, mounts):
         docker_vars = {
-            "os_version": self.cluster_config.variables["origin"]["distribution"]["version"],
+            "solr_version": self.cluster_config.variables["origin"]["distribution"]["version"],
             "docker_image": self.cluster_config.variables["origin"]["docker"]["docker_image"],
             "http_port": node.port,
-            "os_data_dir": node.data_paths[0],
-            "os_log_dir": node.log_path,
-            "os_heap_dump_dir": node.heap_dump_path,
+            "solr_data_dir": node.data_paths[0],
+            "solr_log_dir": node.log_path,
+            "solr_heap_dump_dir": node.heap_dump_path,
             "mounts": mounts
         }
         self._add_if_defined_for_cluster_config(docker_vars, "docker_mem_limit")

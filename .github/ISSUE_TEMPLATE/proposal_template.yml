@@ -36,7 +36,7 @@ body:
     id: are-there-any-security-coniderations
     attributes:
       label: Are there any security considerations?
-      description: Describe if the feature has any security considerations or impact. What is the security model of the new APIs? Features should be integrated into the OpenSearch security suite and so if they are not, we should highlight the reasons here
+      description: Describe if the feature has any security considerations or impact. What is the security model of the new APIs? If there are security implications, please highlight them here.
   - type: textarea
     id: are-there-any-breaking-changes
     attributes:
@@ -56,7 +56,7 @@ body:
     id: why-should-it-be-built
     attributes:
       label: Why should it be built? Any reason not to?
-      description: Describe the value that this feature will bring to the OpenSearch community, as well as what impact it has if it isn't built, or new risks if it is. Highlight opportunities for additional research.
+      description: Describe the value that this feature will bring to the Apache Solr Benchmark community, as well as what impact it has if it isn't built, or new risks if it is. Highlight opportunities for additional research.
   - type: textarea
     id: what-will-it-take-to-execute
     attributes:

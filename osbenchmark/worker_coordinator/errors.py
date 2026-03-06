@@ -29,18 +29,18 @@ def parse_error(error_metadata):
     return operation
 
 
-class OpenSearchOperationError():
+class BenchmarkOperationError():
     def __init__(self, description, operation=None, status_code=None):
         self.description = description
         self.operation = operation
         self.status_code = status_code
 
-class UnknownOperationError(OpenSearchOperationError):
+class UnknownOperationError(BenchmarkOperationError):
     def get_error_message(self):
         return self.description
 
 
-class IndexOperationError(OpenSearchOperationError):
+class IndexOperationError(BenchmarkOperationError):
     def get_error_message(self):
         if self.status_code == 403:
             return f"permission denied for {self.operation}. check logs for details"
@@ -49,7 +49,7 @@ class IndexOperationError(OpenSearchOperationError):
         else:
             return self.description
 
-class SearchOperationError(OpenSearchOperationError):
+class SearchOperationError(BenchmarkOperationError):
     def get_error_message(self):
         if self.status_code == 403:
             return f"permission denied for {self.operation}. check logs for details"

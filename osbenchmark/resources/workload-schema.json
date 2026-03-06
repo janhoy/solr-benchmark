@@ -568,7 +568,7 @@
           },
           "cache": {
             "type": "boolean",
-            "description": "[Only for type 'search']: Whether to use the query request cache. By default, OSB will define no value thus the default depends on the benchmark candidate settings and OpenSearch version."
+            "description": "[Only for type 'search']: Whether to use the query request cache. By default, OSB will define no value thus the default depends on the benchmark candidate settings and Solr version."
           },
           "index": {
             "type": "string",

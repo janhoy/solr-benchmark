@@ -25,7 +25,7 @@
 
 class Node:
     """
-    Represents an OpenSearch cluster node.
+    Represents a Solr cluster node.
     """
 
     def __init__(self, pid, binary_path, host_name, node_name, telemetry):

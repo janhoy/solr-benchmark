@@ -36,10 +36,6 @@ def test_list_cluster_configs(cfg):
     assert it.osbenchmark(cfg, "list cluster-configs --cluster-config-repository=default") == 0
 
 
-@it.benchmark_in_mem
-def test_list_opensearch_plugins(cfg):
-    assert it.osbenchmark(cfg, "list opensearch-plugins") == 0
-
 
 @it.benchmark_in_mem
 def test_list_workloads(cfg):

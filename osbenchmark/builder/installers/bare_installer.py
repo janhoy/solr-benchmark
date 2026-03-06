@@ -1,5 +1,4 @@
 from osbenchmark.builder.installers.installer import Installer
-from osbenchmark.builder.installers.preparers.plugin_preparer import PluginPreparer
 from osbenchmark.builder.cluster_config import BootstrapPhase
 from osbenchmark.builder.utils.config_applier import ConfigApplier
 from osbenchmark.builder.utils.java_home_resolver import JavaHomeResolver
@@ -40,12 +39,6 @@ class BareInstaller(Installer):
 
         for preparer, node in preparer_to_node.items():
             config_vars.update(preparer.get_config_vars(host, node, all_node_ips))
-
-        plugin_names = [preparer.get_plugin_name() for preparer in self.preparers if isinstance(preparer, PluginPreparer)]
-        if plugin_names:
-            # as a safety measure, prevent the cluster to startup if something went wrong during plugin installation
-            config_vars["cluster_settings"] = {}
-            config_vars["cluster_settings"]["plugin.mandatory"] = plugin_names
 
         return config_vars
 

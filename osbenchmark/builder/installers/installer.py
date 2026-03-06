@@ -3,8 +3,7 @@ from abc import ABC, abstractmethod
 
 class Installer(ABC):
     """
-    Installers are invoked to prepare the OpenSearch and Plugin data that exists on a host so that an OpenSearch cluster
-    can be started.
+    Installers are invoked to prepare Solr data that exists on a host so that a Solr cluster can be started.
     """
 
     def __init__(self, executor):
@@ -13,7 +12,7 @@ class Installer(ABC):
     @abstractmethod
     def install(self, host, binaries, all_node_ips):
         """
-        Executes the necessary logic to prepare and install OpenSearch and any request Plugins on a cluster host
+        Executes the necessary logic to prepare and install Solr on a cluster host
 
         ;param host: A Host object defining the host on which to install the data
         ;param binaries: A map of components to install to their paths on the host

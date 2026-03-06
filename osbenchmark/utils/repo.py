@@ -154,7 +154,7 @@ class BenchmarkRepository:
                 if convert(distribution_version) >= convert(branch):
                     return branch
 
-            raise Exception("Distribution version is less than available ES or OpenSearch versions for cluster-configs.")
+            raise Exception("Distribution version is less than available Solr versions for cluster-configs.")
 
         # Distribution version is Nonetype if not specified in command line
         return "main"

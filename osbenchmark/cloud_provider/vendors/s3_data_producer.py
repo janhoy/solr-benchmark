@@ -15,7 +15,11 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from boto3 import client
 
 from osbenchmark import exceptions
-from osbenchmark.data_streaming.data_producer import DataProducer
+try:
+    from osbenchmark.data_streaming.data_producer import DataProducer
+except ImportError:
+    class DataProducer:  # pylint: disable=too-few-public-methods
+        """Fallback when data_streaming package is not available."""
 from osbenchmark.workload.ingestion_manager import IngestionManager
 
 class S3DataProducer(DataProducer):

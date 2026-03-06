@@ -35,4 +35,4 @@ class ScriptsTests(TestCase):
         p = subprocess.Popen([str(script), "-c", "10"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stderr = p.communicate()[1].decode('UTF-8')
-        self.assertTrue("could not find OSB config file" in stderr)
+        self.assertTrue("could not find benchmark config file" in stderr)
