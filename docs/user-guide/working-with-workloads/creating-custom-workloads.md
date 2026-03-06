@@ -271,7 +271,7 @@ defines.
 ## Splitting operations into separate files (simple include)
 
 For simpler workloads where you only need one operations file and one test-procedures file,
-use a Jinja2 `{% include %}` statement:
+use a Jinja2 {% raw %}`{% include %}`{% endraw %} statement:
 
 {% raw %}
 ```json
