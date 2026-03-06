@@ -973,8 +973,14 @@ class WorkerCoordinator:
         all_hosts = self.config.opts("client", "hosts").all_hosts
         hosts = all_hosts.get("default", [])
         host_entry = hosts[0] if hosts else {}
-        solr_host = host_entry.get("host", "localhost")
-        solr_port = host_entry.get("port", 8983)
+        if isinstance(host_entry, dict):
+            solr_host = host_entry.get("host", "localhost")
+            solr_port = host_entry.get("port", 8983)
+        else:
+            # host_entry may be a "host:port" string
+            parts = str(host_entry).rsplit(":", 1)
+            solr_host = parts[0] if parts else "localhost"
+            solr_port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 8983
 
         admin = SolrAdminClient(host=solr_host, port=solr_port)
         return [

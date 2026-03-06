@@ -1368,7 +1368,7 @@ class AsyncExecutorTests(TestCase):
         execute_schedule = worker_coordinator.AsyncExecutor(client_id=2,
                                                 task=task,
                                                 schedule=schedule,
-                                                opensearch={
+                                                clients={
                                                     "default": opensearch
                                                 },
                                                 sampler=sampler,
@@ -1430,7 +1430,7 @@ class AsyncExecutorTests(TestCase):
         execute_schedule = worker_coordinator.AsyncExecutor(client_id=2,
                                                 task=task,
                                                 schedule=schedule,
-                                                opensearch={
+                                                clients={
                                                     "default": opensearch
                                                 },
                                                 sampler=sampler,
@@ -1499,7 +1499,7 @@ class AsyncExecutorTests(TestCase):
         execute_schedule = worker_coordinator.AsyncExecutor(client_id=0,
                                                 task=task,
                                                 schedule=schedule,
-                                                opensearch={
+                                                clients={
                                                     "default": opensearch
                                                 },
                                                 sampler=sampler,
@@ -1568,7 +1568,7 @@ class AsyncExecutorTests(TestCase):
             execute_schedule = worker_coordinator.AsyncExecutor(client_id=0,
                                                     task=task,
                                                     schedule=schedule,
-                                                    opensearch={
+                                                    clients={
                                                         "default": opensearch
                                                     },
                                                     sampler=sampler,
@@ -1628,7 +1628,7 @@ class AsyncExecutorTests(TestCase):
         execute_schedule = worker_coordinator.AsyncExecutor(client_id=2,
                                                 task=task,
                                                 schedule=ScheduleHandle(),
-                                                opensearch={
+                                                clients={
                                                     "default": opensearch
                                                 },
                                                 sampler=sampler,
@@ -1836,7 +1836,7 @@ class AsyncExecutorHelperMethodsTests(TestCase):
             client_id=0,
             task=self.task,
             schedule=self.schedule_handle,
-            opensearch=self.opensearch,
+            clients=self.opensearch,
             sampler=self.sampler,
             profile_sampler=self.profile_sampler,
             cancel=self.cancel,
