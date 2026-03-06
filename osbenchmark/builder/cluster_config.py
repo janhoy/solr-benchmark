@@ -390,11 +390,11 @@ class PluginLoader:
                 if not io.exists(config_file):
                     if core_plugin:
                         raise exceptions.SystemSetupError("Plugin [%s] does not provide configuration [%s]. List the available plugins "
-                                                          "and configurations with %s list opensearch-plugins "
+                                                          "and configurations with %s list cluster-configs "
                                                           "--distribution-version=VERSION." % (name, config_name, PROGRAM_NAME))
                     else:
                         raise exceptions.SystemSetupError("Unknown plugin [%s]. List the available plugins with %s list "
-                                                          "opensearch-plugins --distribution-version=VERSION." % (name, PROGRAM_NAME))
+                                                          "cluster-configs --distribution-version=VERSION." % (name, PROGRAM_NAME))
 
                 config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
                 # Do not modify the case of option keys but read them as is

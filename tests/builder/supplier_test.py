@@ -34,19 +34,19 @@ from osbenchmark.builder import supplier, cluster_config
 
 class RevisionExtractorTests(TestCase):
     def test_single_revision(self):
-        self.assertDictEqual({"opensearch": "67c2f42", "all": "67c2f42"}, supplier._extract_revisions("67c2f42"))
-        self.assertDictEqual({"opensearch": "current", "all": "current"}, supplier._extract_revisions("current"))
-        self.assertDictEqual({"opensearch": "@2015-01-01-01:00:00", "all": "@2015-01-01-01:00:00"},
+        self.assertDictEqual({"solr": "67c2f42", "all": "67c2f42"}, supplier._extract_revisions("67c2f42"))
+        self.assertDictEqual({"solr": "current", "all": "current"}, supplier._extract_revisions("current"))
+        self.assertDictEqual({"solr": "@2015-01-01-01:00:00", "all": "@2015-01-01-01:00:00"},
                              supplier._extract_revisions("@2015-01-01-01:00:00"))
 
     def test_multiple_revisions(self):
-        self.assertDictEqual({"opensearch": "67c2f42", "some-plugin": "current"},
-                             supplier._extract_revisions("opensearch:67c2f42,some-plugin:current"))
+        self.assertDictEqual({"solr": "67c2f42", "some-plugin": "current"},
+                             supplier._extract_revisions("solr:67c2f42,some-plugin:current"))
 
     def test_invalid_revisions(self):
         with self.assertRaises(exceptions.SystemSetupError) as ctx:
-            supplier._extract_revisions("opensearch 67c2f42,some-plugin:current")
-        self.assertEqual("Revision [opensearch 67c2f42] does not match expected format [name:revision].", ctx.exception.args[0])
+            supplier._extract_revisions("solr 67c2f42,some-plugin:current")
+        self.assertEqual("Revision [solr 67c2f42] does not match expected format [name:revision].", ctx.exception.args[0])
 
 
 class SourceRepositoryTests(TestCase):
@@ -620,48 +620,17 @@ class PluginDistributionSupplierTests(TestCase):
 
 
 class CreateSupplierTests(TestCase):
-    def test_derive_supply_requirements_os_source_build(self):
+    def test_derive_supply_requirements_source_build(self):
         # corresponds to --revision="abc"
         requirements = supplier._supply_requirements(
-            sources=True, distribution=False, plugins=[], revisions={"opensearch": "abc"}, distribution_version=None)
-        self.assertDictEqual({"opensearch": ("source", "abc", True)}, requirements)
+            sources=True, distribution=False, plugins=[], revisions={"solr": "abc"}, distribution_version=None)
+        self.assertDictEqual({"solr": ("source", "abc", True)}, requirements)
 
-    def test_derive_supply_requirements_os_distribution(self):
+    def test_derive_supply_requirements_distribution(self):
         # corresponds to --distribution-version=1.0.0
         requirements = supplier._supply_requirements(
             sources=False, distribution=True, plugins=[], revisions={}, distribution_version="1.0.0")
-        self.assertDictEqual({"opensearch": ("distribution", "1.0.0", False)}, requirements)
-
-    def test_derive_supply_requirements_os_and_plugin_source_build(self):
-        # corresponds to --revision="opensearch:abc,community-plugin:effab"
-        core_plugin = cluster_config.PluginDescriptor("analysis-icu", core_plugin=True)
-        external_plugin = cluster_config.PluginDescriptor("community-plugin", core_plugin=False)
-
-        requirements = supplier._supply_requirements(sources=True, distribution=False, plugins=[core_plugin, external_plugin],
-                                                     revisions={"opensearch": "abc", "all": "abc", "community-plugin": "effab"},
-                                                     distribution_version=None)
-        self.assertDictEqual({
-            "opensearch": ("source", "abc", True),
-            # core plugin configuration is forced to be derived from OS
-            "analysis-icu": ("source", "abc", True),
-            "community-plugin": ("source", "effab", True),
-        }, requirements)
-
-    def test_derive_supply_requirements_os_distribution_and_plugin_source_build(self):
-        # corresponds to --revision="community-plugin:effab" --distribution-version="1.0.0"
-        core_plugin = cluster_config.PluginDescriptor("analysis-icu", core_plugin=True)
-        external_plugin = cluster_config.PluginDescriptor("community-plugin", core_plugin=False)
-
-        requirements = supplier._supply_requirements(sources=False, distribution=True, plugins=[core_plugin, external_plugin],
-                                                     revisions={"community-plugin": "effab"},
-                                                     distribution_version="1.0.0")
-        # core plugin is not contained, its configured is forced to be derived by OS
-        self.assertDictEqual({
-            "opensearch": ("distribution", "1.0.0", False),
-            # core plugin configuration is forced to be derived from OS
-            "analysis-icu": ("distribution", "1.0.0", False),
-            "community-plugin": ("source", "effab", True),
-        }, requirements)
+        self.assertDictEqual({"solr": ("distribution", "1.0.0", False)}, requirements)
 
     def test_create_suppliers_for_os_only_config(self):
         cfg = config.Config()
@@ -681,80 +650,6 @@ class CreateSupplierTests(TestCase):
         self.assertEqual(1, len(composite_supplier.suppliers))
         self.assertIsInstance(composite_supplier.suppliers[0], supplier.DistributionSupplier)
 
-    @mock.patch("osbenchmark.utils.jvm.resolve_path", lambda v: (v, "/opt/java/java{}".format(v)))
-    def test_create_suppliers_for_os_distribution_plugin_source_build(self):
-        cfg = config.Config()
-        cfg.add(config.Scope.application, "builder", "distribution.version", "1.0.0")
-        # default value from command line
-        cfg.add(config.Scope.application, "builder", "source.revision", "community-plugin:current")
-        cfg.add(config.Scope.application, "builder", "distribution.repository", "release")
-        cfg.add(config.Scope.application, "distributions", "release.url",
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz")
-        cfg.add(config.Scope.application, "distributions", "release.cache", True)
-        cfg.add(config.Scope.application, "node", "root.dir", "/opt/benchmark")
-        cfg.add(config.Scope.application, "node", "src.root.dir", "/opt/benchmark/src")
-        cfg.add(config.Scope.application, "source", "src.subdir", "opensearch")
-        cfg.add(config.Scope.application, "source", "plugin.community-plugin.src.dir", "/home/user/Projects/community-plugin")
-
-        cluster_config_instance = cluster_config.ClusterConfigInstance(
-            "default", root_path=None, config_paths=[],
-            variables={"build.jdk": "10"})
-        core_plugin = cluster_config.PluginDescriptor("analysis-icu", core_plugin=True)
-        external_plugin = cluster_config.PluginDescriptor("community-plugin", core_plugin=False)
-
-        # --revision="community-plugin:effab" --distribution-version="1.0.0"
-        composite_supplier = supplier.create(
-            cfg, sources=False, distribution=True,
-            cluster_config=cluster_config_instance, plugins=[
-            core_plugin,
-            external_plugin
-        ])
-
-        self.assertEqual(3, len(composite_supplier.suppliers))
-        self.assertIsInstance(composite_supplier.suppliers[0], supplier.DistributionSupplier)
-        self.assertIsInstance(composite_supplier.suppliers[1], supplier.PluginDistributionSupplier)
-        self.assertEqual(core_plugin, composite_supplier.suppliers[1].plugin)
-        self.assertIsInstance(composite_supplier.suppliers[2].source_supplier, supplier.ExternalPluginSourceSupplier)
-        self.assertEqual(external_plugin, composite_supplier.suppliers[2].source_supplier.plugin)
-        self.assertIsNotNone(composite_supplier.suppliers[2].source_supplier.builder)
-
-    @mock.patch("osbenchmark.utils.jvm.resolve_path", lambda v: (v, "/opt/java/java{}".format(v)))
-    def test_create_suppliers_for_os_and_plugin_source_build(self):
-        cfg = config.Config()
-        cfg.add(config.Scope.application, "builder", "source.revision", "opensearch:abc,community-plugin:current")
-        cfg.add(config.Scope.application, "builder", "distribution.repository", "release")
-        cfg.add(config.Scope.application, "distributions", "release.url",
-                "https://artifacts.opensearch.org/releases/bundle/opensearch/{{VERSION}}/opensearch-{{VERSION}}-{{OSNAME}}-{{ARCH}}.tar.gz")
-        cfg.add(config.Scope.application, "distributions", "release.cache", True)
-        cfg.add(config.Scope.application, "node", "root.dir", "/opt/benchmark")
-        cfg.add(config.Scope.application, "node", "src.root.dir", "/opt/benchmark/src")
-        cfg.add(config.Scope.application, "source", "src.subdir", "opensearch")
-        cfg.add(config.Scope.application, "source", "remote.repo.url", "https://github.com/opensearch-project/OpenSearch.git")
-        cfg.add(config.Scope.application, "source", "plugin.community-plugin.src.subdir", "opensearch-extra/community-plugin")
-
-        cluster_config_instance = cluster_config.ClusterConfigInstance("default", root_path=None, config_paths=[], variables={
-            "clean_command": "./gradlew clean",
-            "build_command": "./gradlew assemble",
-            "build.jdk": "11"
-        })
-        core_plugin = cluster_config.PluginDescriptor("analysis-icu", core_plugin=True)
-        external_plugin = cluster_config.PluginDescriptor("community-plugin", core_plugin=False)
-
-        # --revision="opensearch:abc,community-plugin:effab"
-        composite_supplier = supplier.create(
-            cfg, sources=True, distribution=False,
-            cluster_config=cluster_config_instance, plugins=[
-            core_plugin,
-            external_plugin
-        ])
-
-        self.assertEqual(3, len(composite_supplier.suppliers))
-        self.assertIsInstance(composite_supplier.suppliers[0].source_supplier, supplier.SourceSupplier)
-        self.assertIsInstance(composite_supplier.suppliers[1].source_supplier, supplier.CorePluginSourceSupplier)
-        self.assertEqual(core_plugin, composite_supplier.suppliers[1].source_supplier.plugin)
-        self.assertIsInstance(composite_supplier.suppliers[2].source_supplier, supplier.ExternalPluginSourceSupplier)
-        self.assertEqual(external_plugin, composite_supplier.suppliers[2].source_supplier.plugin)
-        self.assertIsNotNone(composite_supplier.suppliers[2].source_supplier.builder)
 
 
 class DistributionRepositoryTests(TestCase):

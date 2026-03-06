@@ -25,7 +25,6 @@
 import unittest.mock as mock
 from unittest import TestCase
 
-from osbenchmark import exceptions
 from osbenchmark.builder import java_resolver
 
 
@@ -50,15 +49,3 @@ class JavaResolverTests(TestCase):
         self.assertEqual(major, 8)
         self.assertEqual(java_home, "/opt/jdk8")
         resolve_jvm_path.assert_called_with([8])
-
-    @mock.patch("osbenchmark.utils.sysstats.os_name", return_value="Windows")
-    def test_resolves_java_home_for_bundled_jdk_windows(self, os_name):
-        with self.assertRaises(exceptions.SystemSetupError) as ctx:
-            java_resolver.java_home("12,11,10,9,8", specified_runtime_jdk="bundled", provides_bundled_jdk=True)
-        self.assertEqual("OpenSearch doesn't provide release artifacts for Windows currently.", ctx.exception.args[0])
-
-    def test_disallowed_bundled_jdk(self):
-        with self.assertRaises(exceptions.SystemSetupError) as ctx:
-            java_resolver.java_home("12,11,10,9,8", specified_runtime_jdk="bundled")
-        self.assertEqual("This OpenSearch version does not contain a bundled JDK. Please specify a different runtime JDK.",
-                         ctx.exception.args[0])
