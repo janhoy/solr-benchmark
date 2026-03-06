@@ -109,7 +109,7 @@ class LocalProcessLauncher(Launcher):
         if distribution_version is None:
             cmd.append("--cloud")
         else:
-            version_parts = str(distribution_version).split("-")[0].split(".")
+            version_parts = str(distribution_version).split("-", maxsplit=1)[0].split(".")
             try:
                 if int(version_parts[0]) < 10:
                     cmd.append("--cloud")
