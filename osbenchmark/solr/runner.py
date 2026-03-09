@@ -533,7 +533,6 @@ class SolrSearch(SolrRunner):
         host = params.get("host", "localhost")
         port = params.get("port", 8983)
         tls = params.get("tls", False)
-        op_name = params.get("name", params.get("operation-type", "unknown"))
         # Accept 'index' as alias for 'collection' (standard OSB workload format).
         collection = params.get("collection") or params.get("index") or None
         if not collection:
@@ -676,7 +675,6 @@ class SolrWaitForMerges(SolrRunner):
         retry_wait = float(params.get("retry-wait-period", 2.0))
         max_wait = float(params.get("max-wait-seconds", 3600))
         start = time.perf_counter()
-        total_running = 0
 
         while True:
             raw = await _run_in_executor(admin.get_node_metrics)
