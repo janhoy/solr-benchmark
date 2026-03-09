@@ -47,6 +47,33 @@ solr-benchmark run \
   --test-mode
 ```
 
+### geonames
+
+The `geonames` workload benchmarks search and geospatial scenarios using geographic place-name data from the [GeoNames](https://www.geonames.org/) database. It evaluates:
+
+- Full-text name search queries
+- Geo-distance queries
+- Faceted aggregations by country code and feature classification
+
+The dataset contains around 11.4 million documents and is suitable for small clusters. A `--test-mode` run uses a small document subset and completes in minutes.
+
+**Test procedures:**
+
+| Procedure | Description |
+|-----------|-------------|
+| `append-no-conflicts` (default) | Indexes the full corpus, then runs search and faceting queries |
+| `append-no-conflicts-index-only` | Indexing only, without query execution |
+
+**Example run:**
+
+```bash
+solr-benchmark run \
+  --pipeline docker \
+  --distribution-version 9.10.1 \
+  --workload geonames \
+  --test-mode
+```
+
 ## Custom workloads
 
 For specialized requirements, see:
