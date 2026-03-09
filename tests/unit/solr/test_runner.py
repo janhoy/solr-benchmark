@@ -270,27 +270,22 @@ class TestSolrSearch(unittest.TestCase):
         self.assertEqual(7, result["hits"])
         mock_session.post.assert_called_once()
 
-    def test_unconverted_os_dsl_body_raises_error(self):
-        """Un-converted OpenSearch DSL body (query is a dict) raises BenchmarkAssertionError (FR-018f)."""
-        from osbenchmark.exceptions import BenchmarkAssertionError
+    @patch("osbenchmark.solr.runner.requests.Session")
+    def test_dict_query_body_posted_to_solr(self, mock_session_cls):
+        """Body with dict query (Solr JSON DSL) is POSTed to /query endpoint."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {"response": {"numFound": 3}}
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_resp
+        mock_session_cls.return_value = mock_session
+
         params = {**self._base_params(), "body": {"query": {"match_all": {}}, "size": 20}}
         runner = SolrSearch()
-        with self.assertRaises(BenchmarkAssertionError) as ctx:
-            _run(runner(None, params))
-        self.assertIn("convert-workload", str(ctx.exception))
+        result = _run(runner(None, params))
 
-    def test_unconverted_os_dsl_body_with_term_query_raises_error(self):
-        """Un-converted OpenSearch term query body raises BenchmarkAssertionError (FR-018f)."""
-        from osbenchmark.exceptions import BenchmarkAssertionError
-        params = {
-            "host": "localhost", "port": 8983,
-            "index": "nyc_taxis",
-            "body": {"query": {"term": {"vendor_id": "1"}}},
-        }
-        runner = SolrSearch()
-        with self.assertRaises(BenchmarkAssertionError) as ctx:
-            _run(runner(None, params))
-        self.assertIn("convert-workload", str(ctx.exception))
+        self.assertEqual(3, result["hits"])
+        mock_session.post.assert_called_once()
 
 
 class TestSolrCreateCollection(unittest.TestCase):
