@@ -549,35 +549,24 @@ class SolrSearch(SolrRunner):
 
         body = params.get("body")
         if body is not None:
-            if isinstance(body, dict) and isinstance(body.get("query"), dict):
-                # Hard error: un-converted OpenSearch DSL body detected.
-                # FR-018b ensures OSB workloads are rejected at load time, so this
-                # should never happen in practice. If it does, the workload was not
-                # properly converted — raise a clear error rather than silently degrading.
-                raise benchmark_exceptions.BenchmarkAssertionError(
-                    f"Task '{op_name}' has a query body with an OpenSearch DSL dict (body['query'] is a dict). "
-                    f"This workload must be converted to Solr format first. Run: "
-                    f"solr-benchmark convert-workload --workload-path <src> --output-path <dest>"
-                )
-            else:
-                # Mode 2: Solr JSON Query DSL → POST /solr/{collection}/query
-                url = f"{scheme}://{host}:{port}/solr/{collection}/query"
-                req_headers = {"Content-Type": "application/json"}
-                username = params.get("username")
-                password = params.get("password")
-                auth = (username, password) if username and password else None
+            # Mode 2: Solr JSON Query DSL → POST /solr/{collection}/query
+            url = f"{scheme}://{host}:{port}/solr/{collection}/query"
+            req_headers = {"Content-Type": "application/json"}
+            username = params.get("username")
+            password = params.get("password")
+            auth = (username, password) if username and password else None
 
-                def _do_json_search():
-                    session = requests.Session()
-                    session.trust_env = False  # prevent macOS proxy detection (fork-safety)
-                    resp = session.post(url, json=body,
-                                        headers=req_headers, auth=auth,
-                                        timeout=timeout)
-                    resp.raise_for_status()
-                    return resp.json()
+            def _do_json_search():
+                session = requests.Session()
+                session.trust_env = False  # prevent macOS proxy detection (fork-safety)
+                resp = session.post(url, json=body,
+                                    headers=req_headers, auth=auth,
+                                    timeout=timeout)
+                resp.raise_for_status()
+                return resp.json()
 
-                result = await _run_in_executor(_do_json_search)
-                num_hits = result.get("response", {}).get("numFound", 0)
+            result = await _run_in_executor(_do_json_search)
+            num_hits = result.get("response", {}).get("numFound", 0)
         else:
             # Mode 1: Classic Solr params → pysolr.Solr.search()
             solr_params = dict(params)
