@@ -1730,3 +1730,37 @@ class SearchParamSourceTests(TestCase):
                     }
                 }
             })
+
+
+class CreateCollectionParamSourceTests(TestCase):
+    def test_uses_first_collection_when_no_target_specified(self):
+        col = workload.Collection(name="my-col", configset="my-cfg", configset_path="/path/conf",
+                                  num_shards=2, replication_factor=1)
+        wl = workload.Workload(name="unit-test", collections=[col])
+        ps = params.CreateCollectionParamSource(workload=wl, params={})
+        p = ps.params()
+        self.assertEqual("my-col", p["collection"])
+        self.assertEqual("my-cfg", p["configset"])
+        self.assertEqual("/path/conf", p["configset-path"])
+        self.assertEqual(2, p["num-shards"])
+        self.assertEqual(1, p["replication-factor"])
+
+    def test_selects_named_collection(self):
+        col1 = workload.Collection(name="col-a")
+        col2 = workload.Collection(name="col-b", num_shards=3)
+        wl = workload.Workload(name="unit-test", collections=[col1, col2])
+        ps = params.CreateCollectionParamSource(workload=wl, params={"collection": "col-b"})
+        p = ps.params()
+        self.assertEqual("col-b", p["collection"])
+        self.assertEqual(3, p["num-shards"])
+
+    def test_raises_when_no_collections(self):
+        wl = workload.Workload(name="unit-test", collections=[])
+        with self.assertRaises(exceptions.InvalidSyntax):
+            params.CreateCollectionParamSource(workload=wl, params={})
+
+    def test_registered_by_op_type_string(self):
+        col = workload.Collection(name="my-col")
+        wl = workload.Workload(name="unit-test", collections=[col])
+        ps = params.param_source_for_operation("create-collection", wl, {}, "create-collection")
+        self.assertIsInstance(ps, params.CreateCollectionParamSource)
