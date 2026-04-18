@@ -33,7 +33,7 @@ from enum import Enum
 import tabulate
 
 from osbenchmark import metrics, exceptions
-from osbenchmark import result_writer as solr_result_writer
+from osbenchmark import result_writer
 from osbenchmark.utils import convert, io as rio, console
 
 FINAL_SCORE = r"""
@@ -139,7 +139,7 @@ class SummaryResultsPublisher:
         writer_name = config.opts("reporting", "results_writer", mandatory=False, default_value=None)
         results_path = config.opts("reporting", "results_path", mandatory=False, default_value=None)
         if writer_name and results_path:
-            self._result_writer = solr_result_writer.create_writer(
+            self._result_writer = result_writer.create_writer(
                 writer_name, results_path=rio.normalize_path(results_path)
             )
         else:

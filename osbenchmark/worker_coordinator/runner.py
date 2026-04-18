@@ -34,7 +34,7 @@ from typing import List
 
 import ijson
 import pysolr
-import requests as _requests_lib
+import requests
 
 from osbenchmark import exceptions, workload
 from osbenchmark.client import RequestContextHolder, CollectionAlreadyExistsError, CollectionNotFoundError
@@ -835,11 +835,11 @@ class Retry(Runner, Delegator):
 
 def _translate_solr_error(e):
     """Translate a pysolr or requests exception to a BenchmarkTransportError."""
-    if isinstance(e, _requests_lib.exceptions.ConnectionError):
+    if isinstance(e, requests.exceptions.ConnectionError):
         return exceptions.BenchmarkConnectionError(str(e), cause=e)
-    if isinstance(e, (_requests_lib.exceptions.Timeout, _requests_lib.exceptions.ConnectTimeout)):
+    if isinstance(e, (requests.exceptions.Timeout, requests.exceptions.ConnectTimeout)):
         return exceptions.BenchmarkConnectionTimeout(str(e), cause=e)
-    if isinstance(e, _requests_lib.exceptions.HTTPError):
+    if isinstance(e, requests.exceptions.HTTPError):
         status_code = e.response.status_code if e.response is not None else None
         if status_code == 404:
             return exceptions.BenchmarkNotFoundError(str(e), cause=e)
@@ -870,7 +870,7 @@ def _solr_runner_decorator(fn):
             return await fn(*args, **kwargs)
         except exceptions.BenchmarkTransportError:
             raise
-        except (pysolr.SolrError, _requests_lib.exceptions.RequestException) as e:
+        except (pysolr.SolrError, requests.exceptions.RequestException) as e:
             raise _translate_solr_error(e) from e
     return wrapper
 
