@@ -36,7 +36,7 @@ __BENCHMARK_VERSION_PATTERN = re.compile(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:.(.+
 
 def revision():
     """
-    :return: The current git revision if OSB is installed in development mode or ``None``.
+    :return: The current git revision if ASB is installed in development mode or ``None``.
     """
     # noinspection PyBroadException
     try:
@@ -50,14 +50,14 @@ def revision():
 
 def version():
     """
-    :return: The release version string and an optional suffix for the current git revision if OSB is installed in development mode.
+    :return: The release version string and an optional suffix for the current git revision if ASB is installed in development mode.
     """
     release = __version__
     benchmark_revision = revision()
     if benchmark_revision:
         return "%s (git revision: %s)" % (release, benchmark_revision.strip())
     else:
-        # cannot determine head revision so user has probably installed OSB via pip instead of git clone
+        # cannot determine head revision so user has probably installed ASB via pip instead of git clone
         return release
 
 
@@ -73,8 +73,8 @@ def release_version():
         return int(matches.group(1)), int(matches.group(2)), int(matches.group(3)), None
 
 
-def minimum_os_version():
+def minimum_solr_version():
     """
-    :return: A string identifying the minimum version of Solr that is supported.
+    :return: A string identifying the minimum version of Apache Solr that is supported.
     """
-    return resources.read_text("osbenchmark", "min-os-version.txt").strip()
+    return resources.read_text("osbenchmark", "min-version.txt").strip()

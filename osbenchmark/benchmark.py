@@ -76,10 +76,10 @@ def create_arg_parser():
 
     def supported_os_version(v):
         if v:
-            min_os_version = versions.Version.from_string(version.minimum_os_version())
+            min_solr_version = versions.Version.from_string(version.minimum_solr_version())
             specified_version = versions.Version.from_string(v)
-            if specified_version < min_os_version:
-                raise argparse.ArgumentTypeError(f"must be at least {min_os_version} but was {v}")
+            if specified_version < min_solr_version:
+                raise argparse.ArgumentTypeError(f"must be at least {min_solr_version} but was {v}")
         return v
 
     def add_workload_source(subparser):

@@ -244,10 +244,10 @@ class BenchmarkCoordinator:
             else:
                 self.logger.info("Automatically derived distribution version [%s]", distribution_version)
             self.cfg.add(config.Scope.benchmark, "builder", "distribution.version", distribution_version)
-            min_os_version = versions.Version.from_string(version.minimum_os_version())
+            min_solr_version = versions.Version.from_string(version.minimum_solr_version())
             specified_version = versions.Version.from_string(distribution_version)
-            if specified_version < min_os_version:
-                raise exceptions.SystemSetupError(f"Cluster version must be at least [{min_os_version}] but was [{distribution_version}]")
+            if specified_version < min_solr_version:
+                raise exceptions.SystemSetupError(f"Cluster version must be at least [{min_solr_version}] but was [{distribution_version}]")
 
         # Auto-convert OpenSearch workloads to Solr-native format before loading
         self._check_workload_is_solr_native()
@@ -565,10 +565,10 @@ def solr_docker(cfg):
     Defaults to cloud mode (SolrCloud with embedded ZooKeeper).
 
     Config keys read:
-      - distribution.version  — Docker image tag (e.g. "9", "9.7.0", "10")
-      - solr.port             — port mapping (default: 8983)
+      - builder.distribution.version  — Docker image tag (e.g. "9", "9.7.0", "10")
+      - solr.port                     — port mapping (default: 8983)
     """
-    raw_version = cfg.opts("distribution", "version", mandatory=False, default_value="9")
+    raw_version = cfg.opts("builder", "distribution.version", mandatory=False, default_value="9")
     version_tag = _normalize_solr_docker_tag(raw_version)
     port = int(cfg.opts("solr", "port", mandatory=False, default_value=8983))
 
