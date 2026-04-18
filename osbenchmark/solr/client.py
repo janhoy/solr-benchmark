@@ -208,6 +208,26 @@ class SolrAdminClient:
         resp = self._get("/api/cluster")
         return resp.json().get("cluster", resp.json())
 
+    def list_collections(self) -> list:
+        """Return list of collection names via Collections API LIST action."""
+        resp = self._get_session().get(
+            f"{self.base_url}/solr/admin/collections",
+            params={"action": "LIST", "wt": "json"},
+            timeout=self.timeout,
+        )
+        self._raise_for_solr_error(resp, "LIST collections")
+        return resp.json().get("collections", [])
+
+    def get_luke_stats(self, collection: str) -> dict:
+        """Return Luke index stats for a collection (numDocs, segmentCount, etc.)."""
+        resp = self._get_session().get(
+            f"{self.base_url}/solr/{collection}/admin/luke",
+            params={"numTerms": "0", "wt": "json"},
+            timeout=self.timeout,
+        )
+        self._raise_for_solr_error(resp, f"Luke stats for '{collection}'")
+        return resp.json().get("index", {})
+
     def count_documents(self, collection: str) -> int:
         """Return the number of documents in a collection via rows=0 select query."""
         resp = self._get_session().get(

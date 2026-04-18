@@ -309,34 +309,22 @@ class SegmentStats(TelemetryDevice):
     human_name = "Segment Stats"
     help = "Captures per-collection segment stats (numDocs, deletedDocs, segmentCount, sizeInBytes) via the Solr Luke API."
 
-    def __init__(self, log_root, host, port):
+    def __init__(self, log_root, admin_client):
         super().__init__()
         self.log_root = log_root
-        self.host = host
-        self.port = port
+        self.admin_client = admin_client
 
     def on_benchmark_stop(self):
         # noinspection PyBroadException
         try:
-            import requests as _requests
-            session = _requests.Session()
-            session.trust_env = False
-
-            list_url = f"http://{self.host}:{self.port}/solr/admin/collections?action=LIST&wt=json"
-            resp = session.get(list_url, timeout=10)
-            resp.raise_for_status()
-            collections = resp.json().get("collections", [])
-
+            collections = self.admin_client.list_collections()
             stats_file = os.path.join(self.log_root, "segment_stats.log")
             console.info(f"{self.human_name}: Writing segment stats to [{stats_file}]", logger=self.logger)
             io.ensure_dir(self.log_root)
             with open(stats_file, "wt") as f:
                 for coll in collections:
-                    luke_url = f"http://{self.host}:{self.port}/solr/{coll}/admin/luke?numTerms=0&wt=json"
                     try:
-                        lr = session.get(luke_url, timeout=10)
-                        lr.raise_for_status()
-                        idx = lr.json().get("index", {})
+                        idx = self.admin_client.get_luke_stats(coll)
                         row = {
                             "collection": coll,
                             "numDocs": idx.get("numDocs"),

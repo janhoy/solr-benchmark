@@ -934,6 +934,8 @@ class WorkerCoordinator:
             solr_port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 8983
 
         admin = SolrAdminClient(host=solr_host, port=solr_port)
+        log_root = self.config.opts("node", "root.dir", mandatory=False) or "."
+        enabled_devices = self.config.opts("telemetry", "devices")
         return [
             solr_telemetry.SolrJvmStats(admin, self.metrics_store),
             solr_telemetry.SolrNodeStats(admin, self.metrics_store),
@@ -941,6 +943,8 @@ class WorkerCoordinator:
             solr_telemetry.SolrQueryStats(admin, self.metrics_store),
             solr_telemetry.SolrIndexingStats(admin, self.metrics_store),
             solr_telemetry.SolrCacheStats(admin, self.metrics_store),
+            telemetry.SegmentStats(log_root, admin),
+            telemetry.ShardStats(enabled_devices, admin, self.metrics_store),
         ]
 
     def wait_for_rest_api(self, clients):
