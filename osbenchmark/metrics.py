@@ -1044,36 +1044,36 @@ class TestRunStore:
         return int(self.cfg.opts("system", "list.test_runs.max_results"))
 
 
-# NOTE: OpenSearch as a metrics/test-run store is not supported in Solr Benchmark.
-# The CompositeTestRunStore and OsClient classes below are retained from the upstream
-# OpenSearch Benchmark codebase but are not wired into any active code path.
-# A future task is to implement a native Solr metrics store (see TODO.md).
+# NOTE: An external test-run store is not supported in Solr Benchmark.
+# CompositeTestRunStore below is retained as a placeholder for a future
+# S3TestRunStore or similar external store integration. It is not wired into
+# any active code path. See TODO.md for details.
 
 # Does not inherit from TestRunStore as it is only a delegator with the same API.
 class CompositeTestRunStore:
     """
-    Internal helper class to store test runs as file and to OpenSearch in case users
-    want OpenSearch as a test runs store.
+    Placeholder delegating test-run store for a future external store integration
+    (e.g. S3TestRunStore). Delegates writes to both an external store and the local
+    file store; reads are served from the external store.
 
-    It provides the same API as TestRunStore. It delegates writes to all stores
-    and all read operations only the OpenSearch test run store.
+    Not wired into any active code path in Solr Benchmark.
     """
-    def __init__(self, os_store, file_store):
-        self.os_store = os_store
+    def __init__(self, external_store, file_store):
+        self.external_store = external_store
         self.file_store = file_store
 
     def find_by_test_run_id(self, test_run_id):
-        return self.os_store.find_by_test_run_id(test_run_id)
+        return self.external_store.find_by_test_run_id(test_run_id)
 
     def store_test_run(self, test_run):
         self.file_store.store_test_run(test_run)
-        self.os_store.store_test_run(test_run)
+        self.external_store.store_test_run(test_run)
 
     def store_html_results(self, test_run):
         self.file_store.store_html_results(test_run)
 
     def list(self):
-        return self.os_store.list()
+        return self.external_store.list()
 
 
 class FileTestRunStore(TestRunStore):
