@@ -485,9 +485,11 @@ class DeleteBackupRepository(Runner):
     """
     Deletes a snapshot repository
     """
-    @time_func
     async def __call__(self, client, params):
-        await client.snapshot.delete_repository(repository=mandatory(params, "repository", repr(self)))
+        raise exceptions.BenchmarkError(
+            f"[{repr(self)}] is not yet implemented for Apache Solr. "
+            "Port to Solr Backup V2 API: https://solr.apache.org/guide/solr/latest/configuration-guide/backups.html"
+        )
 
     def __repr__(self, *args, **kwargs):
         return "delete-snapshot-repository"
@@ -501,12 +503,11 @@ class CreateBackupRepository(Runner):
     """
     Creates a new snapshot repository
     """
-    @time_func
     async def __call__(self, client, params):
-        request_params = params.get("request-params", {})
-        await client.snapshot.create_repository(repository=mandatory(params, "repository", repr(self)),
-                                            body=mandatory(params, "body", repr(self)),
-                                            params=request_params)
+        raise exceptions.BenchmarkError(
+            f"[{repr(self)}] is not yet implemented for Apache Solr. "
+            "Port to Solr Backup V2 API: https://solr.apache.org/guide/solr/latest/configuration-guide/backups.html"
+        )
 
     def __repr__(self, *args, **kwargs):
         return "create-snapshot-repository"
@@ -520,18 +521,11 @@ class CreateBackup(Runner):
     """
     Creates a new snapshot repository
     """
-    @time_func
     async def __call__(self, client, params):
-        wait_for_completion = params.get("wait-for-completion", False)
-        repository = mandatory(params, "repository", repr(self))
-        snapshot = mandatory(params, "snapshot", repr(self))
-        # just assert, gets set in _default_kw_params
-        mandatory(params, "body", repr(self))
-        api_kwargs = self._default_kw_params(params)
-        await client.snapshot.create(repository=repository,
-                                 snapshot=snapshot,
-                                 wait_for_completion=wait_for_completion,
-                                 **api_kwargs)
+        raise exceptions.BenchmarkError(
+            f"[{repr(self)}] is not yet implemented for Apache Solr. "
+            "Port to Solr Backup V2 API: https://solr.apache.org/guide/solr/latest/configuration-guide/backups.html"
+        )
 
     def __repr__(self, *args, **kwargs):
         return "create-snapshot"
@@ -543,45 +537,10 @@ class WaitForBackupCreate(Runner):
     #   Docs: https://solr.apache.org/guide/solr/latest/configuration-guide/backups.html
     #   Current implementation is OpenSearch-specific and will fail against Solr.
     async def __call__(self, client, params):
-        repository = mandatory(params, "repository", repr(self))
-        snapshot = mandatory(params, "snapshot", repr(self))
-        wait_period = params.get("completion-recheck-wait-period", 1)
-
-        snapshot_done = False
-        stats = {}
-
-        while not snapshot_done:
-            response = await client.snapshot.status(repository=repository,
-                                                snapshot=snapshot,
-                                                ignore_unavailable=True)
-
-            if "snapshots" in response:
-                response_state = response["snapshots"][0]["state"]
-                if response_state == "FAILED":
-                    self.logger.error("Snapshot [%s] failed. Response:\n%s", snapshot, json.dumps(response, indent=2))
-                    raise exceptions.BenchmarkAssertionError(f"Snapshot [{snapshot}] failed. Please check logs.")
-                snapshot_done = response_state == "SUCCESS"
-                stats = response["snapshots"][0]["stats"]
-
-            if not snapshot_done:
-                await asyncio.sleep(wait_period)
-
-        size = stats["total"]["size_in_bytes"]
-        file_count = stats["total"]["file_count"]
-        start_time_in_millis = stats["start_time_in_millis"]
-        duration_in_millis = stats["time_in_millis"]
-        duration_in_seconds = duration_in_millis / 1000
-
-        return {
-            "weight": size,
-            "unit": "byte",
-            "success": True,
-            "throughput": size / duration_in_seconds,
-            "start_time_millis": start_time_in_millis,
-            "stop_time_millis": start_time_in_millis + duration_in_millis,
-            "duration": duration_in_millis,
-            "file_count": file_count
-        }
+        raise exceptions.BenchmarkError(
+            f"[{repr(self)}] is not yet implemented for Apache Solr. "
+            "Port to Solr Backup V2 API: https://solr.apache.org/guide/solr/latest/configuration-guide/backups.html"
+        )
 
     def __repr__(self, *args, **kwargs):
         return "wait-for-snapshot-create"
@@ -595,13 +554,11 @@ class RestoreBackup(Runner):
     """
     Restores a snapshot from an already registered repository
     """
-    @time_func
     async def __call__(self, client, params):
-        api_kwargs = self._default_kw_params(params)
-        await client.snapshot.restore(repository=mandatory(params, "repository", repr(self)),
-                                  snapshot=mandatory(params, "snapshot", repr(self)),
-                                  wait_for_completion=params.get("wait-for-completion", False),
-                                  **api_kwargs)
+        raise exceptions.BenchmarkError(
+            f"[{repr(self)}] is not yet implemented for Apache Solr. "
+            "Port to Solr Backup V2 API: https://solr.apache.org/guide/solr/latest/configuration-guide/backups.html"
+        )
 
     def __repr__(self, *args, **kwargs):
         return "restore-snapshot"
