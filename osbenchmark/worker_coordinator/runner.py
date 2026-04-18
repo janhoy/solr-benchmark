@@ -24,6 +24,7 @@
 
 import asyncio
 import contextvars
+import json
 import logging
 import sys
 import time
@@ -32,10 +33,12 @@ from io import BytesIO
 from typing import List
 
 import ijson
+import pysolr
+import requests as _requests_lib
 
 from osbenchmark import exceptions, workload
-from osbenchmark.client import RequestContextHolder
-from osbenchmark.solr import runner as solr_runner
+from osbenchmark.client import RequestContextHolder, CollectionAlreadyExistsError, CollectionNotFoundError
+from osbenchmark.telemetry import _parse_prometheus_text
 
 __RUNNERS = {}
 
@@ -52,7 +55,18 @@ def register_default_runners():
     register_runner(workload.OperationType.CreateBackupRepository, Retry(CreateBackupRepository()), async_runner=True)
     register_runner(workload.OperationType.WaitForBackupCreate, Retry(WaitForBackupCreate()), async_runner=True)
     # Solr-native runners
-    solr_runner.register_solr_runners(register_runner)
+    register_runner("bulk-index", SolrBulkIndex(), async_runner=True)
+    register_runner("search", SolrSearch(), async_runner=True)
+    register_runner("commit", SolrCommit(), async_runner=True)
+    register_runner("refresh", SolrCommit(), async_runner=True)
+    register_runner("optimize", SolrOptimize(), async_runner=True)
+    register_runner("wait-for-merges", SolrWaitForMerges(), async_runner=True)
+    register_runner("create-collection", SolrCreateCollection(), async_runner=True)
+    register_runner("delete-collection", SolrDeleteCollection(), async_runner=True)
+    register_runner("raw-request", SolrRawRequest(), async_runner=True)
+    _search_runner = SolrSearch()
+    register_runner("paginated-search", _search_runner, async_runner=True)
+    register_runner("scroll-search", _search_runner, async_runner=True)
 
 def runner_for(operation_type):
     try:
@@ -809,3 +823,681 @@ class Retry(Runner, Delegator):
 
     def __repr__(self, *args, **kwargs):
         return "retryable %s" % repr(self.delegate)
+
+
+# ===========================================================================
+# Solr-specific runners
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Error translation helpers
+# ---------------------------------------------------------------------------
+
+def _translate_solr_error(e):
+    """Translate a pysolr or requests exception to a BenchmarkTransportError."""
+    if isinstance(e, _requests_lib.exceptions.ConnectionError):
+        return exceptions.BenchmarkConnectionError(str(e), cause=e)
+    if isinstance(e, (_requests_lib.exceptions.Timeout, _requests_lib.exceptions.ConnectTimeout)):
+        return exceptions.BenchmarkConnectionTimeout(str(e), cause=e)
+    if isinstance(e, _requests_lib.exceptions.HTTPError):
+        status_code = e.response.status_code if e.response is not None else None
+        if status_code == 404:
+            return exceptions.BenchmarkNotFoundError(str(e), cause=e)
+        return exceptions.BenchmarkTransportError(
+            str(e), cause=e, status_code=status_code,
+            error=f"HTTP {status_code}", info=str(e))
+    if isinstance(e, pysolr.SolrError):
+        msg = str(e)
+        status_code = None
+        for part in msg.split():
+            if part.isdigit():
+                code = int(part)
+                if 100 <= code < 600:
+                    status_code = code
+                    break
+        return exceptions.BenchmarkTransportError(
+            msg, cause=e, status_code=status_code, error="SolrError", info=msg)
+    return exceptions.BenchmarkTransportError(str(e), cause=e, error=type(e).__name__, info=str(e))
+
+
+def _solr_runner_decorator(fn):
+    """Decorator that translates pysolr/requests exceptions to BenchmarkTransportError."""
+    import functools
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except exceptions.BenchmarkTransportError:
+            raise
+        except (pysolr.SolrError, _requests_lib.exceptions.RequestException) as e:
+            raise _translate_solr_error(e) from e
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_collection(params):
+    """Extract and validate the collection name from params."""
+    collection = params.get("collection") or params.get("index") or None
+    if not collection:
+        raise exceptions.DataError(
+            "Operation parameter 'collection' is missing. "
+            "Make sure your Solr workload specifies a 'collection' name in the operation params or param source. "
+            "If you are running an OpenSearch workload, convert it first with 'solr-benchmark convert-workload'."
+        )
+    if collection == "_all":
+        raise exceptions.DataError(
+            "Operation targets collection '_all' which is an OpenSearch concept. "
+            "Solr does not support querying all collections simultaneously. "
+            "Remove or replace this operation in your Solr workload."
+        )
+    return collection
+
+
+async def _run_in_executor(func, *args, **kwargs):
+    """Run a blocking call in the default thread-pool executor."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+
+def _translate_ndjson_batch(lines):
+    """
+    Translate NDJSON to a list of Solr document dicts.
+
+    Supports two formats:
+
+    1. OpenSearch bulk format (action/document pairs):
+       {"index": {"_id": "1", "_index": "coll"}}
+       {"field": "value"}
+       → Extracts _id from action line and sets it as "id" field in document
+
+    2. Simple NDJSON (one document per line):
+       {"field": "value"}
+       {"field2": "value2"}
+       → Each line is a document; no stable IDs unless "id" field is present
+
+    Auto-detects format by checking if lines contain bulk action keys
+    (index, create, update, delete).
+    """
+    docs = []
+    it = iter(lines)
+
+    first_line = None
+    for line in it:
+        line = line.strip()
+        if line:
+            first_line = line
+            break
+
+    if not first_line:
+        return docs
+
+    try:
+        first_obj = json.loads(first_line)
+    except json.JSONDecodeError:
+        logging.getLogger(__name__).warning("Skipping malformed first line: %s", first_line)
+        return docs
+
+    has_action_keys = isinstance(first_obj, dict) and any(
+        k in first_obj for k in ("index", "create", "update", "delete")
+    )
+
+    if has_action_keys:
+        docs = _parse_bulk_pairs(first_line, it)
+    else:
+        if isinstance(first_obj, dict):
+            docs.append(first_obj)
+        for line in it:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    docs.append(obj)
+            except json.JSONDecodeError as exc:
+                logging.getLogger(__name__).warning("Skipping malformed NDJSON line: %s", exc)
+
+    return docs
+
+
+def _translate_ndjson_stream(lines):
+    """
+    Stream-translate NDJSON to Solr documents (generator version).
+
+    Yields documents one at a time instead of loading all into memory.
+    Supports both OpenSearch bulk format and simple NDJSON.
+    """
+    _logger = logging.getLogger(__name__)
+    it = iter(lines)
+
+    first_line = None
+    for line in it:
+        line = line.strip()
+        if line:
+            first_line = line
+            break
+
+    if not first_line:
+        return
+
+    try:
+        first_obj = json.loads(first_line)
+    except json.JSONDecodeError:
+        _logger.warning("Skipping malformed first line: %s", first_line)
+        return
+
+    has_action_keys = isinstance(first_obj, dict) and any(
+        k in first_obj for k in ("index", "create", "update", "delete")
+    )
+
+    if has_action_keys:
+        yield from _stream_bulk_pairs(first_line, it)
+    else:
+        if isinstance(first_obj, dict):
+            if "id" not in first_obj:
+                first_obj["id"] = str(hash(json.dumps(first_obj, sort_keys=True)))
+            yield first_obj
+        for line in it:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    if "id" not in obj:
+                        obj["id"] = str(hash(json.dumps(obj, sort_keys=True)))
+                    for key, value in list(obj.items()):
+                        if isinstance(value, list) and len(value) == 2:
+                            if all(isinstance(v, (int, float)) for v in value):
+                                obj[key] = f"{value[1]},{value[0]}"
+                    yield obj
+            except json.JSONDecodeError as exc:
+                _logger.warning("Skipping malformed NDJSON line: %s", exc)
+
+
+def _stream_bulk_pairs(first_action_line, lines_iter):
+    """Stream-parse OpenSearch bulk format (generator version)."""
+    _logger = logging.getLogger(__name__)
+    action_line = first_action_line
+
+    while action_line:
+        doc_line = next(lines_iter, None)
+        if doc_line is None:
+            break
+        doc_line = doc_line.strip()
+        if not doc_line:
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        try:
+            action = json.loads(action_line)
+            doc = json.loads(doc_line)
+        except json.JSONDecodeError as exc:
+            _logger.warning("Skipping malformed NDJSON pair: %s", exc)
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        if not isinstance(action, dict) or not isinstance(doc, dict):
+            _logger.warning("Skipping non-dict action/doc pair")
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        id_found = False
+        for key in ("index", "create", "update", "delete"):
+            if key in action:
+                meta = action[key]
+                if isinstance(meta, dict) and "_id" in meta:
+                    doc["id"] = meta["_id"]
+                    id_found = True
+                break
+
+        if not id_found:
+            doc["id"] = str(abs(hash(json.dumps(doc, sort_keys=True))))
+
+        for key, value in list(doc.items()):
+            if isinstance(value, list) and len(value) == 2:
+                if all(isinstance(v, (int, float)) for v in value):
+                    doc[key] = f"{value[1]},{value[0]}"
+            elif isinstance(value, str) and len(value) == 19 and value[10] == ' ':
+                if value[4] == '-' and value[7] == '-' and value[13] == ':' and value[16] == ':':
+                    doc[key] = value.replace(' ', 'T') + 'Z'
+
+        yield doc
+        action_line = next(lines_iter, "").strip()
+
+
+def _parse_bulk_pairs(first_action_line, lines_iter):
+    """Parse OpenSearch bulk format (alternating action/doc pairs)."""
+    _logger = logging.getLogger(__name__)
+    docs = []
+    action_line = first_action_line
+
+    while action_line:
+        doc_line = next(lines_iter, None)
+        if doc_line is None:
+            break
+        doc_line = doc_line.strip()
+        if not doc_line:
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        try:
+            action = json.loads(action_line)
+            doc = json.loads(doc_line)
+        except json.JSONDecodeError as exc:
+            _logger.warning("Skipping malformed NDJSON pair: %s", exc)
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        if not isinstance(action, dict) or not isinstance(doc, dict):
+            _logger.warning("Skipping non-dict action/doc pair")
+            action_line = next(lines_iter, "").strip()
+            continue
+
+        meta = {}
+        for key in ("index", "create", "update", "delete"):
+            if key in action:
+                meta = action[key]
+                break
+
+        doc_id = meta.get("_id")
+        if doc_id is not None:
+            doc["id"] = doc_id
+
+        routing_collection = meta.get("_index")
+        if routing_collection:
+            _logger.debug("NDJSON _index='%s' (routing only, not stored)", routing_collection)
+
+        docs.append(doc)
+        action_line = next(lines_iter, "").strip()
+
+    return docs
+
+
+# ---------------------------------------------------------------------------
+# Base runner with automatic error translation
+# ---------------------------------------------------------------------------
+
+class SolrRunner:
+    """Base class for all Solr runners.
+
+    Wraps ``__call__`` so that pysolr and requests exceptions are automatically
+    translated to ``BenchmarkTransportError`` subclasses before they reach the
+    worker_coordinator framework.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "__call__" in cls.__dict__:
+            cls.__call__ = _solr_runner_decorator(cls.__call__)
+
+
+# ---------------------------------------------------------------------------
+# Runner: bulk-index
+# ---------------------------------------------------------------------------
+
+class SolrBulkIndex(SolrRunner):
+    """
+    Index documents from an NDJSON corpus into Solr.
+
+    Params:
+      - ``collection``, ``bulk-size`` (default 500), ``commit`` (default False)
+      - ``body`` or ``corpus`` — NDJSON line pairs (action + document) or bytes blob
+    """
+
+    async def __call__(self, client, params):
+        body = params.get("body", params.get("corpus", []))
+        if isinstance(body, bytes):
+            corpus_lines = [line.decode("utf-8") for line in body.split(b"\n") if line]
+        elif isinstance(body, str):
+            corpus_lines = [line for line in body.split("\n") if line]
+        else:
+            corpus_lines = body
+
+        batch_size = params.get("bulk-size", 500)
+        do_commit = params.get("commit", False)
+        collection = _get_collection(params)
+        sc = client
+
+        doc_stream = _translate_ndjson_stream(corpus_lines)
+        total_docs = 0
+        errors = 0
+
+        start = time.perf_counter()
+
+        batch = []
+        for doc in doc_stream:
+            batch.append(doc)
+            if len(batch) >= batch_size:
+                try:
+                    await _run_in_executor(sc.add, collection, batch, commit=False, commitWithin=1000)
+                    total_docs += len(batch)
+                except pysolr.SolrError as exc:
+                    logging.getLogger(__name__).error("Bulk index error on batch: %s", exc)
+                    errors += len(batch)
+                batch = []
+
+        if batch:
+            try:
+                await _run_in_executor(sc.add, collection, batch, commit=False, commitWithin=1000)
+                total_docs += len(batch)
+            except pysolr.SolrError as exc:
+                logging.getLogger(__name__).error("Bulk index error on final batch: %s", exc)
+                errors += len(batch)
+
+        if do_commit:
+            await _run_in_executor(sc.commit, collection)
+
+        elapsed = time.perf_counter() - start
+        weight = total_docs - errors
+
+        return {
+            "weight": weight,
+            "unit": "docs",
+            "bulk-size": total_docs,
+            "success": errors == 0,
+            "error-count": errors,
+            "took": elapsed,
+        }
+
+    def __str__(self):
+        return "solr-bulk-index"
+
+
+# ---------------------------------------------------------------------------
+# Runner: search
+# ---------------------------------------------------------------------------
+
+class SolrSearch(SolrRunner):
+    """
+    Execute a Solr search query.
+
+    Mode 1 — Classic Solr params: uses ``q``, ``fl``, ``rows``, ``fq``, ``sort``, ``request-params``
+    Mode 2 — Solr JSON Query DSL: triggered when ``body`` is present (POST to /solr/{coll}/query)
+    """
+
+    async def __call__(self, client, params):
+        collection = _get_collection(params)
+        sc = client
+
+        start = time.perf_counter()
+
+        body = params.get("body")
+        if body is not None:
+            resp = await _run_in_executor(
+                sc.raw_request, "POST", f"/solr/{collection}/query", body,
+                {"Content-Type": "application/json"}
+            )
+            resp.raise_for_status()
+            num_hits = resp.json().get("response", {}).get("numFound", 0)
+        else:
+            q = params.get("q", "*:*")
+            kwargs = {}
+            for key in ("fl", "rows", "fq", "sort"):
+                if key in params:
+                    kwargs[key] = params[key]
+            kwargs.update(params.get("request-params", {}))
+
+            results = await _run_in_executor(sc.search, collection, q, **kwargs)
+            num_hits = results.hits
+
+        elapsed = time.perf_counter() - start
+
+        return {
+            "weight": 1,
+            "unit": "ops",
+            "hits": num_hits,
+            "hits-total": num_hits,
+            "took": elapsed,
+        }
+
+    def __str__(self):
+        return "solr-search"
+
+
+# ---------------------------------------------------------------------------
+# Runner: commit
+# ---------------------------------------------------------------------------
+
+class SolrCommit(SolrRunner):
+    """
+    Commit pending changes in Solr.
+
+    Params:
+      - ``collection``, ``soft-commit`` (bool, default False)
+    """
+
+    async def __call__(self, client, params):
+        collection = _get_collection(params)
+        sc = client
+        soft = params.get("soft-commit", False)
+
+        start = time.perf_counter()
+        if soft:
+            await _run_in_executor(sc.commit, collection, softCommit=True)
+        else:
+            await _run_in_executor(sc.commit, collection)
+        elapsed = time.perf_counter() - start
+
+        return {"weight": 1, "unit": "ops", "took": elapsed}
+
+    def __str__(self):
+        return "solr-commit"
+
+
+# ---------------------------------------------------------------------------
+# Runner: optimize
+# ---------------------------------------------------------------------------
+
+class SolrOptimize(SolrRunner):
+    """
+    Force-merge Solr segments (optimize).
+
+    Params:
+      - ``collection``, ``max-segments`` (int, default 1)
+    """
+
+    async def __call__(self, client, params):
+        collection = _get_collection(params)
+        sc = client
+        max_segments = params.get("max-segments", 1)
+
+        start = time.perf_counter()
+        await _run_in_executor(sc.optimize, collection, maxSegments=max_segments)
+        elapsed = time.perf_counter() - start
+
+        return {"weight": 1, "unit": "ops", "took": elapsed}
+
+    def __str__(self):
+        return "solr-optimize"
+
+
+# ---------------------------------------------------------------------------
+# Runner: wait-for-merges
+# ---------------------------------------------------------------------------
+
+class SolrWaitForMerges(SolrRunner):
+    """
+    Poll Solr node metrics until no active merge operations remain across any core.
+
+    Params:
+      - ``retry-wait-period`` (default 2.0s), ``max-wait-seconds`` (default 3600s)
+    """
+
+    async def __call__(self, client, params):
+        sc = client
+        retry_wait = float(params.get("retry-wait-period", 2.0))
+        max_wait = float(params.get("max-wait-seconds", 3600))
+        start = time.perf_counter()
+
+        while True:
+            raw = await _run_in_executor(sc.get_node_metrics)
+            total_running = 0
+
+            if isinstance(raw, str):
+                m = _parse_prometheus_text(raw)
+                for key, val in m.items():
+                    if "merge" in key and "running" in key:
+                        total_running += int(val)
+            elif isinstance(raw, dict):
+                for core_metrics in raw.get("metrics", {}).values():
+                    for key in ("INDEX.merge.major.running",
+                                "INDEX.merge.minor.running"):
+                        val = core_metrics.get(key, 0)
+                        if isinstance(val, dict):
+                            val = val.get("value", 0)
+                        total_running += int(val)
+
+            elapsed = time.perf_counter() - start
+            if total_running == 0 or elapsed >= max_wait:
+                break
+            await asyncio.sleep(retry_wait)
+
+        return {
+            "weight": 1,
+            "unit": "ops",
+            "took": time.perf_counter() - start,
+            "success": total_running == 0,
+        }
+
+    def __str__(self):
+        return "solr-wait-for-merges"
+
+
+# ---------------------------------------------------------------------------
+# Runner: create-collection
+# ---------------------------------------------------------------------------
+
+class SolrCreateCollection(SolrRunner):
+    """
+    Collection creation — optionally with configset upload.
+
+    Params:
+      - ``collection``, ``configset`` (default: collection name),
+        ``configset-path`` (local dir; omit to use existing server configset),
+        ``num-shards`` (default 1), ``replication-factor`` (default 1),
+        ``tlog-replicas`` (default 0), ``pull-replicas`` (default 0),
+        ``delete-configset-on-error`` (default True)
+    """
+
+    async def __call__(self, client, params):
+        sc = client
+        collection = params["collection"]
+        configset = params.get("configset", collection)
+        configset_path = params.get("configset-path")
+        num_shards = params.get("num-shards", 1)
+        replication_factor = params.get("replication-factor", 1)
+        tlog_replicas = params.get("tlog-replicas", 0)
+        pull_replicas = params.get("pull-replicas", 0)
+
+        start = time.perf_counter()
+
+        if configset_path:
+            await _run_in_executor(sc.upload_configset, configset, configset_path)
+            logging.getLogger(__name__).info("Uploaded configset '%s' from '%s'", configset, configset_path)
+
+        try:
+            await _run_in_executor(
+                sc.create_collection,
+                collection,
+                configset,
+                num_shards,
+                replication_factor,
+                tlog_replicas,
+                pull_replicas,
+            )
+        except CollectionAlreadyExistsError:
+            logging.getLogger(__name__).warning("Collection '%s' already exists, skipping creation.", collection)
+        except Exception:
+            if configset_path and params.get("delete-configset-on-error", True):
+                try:
+                    await _run_in_executor(sc.delete_configset, configset)
+                except Exception as cleanup_exc:
+                    logging.getLogger(__name__).warning("Failed to clean up configset '%s': %s", configset, cleanup_exc)
+            raise
+
+        elapsed = time.perf_counter() - start
+        return {"weight": 1, "unit": "ops", "took": elapsed}
+
+    def __str__(self):
+        return "solr-create-collection"
+
+
+# ---------------------------------------------------------------------------
+# Runner: delete-collection
+# ---------------------------------------------------------------------------
+
+class SolrDeleteCollection(SolrRunner):
+    """
+    Delete a Solr collection, optionally deleting its configset too.
+
+    Params:
+      - ``collection``, ``configset`` (default: collection name),
+        ``delete-configset`` (bool, default True),
+        ``ignore-missing`` (bool, default True)
+    """
+
+    async def __call__(self, client, params):
+        sc = client
+        collection = params["collection"]
+        configset = params.get("configset", collection)
+        ignore_missing = params.get("ignore-missing", True)
+        delete_configset = params.get("delete-configset", True)
+
+        start = time.perf_counter()
+        try:
+            await _run_in_executor(sc.delete_collection, collection)
+        except CollectionNotFoundError:
+            if not ignore_missing:
+                raise
+            logging.getLogger(__name__).info("Collection '%s' not found, skipping delete.", collection)
+
+        if delete_configset:
+            try:
+                await _run_in_executor(sc.delete_configset, configset)
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Could not delete configset '%s': %s", configset, exc)
+
+        elapsed = time.perf_counter() - start
+        return {"weight": 1, "unit": "ops", "took": elapsed}
+
+    def __str__(self):
+        return "solr-delete-collection"
+
+
+# ---------------------------------------------------------------------------
+# Runner: raw-request
+# ---------------------------------------------------------------------------
+
+class SolrRawRequest(SolrRunner):
+    """
+    Send an arbitrary HTTP request to any Solr endpoint.
+
+    Params:
+      - ``method`` (default "GET"), ``path``, ``body``, ``headers``
+    """
+
+    async def __call__(self, client, params):
+        sc = client
+        method = params.get("method", "GET")
+        path = params["path"]
+        body = params.get("body")
+        headers = params.get("headers", {})
+
+        start = time.perf_counter()
+        resp = await _run_in_executor(sc.raw_request, method, path, body, headers)
+        elapsed = time.perf_counter() - start
+
+        return {
+            "weight": 1,
+            "unit": "ops",
+            "http-status": resp.status_code,
+            "took": elapsed,
+        }
+
+    def __str__(self):
+        return "solr-raw-request"

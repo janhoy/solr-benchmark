@@ -26,7 +26,10 @@ import collections
 import json
 import logging
 import os
+import re
 import threading
+from abc import abstractmethod
+
 import tabulate
 
 from osbenchmark import metrics, time, exceptions
@@ -34,21 +37,18 @@ from osbenchmark.metrics import MetaInfoScope
 from osbenchmark.utils import io, sysstats, console, process
 
 def list_telemetry():
-    # Lazy import to avoid circular dependency (solr/telemetry.py imports TelemetryDevice from this module)
-    from osbenchmark.solr import telemetry as solr_telemetry
-
     console.println("Available telemetry devices:\n")
 
     # --- Solr-native devices (always enabled) ---
     console.println("Always-enabled Solr devices (no --telemetry flag needed):\n")
     solr_devices = [
         [d.command, d.human_name, d.help] for d in [
-            solr_telemetry.SolrJvmStats,
-            solr_telemetry.SolrNodeStats,
-            solr_telemetry.SolrCollectionStats,
-            solr_telemetry.SolrQueryStats,
-            solr_telemetry.SolrIndexingStats,
-            solr_telemetry.SolrCacheStats,
+            SolrJvmStats,
+            SolrNodeStats,
+            SolrCollectionStats,
+            SolrQueryStats,
+            SolrIndexingStats,
+            SolrCacheStats,
         ]
     ]
     console.println(tabulate.tabulate(solr_devices, ["Command", "Name", "Description"]))
@@ -971,3 +971,565 @@ class IndexSize(InternalTelemetryDevice):
     def store_system_metrics(self, node, metrics_store):
         if self.index_size_bytes:
             metrics_store.put_value_node_level(node.node_name, "final_index_size_bytes", self.index_size_bytes, "byte")
+
+
+# ===========================================================================
+# Solr telemetry devices
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Prometheus text format parser (shared with runner.py)
+# ---------------------------------------------------------------------------
+
+def _parse_prometheus_text(text: str) -> dict:
+    """
+    Parse Prometheus exposition text format into a flat dict of {metric_name: float}.
+
+    Lines starting with '#' are comments/help/type headers and are skipped.
+    Handles optional labels: metric_name{label="value"} value [timestamp]
+
+    When multiple series share the same base metric name (different labels),
+    values are accumulated (summed).
+    """
+    parsed_metrics = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        name_part = parts[0]
+        try:
+            value = float(parts[1])
+        except ValueError:
+            continue
+        base_name = re.sub(r"\{[^}]*\}", "", name_part)
+        parsed_metrics[base_name] = parsed_metrics.get(base_name, 0.0) + value
+    return parsed_metrics
+
+
+# ---------------------------------------------------------------------------
+# Base class
+# ---------------------------------------------------------------------------
+
+class SolrTelemetryDevice(TelemetryDevice):
+    """
+    Abstract base for Solr telemetry polling devices.
+
+    Extends TelemetryDevice so that Solr devices integrate seamlessly with
+    the existing Telemetry wrapper. Setting ``internal = True`` means the
+    device is always enabled (not filtered by the ``--telemetry`` flag).
+
+    Subclasses implement `_collect()` which is called periodically on a
+    background thread between `on_benchmark_start()` and `on_benchmark_stop()`.
+    """
+
+    internal = True
+    command = None
+    human_name = "Solr Telemetry"
+    help = "Solr-specific background polling telemetry device."
+
+    def __init__(self, admin_client, metrics_store, sample_interval_s: float = 5.0):
+        super().__init__()
+        self._client = admin_client
+        self._metrics_store = metrics_store
+        self._sample_interval = sample_interval_s
+        self._thread = None
+        self._stop_event = threading.Event()
+
+    def on_benchmark_start(self) -> None:
+        """Start background polling thread."""
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._thread.start()
+
+    def on_benchmark_stop(self) -> None:
+        """Stop background polling thread and flush any remaining metrics."""
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self._sample_interval * 2 + 5)
+
+    def _poll_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                self._collect()
+            except Exception as exc:
+                logging.getLogger(__name__).warning("%s: collection error: %s", self.__class__.__name__, exc)
+            self._stop_event.wait(self._sample_interval)
+
+    @abstractmethod
+    def _collect(self) -> None:
+        """Collect metrics and store them via self._metrics_store."""
+
+    # ------------------------------------------------------------------
+    # Dual-format helpers
+    # ------------------------------------------------------------------
+
+    def _fetch_node_metrics_parsed(self):
+        """
+        Fetch /admin/metrics and return ``(format_str, data_dict)``.
+
+        ``format_str`` is ``"json"`` or ``"prometheus"``.
+        """
+        raw = self._client.get_node_metrics()
+        if isinstance(raw, str):
+            return "prometheus", _parse_prometheus_text(raw)
+        return "json", raw if isinstance(raw, dict) else {}
+
+    @staticmethod
+    def _get_metric_json(data: dict, *keys, default=None):
+        """Navigate a nested dict using successive key lookups."""
+        current = data
+        for key in keys:
+            if not isinstance(current, dict):
+                return default
+            current = current.get(key)
+            if current is None:
+                return default
+        return current
+
+    @staticmethod
+    def _get_metric_prometheus(data: dict, metric_name: str, default=None):
+        """Look up a metric by exact base name from a parsed Prometheus dict."""
+        return data.get(metric_name, default)
+
+    def _put(self, name: str, value, unit: str, task: str = "", meta: dict = None) -> None:
+        """Write a single metric to the metrics store."""
+        if not hasattr(self._metrics_store, "put_value_cluster_level"):
+            self._metrics_store[name] = {"value": value, "unit": unit}
+            return
+        self._metrics_store.put_value_cluster_level(
+            name=name, value=value, unit=unit,
+            task=task, operation_type="telemetry",
+            meta_data=meta or {},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Device: SolrJvmStats
+# ---------------------------------------------------------------------------
+
+class SolrJvmStats(SolrTelemetryDevice):
+    """
+    Collect JVM heap, GC, thread, and buffer pool metrics from Solr.
+
+    Metrics: jvm_heap_used_bytes, jvm_heap_max_bytes, jvm_gc_count, jvm_gc_time_ms,
+             jvm_gc_young_count, jvm_gc_young_time_ms, jvm_gc_old_count, jvm_gc_old_time_ms,
+             jvm_thread_count, jvm_thread_peak_count, jvm_buffer_pool_direct_bytes,
+             jvm_buffer_pool_mapped_bytes
+    """
+
+    human_name = "Solr JVM Stats"
+    help = "JVM heap, GC (total/young/old), threads, and buffer pool metrics"
+
+    def _collect(self) -> None:
+        fmt, data = self._fetch_node_metrics_parsed()
+        if fmt == "prometheus":
+            self._collect_prometheus(data)
+        else:
+            self._collect_json(data)
+
+    def _collect_json(self, data: dict) -> None:
+        jvm = self._get_metric_json(data, "metrics", "solr.jvm") or {}
+
+        heap_used = jvm.get("memory.heap.used")
+        heap_max = jvm.get("memory.heap.max")
+        if heap_used is not None:
+            self._put("jvm_heap_used_bytes", heap_used, "bytes")
+        if heap_max is not None:
+            self._put("jvm_heap_max_bytes", heap_max, "bytes")
+
+        thread_count = jvm.get("threads.count")
+        thread_peak = jvm.get("threads.peak.count")
+        if thread_count is not None:
+            self._put("jvm_thread_count", thread_count, "")
+        if thread_peak is not None:
+            self._put("jvm_thread_peak_count", thread_peak, "")
+
+        direct_bytes = jvm.get("buffers.direct.MemoryUsed")
+        mapped_bytes = jvm.get("buffers.mapped.MemoryUsed")
+        if direct_bytes is not None:
+            self._put("jvm_buffer_pool_direct_bytes", direct_bytes, "bytes")
+        if mapped_bytes is not None:
+            self._put("jvm_buffer_pool_mapped_bytes", mapped_bytes, "bytes")
+
+        gc_count_total = None
+        gc_time_total = None
+        gc_young_count = None
+        gc_young_time = None
+        gc_old_count = None
+        gc_old_time = None
+
+        for k, v in jvm.items():
+            if v is None:
+                continue
+            if k.endswith(".count") and "gc." in k:
+                gc_count_total = (gc_count_total or 0) + v
+                k_lower = k.lower()
+                if "young" in k_lower or "minor" in k_lower or "eden" in k_lower:
+                    gc_young_count = (gc_young_count or 0) + v
+                elif "old" in k_lower or "major" in k_lower or "tenured" in k_lower:
+                    gc_old_count = (gc_old_count or 0) + v
+            if k.endswith(".time") and "gc." in k:
+                gc_time_total = (gc_time_total or 0) + v
+                k_lower = k.lower()
+                if "young" in k_lower or "minor" in k_lower or "eden" in k_lower:
+                    gc_young_time = (gc_young_time or 0) + v
+                elif "old" in k_lower or "major" in k_lower or "tenured" in k_lower:
+                    gc_old_time = (gc_old_time or 0) + v
+
+        if gc_count_total is not None:
+            self._put("jvm_gc_count", gc_count_total, "")
+        if gc_time_total is not None:
+            self._put("jvm_gc_time_ms", gc_time_total, "ms")
+        if gc_young_count is not None:
+            self._put("jvm_gc_young_count", gc_young_count, "")
+        if gc_young_time is not None:
+            self._put("jvm_gc_young_time_ms", gc_young_time, "ms")
+        if gc_old_count is not None:
+            self._put("jvm_gc_old_count", gc_old_count, "")
+        if gc_old_time is not None:
+            self._put("jvm_gc_old_time_ms", gc_old_time, "ms")
+
+    def _collect_prometheus(self, data: dict) -> None:
+        mapping = {
+            "jvm_memory_heap_used_bytes": ("jvm_heap_used_bytes", "bytes"),
+            "jvm_memory_heap_max_bytes": ("jvm_heap_max_bytes", "bytes"),
+            "jvm_gc_collection_count": ("jvm_gc_count", ""),
+            "jvm_gc_collection_time_ms": ("jvm_gc_time_ms", "ms"),
+            "jvm_threads_current": ("jvm_thread_count", ""),
+            "jvm_threads_peak": ("jvm_thread_peak_count", ""),
+            "jvm_buffer_pool_used_bytes": ("jvm_buffer_pool_direct_bytes", "bytes"),
+        }
+        for prom_name, (osb_name, unit) in mapping.items():
+            val = self._get_metric_prometheus(data, prom_name)
+            if val is not None:
+                self._put(osb_name, val, unit)
+
+
+# ---------------------------------------------------------------------------
+# Device: SolrNodeStats
+# ---------------------------------------------------------------------------
+
+class SolrNodeStats(SolrTelemetryDevice):
+    """
+    Collect OS, file-descriptor, HTTP, and query-handler metrics from Solr.
+
+    Metrics: cpu_usage_percent, os_memory_free_bytes, node_file_descriptors_open,
+             node_file_descriptors_max, node_http_requests_total,
+             query_handler_requests_total, query_handler_errors_total,
+             query_handler_avg_latency_ms
+    """
+
+    human_name = "Solr Node Stats"
+    help = "CPU usage, OS memory, file descriptors, HTTP requests, and query handler latency"
+
+    def _collect(self) -> None:
+        self._collect_system_stats()
+        self._collect_metrics_stats()
+
+    def _collect_system_stats(self) -> None:
+        try:
+            resp = self._client._get("/api/node/system")
+            system = resp.json()
+            os_data = system.get("system", {})
+
+            cpu = os_data.get("processCpuLoad") or os_data.get("systemCpuLoad")
+            if cpu is not None:
+                self._put("cpu_usage_percent", cpu * 100.0, "%")
+
+            free_mem = os_data.get("freePhysicalMemorySize")
+            if free_mem is not None:
+                self._put("os_memory_free_bytes", free_mem, "bytes")
+
+            open_fds = os_data.get("openFileDescriptorCount")
+            max_fds = os_data.get("maxFileDescriptorCount")
+            if open_fds is not None:
+                self._put("node_file_descriptors_open", open_fds, "")
+            if max_fds is not None:
+                self._put("node_file_descriptors_max", max_fds, "")
+        except Exception as exc:
+            logging.getLogger(__name__).debug("SolrNodeStats: /api/node/system error: %s", exc)
+
+    def _collect_metrics_stats(self) -> None:
+        try:
+            fmt, data = self._fetch_node_metrics_parsed()
+            if fmt == "prometheus":
+                self._collect_metrics_prometheus(data)
+            else:
+                self._collect_metrics_json(data)
+        except Exception as exc:
+            logging.getLogger(__name__).debug("SolrNodeStats: metrics error: %s", exc)
+
+    def _collect_metrics_json(self, data: dict) -> None:
+        core = self._get_metric_json(data, "metrics", "solr.core") or {}
+
+        requests = core.get("QUERY./select.requests")
+        errors = core.get("QUERY./select.errors")
+        avg_latency = core.get("QUERY./select.requestTimes.mean")
+
+        if requests is not None:
+            self._put("query_handler_requests_total", requests, "")
+        if errors is not None:
+            self._put("query_handler_errors_total", errors, "")
+        if avg_latency is not None:
+            self._put("query_handler_avg_latency_ms", avg_latency, "ms")
+
+        jetty = self._get_metric_json(data, "metrics", "solr.jetty") or {}
+        http_requests = jetty.get(
+            "org.eclipse.jetty.server.handler.StatisticsHandler.requests"
+        )
+        if http_requests is not None:
+            self._put("node_http_requests_total", http_requests, "")
+
+    def _collect_metrics_prometheus(self, data: dict) -> None:
+        mapping = {
+            "solr_metrics_core_query_requests_total": ("query_handler_requests_total", ""),
+            "solr_metrics_core_query_errors_total": ("query_handler_errors_total", ""),
+            "solr_metrics_core_query_request_times_mean_ms": ("query_handler_avg_latency_ms", "ms"),
+            "solr_metrics_jetty_requests_total": ("node_http_requests_total", ""),
+        }
+        for prom_name, (osb_name, unit) in mapping.items():
+            val = self._get_metric_prometheus(data, prom_name)
+            if val is not None:
+                self._put(osb_name, val, unit)
+
+
+# ---------------------------------------------------------------------------
+# Device: SolrCollectionStats
+# ---------------------------------------------------------------------------
+
+class SolrCollectionStats(SolrTelemetryDevice):
+    """
+    Collect per-collection document count, index size, segment count, and deleted docs.
+
+    Metrics (per collection): num_docs, index_size_bytes, segment_count, num_deleted_docs
+    """
+
+    human_name = "Solr Collection Stats"
+    help = "Per-collection: doc count, deleted docs, index size, and segment count (30 s interval)"
+
+    def __init__(self, admin_client, metrics_store,
+                 collections: list = None, sample_interval_s: float = 30.0):
+        super().__init__(admin_client, metrics_store, sample_interval_s)
+        self._collections = collections
+
+    def _collect(self) -> None:
+        try:
+            cluster = self._client.get_cluster_status()
+            col_state = cluster.get("collections", {})
+            target_collections = self._collections or list(col_state.keys())
+
+            for col_name in target_collections:
+                self._collect_collection(col_name)
+        except Exception as exc:
+            logging.getLogger(__name__).debug("SolrCollectionStats: cluster status error: %s", exc)
+
+    def _collect_collection(self, collection: str) -> None:
+        try:
+            resp = self._client._get(f"/api/collections/{collection}/core-properties")
+            data = resp.json()
+            num_docs = 0
+            index_size = 0
+            for _core_name, props in data.get("core-properties", {}).items():
+                num_docs += props.get("numDocs", 0)
+                index_size += props.get("indexHeapUsageBytes", 0)
+
+            self._put("num_docs", num_docs, "docs", meta={"collection": collection})
+            if index_size:
+                self._put("index_size_bytes", index_size, "bytes",
+                          meta={"collection": collection})
+        except Exception:
+            pass
+
+        self._fetch_luke_stats(collection)
+
+    def _fetch_luke_stats(self, collection: str) -> None:
+        try:
+            resp = self._client._get(
+                f"/solr/{collection}/admin/luke?numTerms=0&wt=json"
+            )
+            info = resp.json().get("index", {})
+            num_docs = info.get("numDocs")
+            deleted_docs = info.get("deletedDocs") or info.get("numDeletedDocs")
+            segment_count = info.get("segmentCount")
+
+            if num_docs is not None:
+                self._put("num_docs", num_docs, "docs", meta={"collection": collection})
+            if deleted_docs is not None:
+                self._put("num_deleted_docs", deleted_docs, "docs",
+                          meta={"collection": collection})
+            if segment_count is not None:
+                self._put("segment_count", segment_count, "",
+                          meta={"collection": collection})
+        except Exception as exc:
+            logging.getLogger(__name__).debug("SolrCollectionStats: luke fallback failed for %s: %s",
+                         collection, exc)
+
+
+# ---------------------------------------------------------------------------
+# Device: SolrQueryStats
+# ---------------------------------------------------------------------------
+
+class SolrQueryStats(SolrTelemetryDevice):
+    """
+    Collect query latency percentiles and cache hit ratio metrics from Solr.
+
+    Metrics: query_latency_p50_ms, query_latency_p99_ms, query_latency_p999_ms,
+             query_requests_total, query_errors_total, query_cache_hit_ratio
+    """
+
+    human_name = "Solr Query Stats"
+    help = "Query latency percentiles (p50/p99/p999), cache hit ratio, request and error totals"
+
+    def _collect(self) -> None:
+        fmt, data = self._fetch_node_metrics_parsed()
+        if fmt == "prometheus":
+            self._collect_prometheus(data)
+        else:
+            self._collect_json(data)
+
+    def _collect_json(self, data: dict) -> None:
+        core = self._get_metric_json(data, "metrics", "solr.core") or {}
+
+        mappings = [
+            ("QUERY./select.requestTimes.p_50", "query_latency_p50_ms", "ms"),
+            ("QUERY./select.requestTimes.p_99", "query_latency_p99_ms", "ms"),
+            ("QUERY./select.requestTimes.p_99_9", "query_latency_p999_ms", "ms"),
+            ("QUERY./select.requests", "query_requests_total", ""),
+            ("QUERY./select.errors", "query_errors_total", ""),
+            ("CACHE.searcher.filterCache.hitratio", "query_cache_hit_ratio", ""),
+        ]
+        for json_key, osb_name, unit in mappings:
+            val = core.get(json_key)
+            if val is None and json_key.endswith("p_99_9"):
+                val = core.get(json_key.replace("p_99_9", "p_999"))
+            if val is not None:
+                self._put(osb_name, val, unit)
+
+    def _collect_prometheus(self, data: dict) -> None:
+        mapping = {
+            "solr_metrics_core_query_request_times_p50_ms": ("query_latency_p50_ms", "ms"),
+            "solr_metrics_core_query_request_times_p99_ms": ("query_latency_p99_ms", "ms"),
+            "solr_metrics_core_query_request_times_p999_ms": ("query_latency_p999_ms", "ms"),
+            "solr_metrics_core_query_requests_total": ("query_requests_total", ""),
+            "solr_metrics_core_query_errors_total": ("query_errors_total", ""),
+            "solr_metrics_core_cache_hitratio": ("query_cache_hit_ratio", ""),
+        }
+        for prom_name, (osb_name, unit) in mapping.items():
+            val = self._get_metric_prometheus(data, prom_name)
+            if val is not None:
+                self._put(osb_name, val, unit)
+
+
+# ---------------------------------------------------------------------------
+# Device: SolrIndexingStats
+# ---------------------------------------------------------------------------
+
+class SolrIndexingStats(SolrTelemetryDevice):
+    """
+    Collect indexing throughput and merge metrics from Solr.
+
+    Metrics: indexing_requests_total, indexing_errors_total, indexing_avg_time_ms,
+             index_merge_major_running, index_merge_minor_running
+    """
+
+    human_name = "Solr Indexing Stats"
+    help = "Indexing request counts, average indexing time, and major/minor merge activity"
+
+    def _collect(self) -> None:
+        fmt, data = self._fetch_node_metrics_parsed()
+        if fmt == "prometheus":
+            self._collect_prometheus(data)
+        else:
+            self._collect_json(data)
+
+    def _collect_json(self, data: dict) -> None:
+        core = self._get_metric_json(data, "metrics", "solr.core") or {}
+
+        mappings = [
+            ("UPDATE./update.requests", "indexing_requests_total", ""),
+            ("UPDATE./update.errors", "indexing_errors_total", ""),
+            ("UPDATE./update.requestTimes.mean", "indexing_avg_time_ms", "ms"),
+            ("INDEX.merge.major.running", "index_merge_major_running", ""),
+            ("INDEX.merge.minor.running", "index_merge_minor_running", ""),
+        ]
+        for json_key, osb_name, unit in mappings:
+            val = core.get(json_key)
+            if val is not None:
+                self._put(osb_name, val, unit)
+
+    def _collect_prometheus(self, data: dict) -> None:
+        mapping = {
+            "solr_metrics_core_update_requests_total": ("indexing_requests_total", ""),
+            "solr_metrics_core_update_errors_total": ("indexing_errors_total", ""),
+            "solr_metrics_core_update_request_times_mean_ms": ("indexing_avg_time_ms", "ms"),
+            "solr_metrics_core_index_merge_major_running": ("index_merge_major_running", ""),
+            "solr_metrics_core_index_merge_minor_running": ("index_merge_minor_running", ""),
+        }
+        for prom_name, (osb_name, unit) in mapping.items():
+            val = self._get_metric_prometheus(data, prom_name)
+            if val is not None:
+                self._put(osb_name, val, unit)
+
+
+# ---------------------------------------------------------------------------
+# Device: SolrCacheStats
+# ---------------------------------------------------------------------------
+
+class SolrCacheStats(SolrTelemetryDevice):
+    """
+    Collect Solr internal cache statistics for the three primary caches.
+
+    Metrics (per cache): cache_hits_total, cache_inserts_total, cache_evictions_total,
+                         cache_memory_bytes, cache_hit_ratio
+    """
+
+    human_name = "Solr Cache Stats"
+    help = "Per-cache hits, inserts, evictions, memory, and hit ratio (query/filter/document caches)"
+
+    CACHE_NAMES = ["queryResultCache", "filterCache", "documentCache"]
+
+    def _collect(self) -> None:
+        fmt, data = self._fetch_node_metrics_parsed()
+        if fmt == "prometheus":
+            self._collect_prometheus(data)
+        else:
+            self._collect_json(data)
+
+    def _collect_json(self, data: dict) -> None:
+        core = self._get_metric_json(data, "metrics", "solr.core") or {}
+
+        for cache_name in self.CACHE_NAMES:
+            prefix = f"CACHE.searcher.{cache_name}."
+            hits = core.get(f"{prefix}hits")
+            inserts = core.get(f"{prefix}inserts")
+            evictions = core.get(f"{prefix}evictions")
+            ram_bytes = core.get(f"{prefix}ramBytesUsed")
+            hitratio = core.get(f"{prefix}hitratio")
+
+            meta = {"cache": cache_name}
+            if hits is not None:
+                self._put("cache_hits_total", hits, "", meta=meta)
+            if inserts is not None:
+                self._put("cache_inserts_total", inserts, "", meta=meta)
+            if evictions is not None:
+                self._put("cache_evictions_total", evictions, "", meta=meta)
+            if ram_bytes is not None:
+                self._put("cache_memory_bytes", ram_bytes, "bytes", meta=meta)
+            if hitratio is not None:
+                self._put("cache_hit_ratio", hitratio, "", meta=meta)
+
+    def _collect_prometheus(self, data: dict) -> None:
+        aggregate_mappings = {
+            "solr_metrics_core_cache_hits_total": ("cache_hits_total", ""),
+            "solr_metrics_core_cache_inserts_total": ("cache_inserts_total", ""),
+            "solr_metrics_core_cache_evictions_total": ("cache_evictions_total", ""),
+            "solr_metrics_core_cache_ram_bytes_used": ("cache_memory_bytes", "bytes"),
+            "solr_metrics_core_cache_hitratio": ("cache_hit_ratio", ""),
+        }
+        for prom_name, (osb_name, unit) in aggregate_mappings.items():
+            val = self._get_metric_prometheus(data, prom_name)
+            if val is not None:
+                self._put(osb_name, val, unit, meta={"cache": "aggregate"})

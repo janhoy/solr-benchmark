@@ -15,13 +15,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for osbenchmark/solr/runner.py"""
+"""Unit tests for Solr runners (osbenchmark/worker_coordinator/runner.py)"""
 
 import asyncio
 import unittest
 from unittest.mock import MagicMock
 
-from osbenchmark.solr.runner import (
+from osbenchmark.worker_coordinator.runner import (
     _translate_ndjson_batch,
     SolrBulkIndex,
     SolrSearch,
@@ -331,7 +331,7 @@ class TestSolrCreateCollection(unittest.TestCase):
 
 class TestSolrDeleteCollection(unittest.TestCase):
     def test_delete_ignores_missing_by_default(self):
-        from osbenchmark.solr.client import CollectionNotFoundError
+        from osbenchmark.client import CollectionNotFoundError
         mock_sc = MagicMock()
         mock_sc.delete_collection.side_effect = CollectionNotFoundError("not found")
 

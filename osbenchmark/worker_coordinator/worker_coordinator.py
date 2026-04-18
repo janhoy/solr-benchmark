@@ -919,7 +919,6 @@ class WorkerCoordinator:
         """Create Solr telemetry devices using the unified SolrClient."""
         # pylint: disable=import-outside-toplevel
         from osbenchmark.client import SolrClient
-        from osbenchmark.solr import telemetry as solr_telemetry
 
         sc = clients.get("default")
         if not isinstance(sc, SolrClient):
@@ -928,12 +927,12 @@ class WorkerCoordinator:
         log_root = self.config.opts("node", "root.dir", mandatory=False) or "."
         telemetry_params = self.config.opts("telemetry", "params", mandatory=False) or {}
         return [
-            solr_telemetry.SolrJvmStats(sc, self.metrics_store),
-            solr_telemetry.SolrNodeStats(sc, self.metrics_store),
-            solr_telemetry.SolrCollectionStats(sc, self.metrics_store),
-            solr_telemetry.SolrQueryStats(sc, self.metrics_store),
-            solr_telemetry.SolrIndexingStats(sc, self.metrics_store),
-            solr_telemetry.SolrCacheStats(sc, self.metrics_store),
+            telemetry.SolrJvmStats(sc, self.metrics_store),
+            telemetry.SolrNodeStats(sc, self.metrics_store),
+            telemetry.SolrCollectionStats(sc, self.metrics_store),
+            telemetry.SolrQueryStats(sc, self.metrics_store),
+            telemetry.SolrIndexingStats(sc, self.metrics_store),
+            telemetry.SolrCacheStats(sc, self.metrics_store),
             telemetry.SegmentStats(log_root, sc),
             telemetry.ShardStats(telemetry_params, sc, self.metrics_store),
         ]
