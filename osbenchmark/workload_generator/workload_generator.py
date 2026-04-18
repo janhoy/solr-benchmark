@@ -39,7 +39,7 @@ def create_workload(cfg):
     client = ClientFactory(hosts=target_hosts.all_hosts[opts.TargetHosts.DEFAULT],
                              client_options=client_options.all_client_options[opts.TargetHosts.DEFAULT]).create()
     info = client.info()
-    console.info(f"Connected to OpenSearch cluster [{info['name']}] version [{info['version']['number']}].\n", logger=logger)
+    console.info(f"Connected to Solr cluster [{info['name']}] version [{info['version']['number']}].\n", logger=logger)
 
     processed_indices = process_indices(indices, sample_frequency_mapping, number_of_docs)
     logger.info("Processed Indices: %s", processed_indices)

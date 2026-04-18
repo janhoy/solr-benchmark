@@ -762,7 +762,7 @@ class JvmStatsSummary(InternalTelemetryDevice):
 
 class IndexStats(InternalTelemetryDevice):
     """
-    Gathers statistics via the OpenSearch index stats API
+    Gathers statistics via the index stats API (OSB/OpenSearch implementation — not yet ported to Solr)
     """
     def __init__(self, client, metrics_store):
         super().__init__()

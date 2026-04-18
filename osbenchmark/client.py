@@ -95,14 +95,18 @@ class SolrAdminClient:
     # Version detection
     # ------------------------------------------------------------------
 
+    def info(self) -> dict:
+        """Return parsed JSON from GET /api/node/system."""
+        resp = self._get("/api/node/system")
+        return resp.json()
+
     def get_version(self) -> str:
         """
         Detect Solr version via GET /api/node/system.
 
         Returns the version string, e.g. "9.7.0".
         """
-        resp = self._get("/api/node/system")
-        data = resp.json()
+        data = self.info()
         try:
             return data["lucene"]["solr-spec-version"]
         except KeyError as exc:
@@ -405,6 +409,14 @@ class SolrClient(RequestContextHolder):
     # ------------------------------------------------------------------
     # Admin / cluster operations  (delegated to _admin)
     # ------------------------------------------------------------------
+
+    def info(self) -> dict:
+        """Return cluster info in an OSB-compatible shape: {name, version.number}."""
+        data = self._admin.info()
+        return {
+            "name": "Apache Solr",
+            "version": {"number": data["lucene"]["solr-spec-version"]},
+        }
 
     def get_version(self):
         return self._admin.get_version()

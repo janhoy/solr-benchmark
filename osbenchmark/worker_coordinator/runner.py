@@ -213,12 +213,12 @@ def unwrap(runner):
 
 
 def _single_cluster_runner(runnable, name, context_manager_enabled=False):
-    # only pass the default ES client
+    # only pass the default client
     return MultiClientRunner(runnable, name, lambda client: client["default"], context_manager_enabled)
 
 
 def _multi_cluster_runner(runnable, name, context_manager_enabled=False):
-    # pass all ES clients
+    # pass all clients
     return MultiClientRunner(runnable, name, lambda client: client, context_manager_enabled)
 
 

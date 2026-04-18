@@ -62,7 +62,7 @@ class PrepareBenchmark:
 
     def __init__(self, config, workload):
         """
-        :param config: OSB internal configuration object.
+        :param config: ASB internal configuration object.
         :param workload: The workload to use.
         """
         self.config = config
@@ -135,7 +135,7 @@ class StartWorker:
     def __init__(self, worker_id, config, workload, client_allocations, feedback_actor=None, error_queue=None, queue_lock=None, shared_states=None):
         """
         :param worker_id: Unique (numeric) id of the worker.
-        :param config: OSB internal configuration object.
+        :param config: ASB internal configuration object.
         :param workload: The workload to use.
         :param client_allocations: A structure describing which clients need to run which tasks.
         """

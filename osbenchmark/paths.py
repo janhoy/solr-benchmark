@@ -58,6 +58,6 @@ def install_root(cfg=None):
 # pylint: disable=invalid-docstring-quote
 def logs():
     """
-    :return: The absolute path to the directory that contains OSB's log file.
+    :return: The absolute path to the directory that contains ASB's log file.
     """
     return os.path.join(benchmark_confdir(), "logs")
