@@ -38,7 +38,7 @@ from osbenchmark import actor, config, doc_link, \
         publisher, workload, version, PROGRAM_NAME
 from osbenchmark.builder import cluster_config as cc_module
 from osbenchmark.builder.supplier import SourceRepository, Builder
-from osbenchmark.solr.provisioner import SolrProvisioner, SolrDockerLauncher
+from osbenchmark.builder.solr_provisioner import SolrProvisioner, SolrDockerLauncher
 from osbenchmark.utils import console, opts, versions
 
 

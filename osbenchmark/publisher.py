@@ -33,7 +33,7 @@ from enum import Enum
 import tabulate
 
 from osbenchmark import metrics, exceptions
-from osbenchmark.solr import result_writer as solr_result_writer
+from osbenchmark import result_writer as solr_result_writer
 from osbenchmark.utils import convert, io as rio, console
 
 FINAL_SCORE = r"""

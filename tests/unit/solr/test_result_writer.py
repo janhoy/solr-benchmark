@@ -15,13 +15,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for osbenchmark/solr/result_writer.py"""
+"""Unit tests for osbenchmark/result_writer.py"""
 
 import os
 import tempfile
 import unittest
 
-from osbenchmark.solr.result_writer import (
+from osbenchmark.result_writer import (
     LocalFilesystemResultWriter,
     create_writer,
 )

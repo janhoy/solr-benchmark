@@ -15,14 +15,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for osbenchmark/solr/provisioner.py"""
+"""Unit tests for osbenchmark/builder/solr_provisioner.py"""
 
 import socket
 import unittest
 from unittest.mock import MagicMock, patch
 
 from osbenchmark import exceptions
-from osbenchmark.solr.provisioner import SolrProvisioner, SolrDockerLauncher, _assert_port_free
+from osbenchmark.builder.solr_provisioner import SolrProvisioner, SolrDockerLauncher, _assert_port_free
 
 
 def _make_cluster_config(variables: dict):
