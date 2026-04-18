@@ -22,7 +22,8 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# Modifications copyright (C) 2024 The Apache Software Foundation
+# Modifications copyright (C) 2026 The Apache Software Foundation
+# (Apache Solr contributors). Licensed under the Apache License, Version 2.0.
 
 import io
 import logging
