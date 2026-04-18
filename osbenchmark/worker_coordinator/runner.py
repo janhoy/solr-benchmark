@@ -380,13 +380,6 @@ def mandatory(params, key, op):
             f"Add it to your parameter source and try again.")
 
 
-# TODO: remove and use https://docs.python.org/3/library/stdtypes.html#str.removeprefix
-#  once Python 3.9 becomes the minimum version
-def remove_prefix(string, prefix):
-    if string.startswith(prefix):
-        return string[len(prefix):]
-    return string
-
 
 def escape(v):
     """
@@ -614,14 +607,6 @@ class RestoreBackup(Runner):
         return "restore-snapshot"
 
 
-def async_search_ids(op_names):
-    subjects = [op_names] if isinstance(op_names, str) else op_names
-    for subject in subjects:
-        subject_id = CompositeContext.get(subject)
-        # skip empty ids, searches have already completed
-        if subject_id:
-            yield subject_id, subject
-
 
 class CompositeContext:
     ctx = contextvars.ContextVar("composite_context")
@@ -667,21 +652,27 @@ class CompositeContext:
 
 class Composite(Runner):
     """
-    Executes a complex request structure which is measured by OSB as one composite operation.
+    Executes a complex request structure which is measured as one composite operation.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.supported_op_types = [
-            "create-point-in-time",
-            "delete-point-in-time",
-            "list-all-point-in-time",
+            # Framework-level operations
+            "sleep",
+            "raw-request",
+            # Solr search operations
             "search",
             "paginated-search",
-            "raw-request",
-            "sleep",
-            "submit-async-search",
-            "get-async-search",
-            "delete-async-search"
+            "scroll-search",
+            # Solr data operations
+            "bulk-index",
+            "commit",
+            "refresh",
+            "optimize",
+            "wait-for-merges",
+            # Solr admin operations
+            "create-collection",
+            "delete-collection",
         ]
 
     async def run_stream(self, client, stream, connection_limit):
