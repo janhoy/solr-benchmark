@@ -28,8 +28,8 @@ from osbenchmark.worker_coordinator.runner import (
     SolrCreateCollection,
     SolrDeleteCollection,
 )
-from osbenchmark.solr.conversion.field import normalize_field_name
-from osbenchmark.solr.conversion.query import translate_opensearch_query
+from osbenchmark.conversion.field import normalize_field_name
+from osbenchmark.conversion.query import translate_opensearch_query
 
 
 # Backward compatibility aliases for tests

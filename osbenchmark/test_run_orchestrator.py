@@ -211,7 +211,7 @@ class BenchmarkCoordinator:
         if not workload_path or not os.path.isdir(workload_path):
             return
 
-        from osbenchmark.solr.conversion.detector import is_opensearch_workload_path
+        from osbenchmark.conversion.detector import is_opensearch_workload_path
         if is_opensearch_workload_path(workload_path):
             msg = (
                 f"This workload is in OpenSearch Benchmark format and cannot be run directly.\n"

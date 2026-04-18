@@ -15,11 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for osbenchmark/solr/conversion/schema.py"""
+"""Unit tests for osbenchmark/conversion/schema.py"""
 
 import unittest
 
-from osbenchmark.solr.conversion.schema import (
+from osbenchmark.conversion.schema import (
     translate_opensearch_mapping,
     generate_schema_xml,
 )

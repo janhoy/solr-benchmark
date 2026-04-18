@@ -1295,7 +1295,7 @@ def dispatch_sub_command(arg_parser, args, cfg):
             cfg.add(config.Scope.applicationOverride, "workload", "visualize", True)
             dispatch_visualize(cfg)
         elif sub_command == "convert-workload":
-            from osbenchmark.solr.conversion import workload_converter
+            from osbenchmark.conversion import workload_converter
             source_dir = os.path.abspath(args.workload_path)
             output_dir = os.path.abspath(args.output_path) if args.output_path else source_dir.rstrip("/") + "-solr"
             force = getattr(args, "force", False)

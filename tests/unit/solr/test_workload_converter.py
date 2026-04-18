@@ -15,20 +15,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for osbenchmark/solr/conversion/workload_converter.py"""
+"""Unit tests for osbenchmark/conversion/workload_converter.py"""
 
 import json
 import os
 import tempfile
 import unittest
 
-from osbenchmark.solr.conversion.workload_converter import (
+from osbenchmark.conversion.workload_converter import (
     CONVERTED_MARKER,
     convert_opensearch_workload,
     detect_workload_format_from_file,
     is_already_converted,
 )
-from osbenchmark.solr.conversion.query import (
+from osbenchmark.conversion.query import (
     translate_to_solr_json_dsl,
     _convert_aggregations_to_facets,
     _calendar_interval_to_solr_gap,
@@ -315,7 +315,7 @@ class TestConvertAggregationsToFacets(unittest.TestCase):
 
     def test_unsupported_agg_skipped_with_warning(self):
         aggs = {"my_geohash": {"geohash_grid": {"field": "location", "precision": 3}}}
-        with self.assertLogs("osbenchmark.solr.conversion.query", level="WARNING") as log:
+        with self.assertLogs("osbenchmark.conversion.query", level="WARNING") as log:
             result = _convert_aggregations_to_facets(aggs)
         self.assertEqual({}, result)
         self.assertTrue(any("geohash_grid" in msg for msg in log.output))

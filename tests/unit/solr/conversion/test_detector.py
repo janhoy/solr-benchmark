@@ -15,14 +15,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for osbenchmark/solr/conversion/detector.py"""
+"""Unit tests for osbenchmark/conversion/detector.py"""
 
 import json
 import os
 import tempfile
 import unittest
 
-from osbenchmark.solr.conversion.detector import is_opensearch_workload, is_opensearch_workload_path
+from osbenchmark.conversion.detector import is_opensearch_workload, is_opensearch_workload_path
 
 
 class TestWorkloadDetection(unittest.TestCase):
