@@ -310,8 +310,6 @@ class FeedbackActor(actor.BenchmarkActor):
         self.max_cpu_threshold = None
         self.cpu_window_seconds = None
         self.cpu_check_interval = None
-        # client, index, and test run ID for querying users' data store
-        self.os_client = None
         self.metrics_index = None
         self.test_run_id=None
 
@@ -355,7 +353,6 @@ class FeedbackActor(actor.BenchmarkActor):
         self.metrics_index = msg.metrics_index
         if msg.cpu_max:
             self.max_cpu_threshold = msg.cpu_max
-            self.os_client = None  # Redline CPU-feedback requires an external OS metrics store (not supported in Solr Benchmark)
         self.logger.info(
         "Feedback actor has received the following configuration: Max clients = %s, scale step = %d, scale down percentage = %f, sleep time = %d",
         self.total_client_count, self.num_clients_to_scale_up, self.percentage_clients_to_scale_down, self.POST_SCALEDOWN_SECONDS
@@ -521,57 +518,11 @@ class FeedbackActor(actor.BenchmarkActor):
             self.state = FeedbackState.NEUTRAL
 
     def _check_cpu_usage(self):
-        """
-        Grab the average CPU load per-node in the past N seconds
-        If any exceed the threshold given, report to the error queue
-        """
-        body = {
-            "size": 0,
-            "query": {
-                "bool": {
-                "filter": [
-                    { "term":  { "name": "node-stats" }},
-                    { "term":  { "test-run-id": self.test_run_id }},
-                    { "range": { "@timestamp": { "gte": f"now-{self.cpu_window_seconds}s", "lte": "now" }}}
-                ]
-                }
-            },
-            "aggs": {
-                "nodes": {
-                "terms": {
-                    "field": "meta.node_name",
-                    "size": 1000
-                },
-                "aggs": {
-                    "avg_cpu": {
-                    "avg": { "field": "process_cpu_percent" }
-                    },
-                    "hot_node_filter": {
-                    "bucket_selector": {
-                        "buckets_path": { "avgCpu": "avg_cpu" },
-                        "script": f"params.avgCpu > {self.max_cpu_threshold}"
-                    }
-                    }
-                }
-                }
-            }
-        }
-        resp = self.os_client.search(index=self.metrics_index, body=body)
-        buckets = resp['aggregations']['nodes']['buckets']
-        if buckets:
-            for bucket in buckets:
-                self.logger.info("Node %s avg CPU=%.1f%% > threshold %.1f%%", bucket['key'], bucket['avg_cpu']['value'], self.max_cpu_threshold)
-                try:
-                    self.error_queue.put_nowait({
-                        "type":       "cpu_threshold_exceeded",
-                        "node_name":  bucket['key'],
-                        "value":      bucket['avg_cpu']['value']
-                    })
-                except queue.Full:
-                    self.logger.warning("Error queue full; dropping cpu_threshold_exceeded for node %s", bucket['key'])
-                break # we only need one error message to trigger a scaledown
-        else:
-            self.logger.info("All nodes are currently under max usage threshold")
+        raise exceptions.SystemSetupError(
+            "CPU-based redline feedback requires an external OpenSearch metrics store "
+            "which is not supported in Solr Benchmark. "
+            "Disable redline testing or remove 'redline.max_cpu_usage' from your config."
+        )
 
 class WorkerCoordinatorActor(actor.BenchmarkActor):
     RESET_RELATIVE_TIME_MARKER = "reset_relative_time"
