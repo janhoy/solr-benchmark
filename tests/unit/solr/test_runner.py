@@ -344,5 +344,54 @@ class TestSolrDeleteCollection(unittest.TestCase):
         _run(runner(mock_sc, params))
 
 
+class TestRunnerRegistrationSmoke(unittest.TestCase):
+    """
+    Verify that Solr runners work end-to-end through the MultiClientRunner wrapper.
+
+    The wrapper (created by register_runner) does client_extractor=lambda c: c["default"]
+    before calling the runner's __call__.  Tests that bypass register_runner and call
+    __call__ directly would miss this extraction and test the wrong calling convention.
+    These smoke-tests go through runner_for() so the full wrapper stack is exercised.
+    """
+
+    def setUp(self):
+        from osbenchmark.worker_coordinator.runner import register_default_runners
+        register_default_runners()
+
+    def _run_via_framework(self, op_type, clients_dict, params):
+        """Look up a registered runner and invoke it the same way execute_single does."""
+        from osbenchmark.worker_coordinator.runner import runner_for
+        wrapped = runner_for(op_type)
+        return _run(wrapped(clients_dict, params))
+
+    def test_delete_collection_via_framework(self):
+        """SolrDeleteCollection receives SolrClient directly after MultiClientRunner extraction."""
+        mock_sc = MagicMock()
+        params = {"collection": "smoke-coll", "ignore-missing": True}
+        # Pass the dict — the wrapper extracts ["default"] before calling __call__
+        self._run_via_framework("delete-collection", {"default": mock_sc}, params)
+        mock_sc.delete_collection.assert_called_once_with("smoke-coll")
+
+    def test_bulk_index_via_framework(self):
+        """SolrBulkIndex receives SolrClient directly after MultiClientRunner extraction."""
+        mock_sc = MagicMock()
+        mock_sc.add.return_value = None
+        lines = ['{"index": {"_id": "1"}}', '{"title": "doc"}']
+        params = {"collection": "smoke-coll", "corpus": lines, "bulk-size": 500}
+        result = self._run_via_framework("bulk-index", {"default": mock_sc}, params)
+        self.assertTrue(result["success"])
+        mock_sc.add.assert_called_once()
+
+    def test_search_via_framework(self):
+        """SolrSearch receives SolrClient directly after MultiClientRunner extraction."""
+        mock_results = MagicMock()
+        mock_results.hits = 5
+        mock_sc = MagicMock()
+        mock_sc.search.return_value = mock_results
+        params = {"collection": "smoke-coll", "q": "*:*"}
+        result = self._run_via_framework("search", {"default": mock_sc}, params)
+        self.assertEqual(5, result["hits"])
+
+
 if __name__ == "__main__":
     unittest.main()
