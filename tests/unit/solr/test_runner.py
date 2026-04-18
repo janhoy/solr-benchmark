@@ -181,7 +181,7 @@ class TestSolrBulkIndex(unittest.TestCase):
             '{"title": "doc"}',
         ]
         runner = SolrBulkIndex()
-        result = _run(runner({"default": mock_sc}, self._params(lines)))
+        result = _run(runner(mock_sc, self._params(lines)))
 
         self.assertEqual(1, result["weight"])
         self.assertEqual("docs", result["unit"])
@@ -197,7 +197,7 @@ class TestSolrBulkIndex(unittest.TestCase):
             '{"title": "doc"}',
         ]
         runner = SolrBulkIndex()
-        result = _run(runner({"default": mock_sc}, self._params(lines)))
+        result = _run(runner(mock_sc, self._params(lines)))
         self.assertFalse(result["success"])
         self.assertGreater(result["error-count"], 0)
 
@@ -213,7 +213,7 @@ class TestSolrBulkIndex(unittest.TestCase):
             '{"vendor_id": "1", "trip_distance": 0.8}',
         ]
         runner = SolrBulkIndex()
-        result = _run(runner({"default": mock_sc}, self._params(lines)))
+        result = _run(runner(mock_sc, self._params(lines)))
 
         self.assertEqual(3, result["weight"])
         self.assertTrue(result["success"])
@@ -239,7 +239,7 @@ class TestSolrSearch(unittest.TestCase):
 
         params = {**self._base_params(), "q": "hello world", "rows": 10}
         runner = SolrSearch()
-        result = _run(runner({"default": mock_sc}, params))
+        result = _run(runner(mock_sc, params))
 
         self.assertEqual(42, result["hits"])
         self.assertEqual(1, result["weight"])
@@ -255,7 +255,7 @@ class TestSolrSearch(unittest.TestCase):
         # Solr JSON DSL uses a string for the 'query' key, not a dict
         params = {**self._base_params(), "body": {"query": "*:*", "limit": 5}}
         runner = SolrSearch()
-        result = _run(runner({"default": mock_sc}, params))
+        result = _run(runner(mock_sc, params))
 
         self.assertEqual(7, result["hits"])
         mock_sc.raw_request.assert_called_once()
@@ -270,7 +270,7 @@ class TestSolrSearch(unittest.TestCase):
 
         params = {**self._base_params(), "body": {"query": {"match_all": {}}, "size": 20}}
         runner = SolrSearch()
-        result = _run(runner({"default": mock_sc}, params))
+        result = _run(runner(mock_sc, params))
 
         self.assertEqual(3, result["hits"])
         mock_sc.raw_request.assert_called_once()
@@ -288,7 +288,7 @@ class TestSolrCreateCollection(unittest.TestCase):
                 "configset-path": tmpdir,
             }
             runner = SolrCreateCollection()
-            _run(runner({"default": mock_sc}, params))
+            _run(runner(mock_sc, params))
 
         # Verify upload_configset called before create_collection
         mock_sc.upload_configset.assert_called_once_with("my-config", tmpdir)
@@ -307,7 +307,7 @@ class TestSolrCreateCollection(unittest.TestCase):
             "pull-replicas": 1,
         }
         runner = SolrCreateCollection()
-        _run(runner({"default": mock_sc}, params))
+        _run(runner(mock_sc, params))
 
         mock_sc.create_collection.assert_called_once_with(
             "my-coll", "my-config", 2, 1, 2, 1
@@ -322,7 +322,7 @@ class TestSolrCreateCollection(unittest.TestCase):
             "configset": "my-config",
         }
         runner = SolrCreateCollection()
-        _run(runner({"default": mock_sc}, params))
+        _run(runner(mock_sc, params))
 
         mock_sc.create_collection.assert_called_once_with(
             "my-coll", "my-config", 1, 1, 0, 0
@@ -341,7 +341,7 @@ class TestSolrDeleteCollection(unittest.TestCase):
         }
         runner = SolrDeleteCollection()
         # Should not raise
-        _run(runner({"default": mock_sc}, params))
+        _run(runner(mock_sc, params))
 
 
 if __name__ == "__main__":

@@ -405,7 +405,7 @@ class SolrBulkIndex(SolrRunner):
         batch_size = params.get("bulk-size", 500)
         do_commit = params.get("commit", False)
         collection = _get_collection(params)
-        sc = client["default"]
+        sc = client
 
         # Use streaming translation to avoid loading all documents into memory
         doc_stream = _translate_ndjson_stream(corpus_lines)
@@ -488,7 +488,7 @@ class SolrSearch(SolrRunner):
 
     async def __call__(self, client, params):
         collection = _get_collection(params)
-        sc = client["default"]
+        sc = client
 
         start = time.perf_counter()
 
@@ -542,7 +542,7 @@ class SolrCommit(SolrRunner):
 
     async def __call__(self, client, params):
         collection = _get_collection(params)
-        sc = client["default"]
+        sc = client
         soft = params.get("soft-commit", False)
 
         start = time.perf_counter()
@@ -573,7 +573,7 @@ class SolrOptimize(SolrRunner):
 
     async def __call__(self, client, params):
         collection = _get_collection(params)
-        sc = client["default"]
+        sc = client
         max_segments = params.get("max-segments", 1)
 
         start = time.perf_counter()
@@ -605,7 +605,7 @@ class SolrWaitForMerges(SolrRunner):
     """
 
     async def __call__(self, client, params):
-        sc = client["default"]
+        sc = client
         retry_wait = float(params.get("retry-wait-period", 2.0))
         max_wait = float(params.get("max-wait-seconds", 3600))
         start = time.perf_counter()
@@ -676,7 +676,7 @@ class SolrCreateCollection(SolrRunner):
     """
 
     async def __call__(self, client, params):
-        sc = client["default"]
+        sc = client
         collection = params["collection"]
         configset = params.get("configset", collection)
         configset_path = params.get("configset-path")
@@ -739,7 +739,7 @@ class SolrDeleteCollection(SolrRunner):
     """
 
     async def __call__(self, client, params):
-        sc = client["default"]
+        sc = client
         collection = params["collection"]
         configset = params.get("configset", collection)
         ignore_missing = params.get("ignore-missing", True)
@@ -783,7 +783,7 @@ class SolrRawRequest(SolrRunner):
     """
 
     async def __call__(self, client, params):
-        sc = client["default"]
+        sc = client
         method = params.get("method", "GET")
         path = params["path"]
         body = params.get("body")
