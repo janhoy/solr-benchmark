@@ -2091,8 +2091,7 @@ class AsyncIoAdapter:
             clients = {}
             for cluster_name, cluster_hosts in all_hosts.items():
                 rest_client_factory = client.ClientFactory(cluster_hosts, all_client_options[cluster_name])
-                unified_client_factory = client.UnifiedClientFactory(rest_client_factory)
-                clients[cluster_name] = unified_client_factory.create_async()
+                clients[cluster_name] = rest_client_factory.create()
             return clients
 
         # Properly size the internal connection pool to match the number of expected clients but allow the user
