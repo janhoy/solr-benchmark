@@ -27,16 +27,16 @@ Devices provided:
   SolrIndexingStats   — indexing throughput and merge metrics
   SolrCacheStats      — Solr internal cache statistics (query, filter, document caches)
 
-Each device polls the Solr V2 API via SolrAdminClient and stores metrics
+Each device polls the Solr V2 API via SolrClient and stores metrics
 using the OSB metrics store interface.  Both Solr 9.x (custom JSON) and
 Solr 10.x (Prometheus text format) are supported for the /admin/metrics endpoint,
 satisfying Constitution Principle VII (dual-format rule).
 
 Usage:
     from osbenchmark.solr.telemetry import SolrJvmStats, SolrNodeStats, SolrCollectionStats
-    from osbenchmark.solr.client import SolrAdminClient
+    from osbenchmark.client import SolrClient
 
-    client = SolrAdminClient("localhost", port=8983)
+    client = SolrClient("localhost", port=8983)
     device = SolrJvmStats(client, metrics_store, sample_interval_s=5)
     device.on_benchmark_start()
     # ... run benchmark ...
@@ -192,7 +192,7 @@ class SolrTelemetryDevice(TelemetryDevice):
           - For Prometheus responses: the result of ``_parse_prometheus_text()``
 
         Detection is based on the Content-Type returned by
-        ``SolrAdminClient.get_node_metrics()``:
+        ``SolrClient.get_node_metrics()``:
           - dict → JSON (Solr pre-10.0)
           - str  → Prometheus text (Solr 10.0+)
         """
@@ -479,7 +479,7 @@ class SolrCollectionStats(SolrTelemetryDevice):
       - num_deleted_docs (gauge)
 
     Constructor Args:
-        admin_client:     SolrAdminClient instance.
+        admin_client:     SolrClient instance.
         metrics_store:    OSB metrics store.
         collections:      List of collection names to monitor (default: all).
         sample_interval_s: Polling interval in seconds.

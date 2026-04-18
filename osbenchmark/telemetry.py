@@ -31,8 +31,7 @@ import tabulate
 
 from osbenchmark import metrics, time, exceptions
 from osbenchmark.metrics import MetaInfoScope
-from osbenchmark.utils import io, sysstats, console, opts, process
-from osbenchmark.utils.versions import components
+from osbenchmark.utils import io, sysstats, console, process
 
 def list_telemetry():
     # Lazy import to avoid circular dependency (solr/telemetry.py imports TelemetryDevice from this module)
@@ -355,7 +354,7 @@ class ShardStats(TelemetryDevice):
         """
         :param telemetry_params: May optionally specify
             ``shard-stats-sample-interval``: positive integer, seconds between polls. Default: 60.
-        :param admin_client: A SolrAdminClient instance used for V1 admin API calls.
+        :param admin_client: A SolrClient instance used for admin API calls.
         :param metrics_store: The configured metrics store we write to.
         """
         super().__init__()
@@ -371,11 +370,7 @@ class ShardStats(TelemetryDevice):
     def on_benchmark_start(self):
         # noinspection PyBroadException
         try:
-            session = self.admin_client._get_session()
-            cs_url = f"{self.admin_client.base_url}/solr/admin/collections?action=CLUSTERSTATUS&wt=json"
-            resp = session.get(cs_url, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
+            data = self.admin_client.get_clusterstatus()
         except BaseException:
             self.logger.exception("ShardStats: could not retrieve CLUSTERSTATUS; device will not run.")
             return
@@ -412,17 +407,12 @@ class ShardStatsRecorder:
     def record(self):
         # noinspection PyBroadException
         try:
-            session = self.admin_client._get_session()
-            cs_url = f"{self.admin_client.base_url}/solr/admin/collections?action=CLUSTERSTATUS&wt=json"
-            cs_resp = session.get(cs_url, timeout=30)
-            cs_resp.raise_for_status()
-            cluster = cs_resp.json().get("cluster", {})
-            collections = cluster.get("collections", {})
+            data = self.admin_client.get_clusterstatus()
+            collections = data.get("cluster", {}).get("collections", {})
         except BaseException:
             self.logger.exception("ShardStats: could not retrieve CLUSTERSTATUS.")
             return
 
-        session = self.admin_client._get_session()
         for _coll_name, coll_data in collections.items():
             shards = coll_data.get("shards", {})
             for shard_name, shard_data in shards.items():
@@ -434,13 +424,7 @@ class ShardStatsRecorder:
                             continue
                         # noinspection PyBroadException
                         try:
-                            status_url = (
-                                f"{self.admin_client.base_url}/solr/admin/cores"
-                                f"?action=STATUS&core={core_name}&wt=json"
-                            )
-                            sr = session.get(status_url, timeout=30)
-                            sr.raise_for_status()
-                            core_status = sr.json().get("status", {}).get(core_name, {})
+                            core_status = self.admin_client.get_core_status(core_name)
                             idx = core_status.get("index", {})
                             num_docs = idx.get("numDocs", 0)
                             size_bytes = idx.get("sizeInBytes", 0)
@@ -987,4 +971,3 @@ class IndexSize(InternalTelemetryDevice):
     def store_system_metrics(self, node, metrics_store):
         if self.index_size_bytes:
             metrics_store.put_value_node_level(node.node_name, "final_index_size_bytes", self.index_size_bytes, "byte")
-

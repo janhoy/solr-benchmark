@@ -913,38 +913,29 @@ class WorkerCoordinator:
 
     def prepare_telemetry(self, clients, enable):
         enabled_devices = self.config.opts("telemetry", "devices")
-        self.telemetry = telemetry.Telemetry(enabled_devices, devices=self._create_solr_telemetry_devices() if enable else [])
+        self.telemetry = telemetry.Telemetry(enabled_devices, devices=self._create_solr_telemetry_devices(clients) if enable else [])
 
-    def _create_solr_telemetry_devices(self):
-        """Create Solr telemetry devices from the target-hosts configuration."""
+    def _create_solr_telemetry_devices(self, clients):
+        """Create Solr telemetry devices using the unified SolrClient."""
         # pylint: disable=import-outside-toplevel
-        from osbenchmark.solr.client import SolrAdminClient
+        from osbenchmark.client import SolrClient
         from osbenchmark.solr import telemetry as solr_telemetry
 
-        all_hosts = self.config.opts("client", "hosts").all_hosts
-        hosts = all_hosts.get("default", [])
-        host_entry = hosts[0] if hosts else {}
-        if isinstance(host_entry, dict):
-            solr_host = host_entry.get("host", "localhost")
-            solr_port = host_entry.get("port", 8983)
-        else:
-            # host_entry may be a "host:port" string
-            parts = str(host_entry).rsplit(":", 1)
-            solr_host = parts[0] if parts else "localhost"
-            solr_port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 8983
-
-        admin = SolrAdminClient(host=solr_host, port=solr_port)
+        sc = clients.get("default")
+        if not isinstance(sc, SolrClient):
+            # Guard against test mocks or missing clients — skip telemetry device creation.
+            return []
         log_root = self.config.opts("node", "root.dir", mandatory=False) or "."
-        enabled_devices = self.config.opts("telemetry", "devices")
+        telemetry_params = self.config.opts("telemetry", "params", mandatory=False) or {}
         return [
-            solr_telemetry.SolrJvmStats(admin, self.metrics_store),
-            solr_telemetry.SolrNodeStats(admin, self.metrics_store),
-            solr_telemetry.SolrCollectionStats(admin, self.metrics_store),
-            solr_telemetry.SolrQueryStats(admin, self.metrics_store),
-            solr_telemetry.SolrIndexingStats(admin, self.metrics_store),
-            solr_telemetry.SolrCacheStats(admin, self.metrics_store),
-            telemetry.SegmentStats(log_root, admin),
-            telemetry.ShardStats(enabled_devices, admin, self.metrics_store),
+            solr_telemetry.SolrJvmStats(sc, self.metrics_store),
+            solr_telemetry.SolrNodeStats(sc, self.metrics_store),
+            solr_telemetry.SolrCollectionStats(sc, self.metrics_store),
+            solr_telemetry.SolrQueryStats(sc, self.metrics_store),
+            solr_telemetry.SolrIndexingStats(sc, self.metrics_store),
+            solr_telemetry.SolrCacheStats(sc, self.metrics_store),
+            telemetry.SegmentStats(log_root, sc),
+            telemetry.ShardStats(telemetry_params, sc, self.metrics_store),
         ]
 
     def wait_for_rest_api(self, clients):

@@ -208,6 +208,26 @@ class SolrAdminClient:
         resp = self._get("/api/cluster")
         return resp.json().get("cluster", resp.json())
 
+    def get_clusterstatus(self) -> dict:
+        """Return full CLUSTERSTATUS response dict via V1 Collections API."""
+        resp = self._get_session().get(
+            f"{self.base_url}/solr/admin/collections",
+            params={"action": "CLUSTERSTATUS", "wt": "json"},
+            timeout=self.timeout,
+        )
+        self._raise_for_solr_error(resp, "CLUSTERSTATUS")
+        return resp.json()
+
+    def get_core_status(self, core_name: str) -> dict:
+        """Return Core STATUS for a specific core (leader replica) via V1 Cores API."""
+        resp = self._get_session().get(
+            f"{self.base_url}/solr/admin/cores",
+            params={"action": "STATUS", "core": core_name, "wt": "json"},
+            timeout=self.timeout,
+        )
+        self._raise_for_solr_error(resp, f"Core STATUS for '{core_name}'")
+        return resp.json().get("status", {}).get(core_name, {})
+
     def list_collections(self) -> list:
         """Return list of collection names via Collections API LIST action."""
         resp = self._get_session().get(

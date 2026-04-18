@@ -32,7 +32,7 @@ import pysolr
 import requests
 
 from osbenchmark import exceptions as benchmark_exceptions
-from osbenchmark.solr.client import SolrAdminClient, CollectionAlreadyExistsError, CollectionNotFoundError
+from osbenchmark.solr.client import CollectionAlreadyExistsError, CollectionNotFoundError
 from osbenchmark.solr.telemetry import _parse_prometheus_text
 
 logger = logging.getLogger(__name__)
@@ -94,23 +94,9 @@ def solr_runner(fn):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _solr_client(params):
-    """
-    Build a pysolr.Solr instance from runner params.
-
-    Expected params keys:
-      - ``host``       — Solr host (default: "localhost")
-      - ``port``       — Solr port (default: 8983)
-      - ``collection`` — collection name
-      - ``username``   — optional
-      - ``password``   — optional
-      - ``tls``        — bool (default: False)
-      - ``timeout``    — request timeout seconds (default: 30)
-    """
-    host = params.get("host", "localhost")
-    port = params.get("port", 8983)
+def _get_collection(params):
+    """Extract and validate the collection name from params."""
     collection = params.get("collection") or params.get("index") or None
-    tls = params.get("tls", False)
     if not collection:
         raise benchmark_exceptions.DataError(
             "Operation parameter 'collection' is missing. "
@@ -123,36 +109,7 @@ def _solr_client(params):
             "Solr does not support querying all collections simultaneously. "
             "Remove or replace this operation in your Solr workload."
         )
-    timeout = params.get("timeout", 30)
-    scheme = "https" if tls else "http"
-    url = f"{scheme}://{host}:{port}/solr/{collection}"
-
-    auth = None
-    username = params.get("username")
-    password = params.get("password")
-    if username and password:
-        auth = requests.auth.HTTPBasicAuth(username, password)
-
-    # Disable automatic proxy detection (trust_env=False) to avoid hanging on macOS
-    # after fork() — CFNetwork proxy detection is not fork-safe.
-    session = requests.Session()
-    session.trust_env = False
-    if auth:
-        session.auth = auth
-
-    return pysolr.Solr(url, timeout=timeout, always_commit=False, session=session)
-
-
-def _admin_client(params):
-    """Build a SolrAdminClient from runner params."""
-    return SolrAdminClient(
-        host=params.get("host", "localhost"),
-        port=params.get("port", 8983),
-        username=params.get("username"),
-        password=params.get("password"),
-        tls=params.get("tls", False),
-        timeout=params.get("timeout", 30),
-    )
+    return collection
 
 
 async def _run_in_executor(func, *args, **kwargs):
@@ -434,7 +391,7 @@ class SolrBulkIndex(SolrRunner):
       - ``commit``    — if True, hard-commit after all batches (default: False)
     """
 
-    async def __call__(self, solr_not_used, params):
+    async def __call__(self, client, params):
         # OSB's bulk_generator puts data in "body" as a bytes blob (b"".join(bulk_lines)).
         # Workloads that provide raw NDJSON lines may use "corpus" instead.
         body = params.get("body", params.get("corpus", []))
@@ -447,8 +404,8 @@ class SolrBulkIndex(SolrRunner):
 
         batch_size = params.get("bulk-size", 500)
         do_commit = params.get("commit", False)
-
-        client = _solr_client(params)
+        collection = _get_collection(params)
+        sc = client["default"]
 
         # Use streaming translation to avoid loading all documents into memory
         doc_stream = _translate_ndjson_stream(corpus_lines)
@@ -464,7 +421,7 @@ class SolrBulkIndex(SolrRunner):
             if len(batch) >= batch_size:
                 try:
                     # Use commitWithin=1000ms to make docs visible quickly without explicit commits
-                    await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
+                    await _run_in_executor(sc.add, collection, batch, commit=False, commitWithin=1000)
                     total_docs += len(batch)
                 except pysolr.SolrError as exc:
                     logger.error("Bulk index error on batch: %s", exc)
@@ -474,14 +431,14 @@ class SolrBulkIndex(SolrRunner):
         # Send remaining documents
         if batch:
             try:
-                await _run_in_executor(client.add, batch, commit=False, commitWithin=1000)
+                await _run_in_executor(sc.add, collection, batch, commit=False, commitWithin=1000)
                 total_docs += len(batch)
             except pysolr.SolrError as exc:
                 logger.error("Bulk index error on final batch: %s", exc)
                 errors += len(batch)
 
         if do_commit:
-            await _run_in_executor(client.commit)
+            await _run_in_executor(sc.commit, collection)
 
         elapsed = time.perf_counter() - start
         weight = total_docs - errors
@@ -529,48 +486,23 @@ class SolrSearch(SolrRunner):
       - ``cache`` — kept for API compat, ignored in Solr
     """
 
-    async def __call__(self, solr_not_used, params):
-        host = params.get("host", "localhost")
-        port = params.get("port", 8983)
-        tls = params.get("tls", False)
-        # Accept 'index' as alias for 'collection' (standard OSB workload format).
-        collection = params.get("collection") or params.get("index") or None
-        if not collection:
-            raise benchmark_exceptions.DataError(
-                "Operation parameter 'collection' is missing. "
-                "Make sure your Solr workload specifies a 'collection' name in the operation params or param source. "
-                "If you are running an OpenSearch workload, convert it first with 'solr-benchmark convert-workload'."
-            )
-        timeout = params.get("timeout", 30)
-        scheme = "https" if tls else "http"
+    async def __call__(self, client, params):
+        collection = _get_collection(params)
+        sc = client["default"]
 
         start = time.perf_counter()
 
         body = params.get("body")
         if body is not None:
             # Mode 2: Solr JSON Query DSL → POST /solr/{collection}/query
-            url = f"{scheme}://{host}:{port}/solr/{collection}/query"
-            req_headers = {"Content-Type": "application/json"}
-            username = params.get("username")
-            password = params.get("password")
-            auth = (username, password) if username and password else None
-
-            def _do_json_search():
-                session = requests.Session()
-                session.trust_env = False  # prevent macOS proxy detection (fork-safety)
-                resp = session.post(url, json=body,
-                                    headers=req_headers, auth=auth,
-                                    timeout=timeout)
-                resp.raise_for_status()
-                return resp.json()
-
-            result = await _run_in_executor(_do_json_search)
-            num_hits = result.get("response", {}).get("numFound", 0)
+            resp = await _run_in_executor(
+                sc.raw_request, "POST", f"/solr/{collection}/query", body,
+                {"Content-Type": "application/json"}
+            )
+            resp.raise_for_status()
+            num_hits = resp.json().get("response", {}).get("numFound", 0)
         else:
             # Mode 1: Classic Solr params → pysolr.Solr.search()
-            solr_params = dict(params)
-            solr_params["collection"] = collection
-            client = _solr_client(solr_params)
             q = params.get("q", "*:*")
             kwargs = {}
             for key in ("fl", "rows", "fq", "sort"):
@@ -578,7 +510,7 @@ class SolrSearch(SolrRunner):
                     kwargs[key] = params[key]
             kwargs.update(params.get("request-params", {}))
 
-            results = await _run_in_executor(client.search, q, **kwargs)
+            results = await _run_in_executor(sc.search, collection, q, **kwargs)
             num_hits = results.hits
 
         elapsed = time.perf_counter() - start
@@ -608,15 +540,16 @@ class SolrCommit(SolrRunner):
       - ``soft-commit`` — bool; if True performs a soft commit (default: False)
     """
 
-    async def __call__(self, solr_not_used, params):
-        client = _solr_client(params)
+    async def __call__(self, client, params):
+        collection = _get_collection(params)
+        sc = client["default"]
         soft = params.get("soft-commit", False)
 
         start = time.perf_counter()
         if soft:
-            await _run_in_executor(client.commit, softCommit=True)
+            await _run_in_executor(sc.commit, collection, softCommit=True)
         else:
-            await _run_in_executor(client.commit)
+            await _run_in_executor(sc.commit, collection)
         elapsed = time.perf_counter() - start
 
         return {"weight": 1, "unit": "ops", "took": elapsed}
@@ -638,12 +571,13 @@ class SolrOptimize(SolrRunner):
       - ``max-segments`` — int; target max segment count (default: 1)
     """
 
-    async def __call__(self, solr_not_used, params):
-        client = _solr_client(params)
+    async def __call__(self, client, params):
+        collection = _get_collection(params)
+        sc = client["default"]
         max_segments = params.get("max-segments", 1)
 
         start = time.perf_counter()
-        await _run_in_executor(client.optimize, maxSegments=max_segments)
+        await _run_in_executor(sc.optimize, collection, maxSegments=max_segments)
         elapsed = time.perf_counter() - start
 
         return {"weight": 1, "unit": "ops", "took": elapsed}
@@ -670,14 +604,14 @@ class SolrWaitForMerges(SolrRunner):
       - standard connection params: host, port, tls, username, password, timeout
     """
 
-    async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
+    async def __call__(self, client, params):
+        sc = client["default"]
         retry_wait = float(params.get("retry-wait-period", 2.0))
         max_wait = float(params.get("max-wait-seconds", 3600))
         start = time.perf_counter()
 
         while True:
-            raw = await _run_in_executor(admin.get_node_metrics)
+            raw = await _run_in_executor(sc.get_node_metrics)
             total_running = 0
 
             if isinstance(raw, str):
@@ -741,8 +675,8 @@ class SolrCreateCollection(SolrRunner):
       - ``delete-configset-on-error`` — bool (default: True, ignored when no upload)
     """
 
-    async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
+    async def __call__(self, client, params):
+        sc = client["default"]
         collection = params["collection"]
         configset = params.get("configset", collection)
         configset_path = params.get("configset-path")
@@ -755,13 +689,13 @@ class SolrCreateCollection(SolrRunner):
 
         # Step 1: upload configset (only if a local path is supplied)
         if configset_path:
-            await _run_in_executor(admin.upload_configset, configset, configset_path)
+            await _run_in_executor(sc.upload_configset, configset, configset_path)
             logger.info("Uploaded configset '%s' from '%s'", configset, configset_path)
 
         # Step 2: create collection
         try:
             await _run_in_executor(
-                admin.create_collection,
+                sc.create_collection,
                 collection,
                 configset,
                 num_shards,
@@ -774,7 +708,7 @@ class SolrCreateCollection(SolrRunner):
         except Exception:
             if configset_path and params.get("delete-configset-on-error", True):
                 try:
-                    await _run_in_executor(admin.delete_configset, configset)
+                    await _run_in_executor(sc.delete_configset, configset)
                 except Exception as cleanup_exc:
                     logger.warning("Failed to clean up configset '%s': %s", configset, cleanup_exc)
             raise
@@ -804,8 +738,8 @@ class SolrDeleteCollection(SolrRunner):
       - ``ignore-missing``   — bool; if True, do not raise on 404 (default: True)
     """
 
-    async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
+    async def __call__(self, client, params):
+        sc = client["default"]
         collection = params["collection"]
         configset = params.get("configset", collection)
         ignore_missing = params.get("ignore-missing", True)
@@ -813,7 +747,7 @@ class SolrDeleteCollection(SolrRunner):
 
         start = time.perf_counter()
         try:
-            await _run_in_executor(admin.delete_collection, collection)
+            await _run_in_executor(sc.delete_collection, collection)
         except CollectionNotFoundError:
             if not ignore_missing:
                 raise
@@ -821,7 +755,7 @@ class SolrDeleteCollection(SolrRunner):
 
         if delete_configset:
             try:
-                await _run_in_executor(admin.delete_configset, configset)
+                await _run_in_executor(sc.delete_configset, configset)
             except Exception as exc:
                 logger.warning("Could not delete configset '%s': %s", configset, exc)
 
@@ -848,15 +782,15 @@ class SolrRawRequest(SolrRunner):
       - ``headers`` — dict of additional request headers
     """
 
-    async def __call__(self, solr_not_used, params):
-        admin = _admin_client(params)
+    async def __call__(self, client, params):
+        sc = client["default"]
         method = params.get("method", "GET")
         path = params["path"]
         body = params.get("body")
         headers = params.get("headers", {})
 
         start = time.perf_counter()
-        resp = await _run_in_executor(admin.raw_request, method, path, body, headers)
+        resp = await _run_in_executor(sc.raw_request, method, path, body, headers)
         elapsed = time.perf_counter() - start
 
         return {
