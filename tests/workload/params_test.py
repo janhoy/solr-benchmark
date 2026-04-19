@@ -739,7 +739,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -759,7 +759,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -774,7 +774,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -789,7 +789,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -805,7 +805,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -864,7 +864,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -880,7 +880,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -896,7 +896,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -912,7 +912,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -929,14 +929,14 @@ class BulkIndexParamSourceTests(TestCase):
             workload.DocumentCorpus(name="default", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=10,
-                                target_index="test-idx",
+                                target_collection="test-idx",
                                 target_type="test-type"
                                 )
             ]),
             workload.DocumentCorpus(name="special", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=100,
-                                target_index="test-idx2",
+                                target_collection="test-idx2",
                                 target_type="type"
                                 )
             ]),
@@ -959,14 +959,14 @@ class BulkIndexParamSourceTests(TestCase):
             workload.DocumentCorpus(name="default", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=10,
-                                target_index="test-idx",
+                                target_collection="test-idx",
                                 target_type="test-type"
                                 )
             ]),
             workload.DocumentCorpus(name="special", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=100,
-                                target_index="test-idx2",
+                                target_collection="test-idx2",
                                 target_type="type"
                                 )
             ]),
@@ -989,7 +989,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -1011,14 +1011,14 @@ class BulkIndexParamSourceTests(TestCase):
             workload.DocumentCorpus(name="default", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=300000,
-                                target_index="test-idx",
+                                target_collection="test-idx",
                                 target_type="test-type"
                                 )
             ]),
             workload.DocumentCorpus(name="special", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=700000,
-                                target_index="test-idx2",
+                                target_collection="test-idx2",
                                 target_type="type"
                                 )
             ]),
@@ -1061,14 +1061,14 @@ class BulkIndexParamSourceTests(TestCase):
             workload.DocumentCorpus(name="default", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=300000,
-                                target_index="test-idx",
+                                target_collection="test-idx",
                                 target_type="test-type"
                                 )
             ]),
             workload.DocumentCorpus(name="special", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=700000,
-                                target_index="test-idx2",
+                                target_collection="test-idx2",
                                 target_type="type"
                                 )
             ]),
@@ -1092,7 +1092,7 @@ class BulkIndexParamSourceTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )])
 
@@ -1149,7 +1149,7 @@ class BulkIndexParamSourceTests(TestCase):
                     workload.Documents(
                         source_format=workload.Documents.SOURCE_FORMAT_BULK,
                         number_of_documents=2,
-                        target_index="test-idx",
+                        target_collection="test-idx",
                         target_type="test-type",
                     )
                 ],
@@ -1180,7 +1180,7 @@ class BulkDataGeneratorTests(TestCase):
     @classmethod
     def create_test_reader(cls, batches):
         def inner_create_test_reader(corpus, docs, *args):
-            return StaticBulkReader(docs.target_index, docs.target_type, batches)
+            return StaticBulkReader(docs.target_collection, docs.target_type, batches)
 
         return inner_create_test_reader
 
@@ -1188,7 +1188,7 @@ class BulkDataGeneratorTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=10,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )
         ])
@@ -1231,12 +1231,12 @@ class BulkDataGeneratorTests(TestCase):
             workload.DocumentCorpus(name="default", documents=[
                         workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                         number_of_documents=5,
-                                        target_index="logs-2018-01",
+                                        target_collection="logs-2018-01",
                                         target_type="docs"
                                         ),
                         workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                         number_of_documents=5,
-                                        target_index="logs-2018-02",
+                                        target_collection="logs-2018-02",
                                         target_type="docs"
                                         ),
 
@@ -1244,7 +1244,7 @@ class BulkDataGeneratorTests(TestCase):
             workload.DocumentCorpus(name="special", documents=[
                 workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                                 number_of_documents=5,
-                                target_index="logs-2017-01",
+                                target_collection="logs-2017-01",
                                 target_type="docs"
                                 )
             ])
@@ -1299,7 +1299,7 @@ class BulkDataGeneratorTests(TestCase):
         corpus = workload.DocumentCorpus(name="default", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK,
                             number_of_documents=3,
-                            target_index="test-idx",
+                            target_collection="test-idx",
                             target_type="test-type"
                             )
         ])

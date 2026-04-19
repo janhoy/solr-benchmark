@@ -66,9 +66,9 @@ def register_default_runners():
     register_runner("create-collection", SolrCreateCollection(), async_runner=True)
     register_runner("delete-collection", SolrDeleteCollection(), async_runner=True)
     register_runner("raw-request", RawRequest(), async_runner=True)
-    _search_runner = SolrSearch()
-    register_runner("paginated-search", _search_runner, async_runner=True)
-    register_runner("scroll-search", _search_runner, async_runner=True)
+    _paginated_runner = SolrPaginatedSearch()
+    register_runner("paginated-search", _paginated_runner, async_runner=True)
+    register_runner("scroll-search", _paginated_runner, async_runner=True)
 
 def runner_for(operation_type):
     try:
@@ -1236,6 +1236,62 @@ class SolrSearch(SolrRunner):
 
     def __str__(self):
         return "solr-search"
+
+
+# ---------------------------------------------------------------------------
+# Runner: paginated search (cursorMark deep pagination)
+# ---------------------------------------------------------------------------
+
+class SolrPaginatedSearch(SolrRunner):
+    """
+    Execute a cursor-paginated Solr search using cursorMark.
+
+    Fetches all pages from a result set using Solr's deep pagination API.
+    Params:
+      - ``collection``, ``q`` (default ``*:*``), ``rows`` (page size, default 100)
+      - ``fl``, ``fq``, ``sort`` (must include a uniqueKey field, defaults to ``id asc``)
+      - ``request-params`` — additional Solr query params passed through
+    Returns weight = total docs fetched across all pages.
+    """
+
+    async def __call__(self, client, params):
+        collection = _get_collection(params)
+        sc = client
+        q = params.get("q", "*:*")
+        rows = params.get("rows", 100)
+        sort = params.get("sort", "id asc")
+        kwargs = {"rows": rows, "sort": sort}
+        for key in ("fl", "fq"):
+            if key in params:
+                kwargs[key] = params[key]
+        kwargs.update(params.get("request-params", {}))
+
+        cursor_mark = "*"
+        total_docs = 0
+        pages = 0
+        start = time.perf_counter()
+
+        while True:
+            kwargs["cursorMark"] = cursor_mark
+            results = await _run_in_executor(sc.search, collection, q, **kwargs)
+            next_cursor = getattr(results, "nextCursorMark", None)
+            total_docs += len(results.docs)
+            pages += 1
+            if next_cursor is None or next_cursor == cursor_mark:
+                break
+            cursor_mark = next_cursor
+
+        elapsed = time.perf_counter() - start
+        return {
+            "weight": total_docs,
+            "unit": "docs",
+            "hits": total_docs,
+            "pages": pages,
+            "took": elapsed,
+        }
+
+    def __str__(self):
+        return "solr-paginated-search"
 
 
 # ---------------------------------------------------------------------------

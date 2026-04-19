@@ -95,7 +95,7 @@ class Documents:
 
     def __init__(self, source_format, document_file=None, document_file_parts=None, document_archive=None, base_url=None, source_url=None,
                  includes_action_and_meta_data=False,
-                 number_of_documents=0, compressed_size_in_bytes=0, uncompressed_size_in_bytes=0, target_index=None,
+                 number_of_documents=0, compressed_size_in_bytes=0, uncompressed_size_in_bytes=0, target_collection=None,
                  target_type=None, meta_data=None):
         """
 
@@ -117,7 +117,8 @@ class Documents:
          user reporting. Only useful if a document_archive is given (optional but recommended to be set).
         :param uncompressed_size_in_bytes: The size in bytes of the benchmark document after decompressing it.
         Only useful if a document_archive is given (optional but recommended to be set).
-        :param target_index: The index to target for bulk operations. May be ``None`` if ``includes_action_and_meta_data`` is ``False``.
+        :param target_collection: The Solr collection to target for bulk operations. May be ``None`` if
+                                  ``includes_action_and_meta_data`` is ``False``.
         :param target_type: The document type to target for bulk operations. May be ``None`` if ``includes_action_and_meta_data``
                             is ``False``.
         :param meta_data: A dict containing key-value pairs with additional meta-data describing documents. Optional.
@@ -133,7 +134,7 @@ class Documents:
         self._number_of_documents = number_of_documents
         self._compressed_size_in_bytes = compressed_size_in_bytes
         self._uncompressed_size_in_bytes = uncompressed_size_in_bytes
-        self.target_index = target_index
+        self.target_collection = target_collection
         self.target_type = target_type
         self.meta_data = meta_data or {}
 
@@ -200,17 +201,17 @@ class Documents:
     def __hash__(self):
         return hash(self.source_format) ^ hash(self.document_file) ^ hash(self.document_archive) ^ hash(self.base_url) ^ \
                hash(self.source_url) ^ hash(self.includes_action_and_meta_data) ^ hash(self.number_of_documents) ^ \
-               hash(self.compressed_size_in_bytes) ^ hash(self.uncompressed_size_in_bytes) ^ hash(self.target_index) ^ \
+               hash(self.compressed_size_in_bytes) ^ hash(self.uncompressed_size_in_bytes) ^ hash(self.target_collection) ^ \
                hash(self.target_type) ^ hash(frozenset(self.meta_data.items()))
 
     def __eq__(self, othr):
         return (isinstance(othr, type(self)) and
                 (self.source_format, self.document_file, self.document_archive, self.base_url, self.source_url,
                  self.includes_action_and_meta_data, self.number_of_documents, self.compressed_size_in_bytes,
-                 self.uncompressed_size_in_bytes, self.target_index, self.target_type, self.meta_data) ==
+                 self.uncompressed_size_in_bytes, self.target_collection, self.target_type, self.meta_data) ==
                 (othr.source_format, othr.document_file, othr.document_archive, othr.base_url, othr.source_url,
                  othr.includes_action_and_meta_data, othr.number_of_documents, othr.compressed_size_in_bytes,
-                 othr.uncompressed_size_in_bytes, othr.target_index, othr.target_type, othr.meta_data))
+                 othr.uncompressed_size_in_bytes, othr.target_collection, othr.target_type, othr.meta_data))
 
 
 class DocumentCorpus:
@@ -251,13 +252,13 @@ class DocumentCorpus:
                 return None
         return num
 
-    def filter(self, source_format=None, target_indices=None):
+    def filter(self, source_format=None, target_collections=None):
         filtered = []
         for d in self.documents:
-            # skip if source format or target index does not match
+            # skip if source format or target collection does not match
             if source_format and d.source_format != source_format:
                 continue
-            if target_indices and d.target_index not in target_indices:
+            if target_collections and d.target_collection not in target_collections:
                 continue
 
             filtered.append(d)

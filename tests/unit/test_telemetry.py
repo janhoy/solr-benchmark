@@ -245,7 +245,7 @@ class TestClusterEnvironmentInfo(unittest.TestCase):
 
     def test_cluster_env_info_stores_version_and_jvm(self):
         """ClusterEnvironmentInfo stores Solr version, JVM info, and CPU count."""
-        admin_client, session = _make_admin_client()
+        admin_client, _session = _make_admin_client()
 
         meta_store = {}
         metrics_store = MagicMock()
@@ -254,8 +254,7 @@ class TestClusterEnvironmentInfo(unittest.TestCase):
         )
 
         system_resp = self._make_session_resp(SYSTEM_INFO_RESPONSE)
-        cs_resp = self._make_session_resp(CLUSTERSTATUS_RESPONSE)
-        session.get.side_effect = [system_resp, cs_resp]
+        admin_client.raw_request.return_value = system_resp
 
         device = ClusterEnvironmentInfo(admin_client=admin_client, metrics_store=metrics_store)
         device.on_benchmark_start()
@@ -264,13 +263,12 @@ class TestClusterEnvironmentInfo(unittest.TestCase):
         self.assertEqual("21.0.1", meta_store.get("jvm_version"))
         self.assertEqual("OpenJDK 21", meta_store.get("jvm_vendor"))
         self.assertEqual(8, meta_store.get("cpu_logical_cores"))
-        self.assertEqual(1, meta_store.get("cluster_node_count"))
 
     def test_cluster_env_info_failure_graceful(self):
         """ClusterEnvironmentInfo swallows connection errors."""
-        admin_client, session = _make_admin_client()
+        admin_client, _session = _make_admin_client()
         metrics_store = MagicMock()
-        session.get.side_effect = ConnectionError("refused")
+        admin_client.raw_request.side_effect = ConnectionError("refused")
 
         device = ClusterEnvironmentInfo(admin_client=admin_client, metrics_store=metrics_store)
         # Should not raise

@@ -1524,9 +1524,9 @@ class WorkloadSpecificationReader:
             corpus_target_idx = None
 
             if len(collections) == 1:
-                corpus_target_idx = self._r(corpus_spec, "target-index", mandatory=False, default_value=collections[0].name)
+                corpus_target_idx = self._r(corpus_spec, "target-collection", mandatory=False, default_value=collections[0].name)
             elif len(collections) > 1:
-                corpus_target_idx = self._r(corpus_spec, "target-index", mandatory=False)
+                corpus_target_idx = self._r(corpus_spec, "target-collection", mandatory=False)
 
             for doc_spec in self._r(corpus_spec, "documents"):
                 base_url = self._r(doc_spec, "base-url", mandatory=False, default_value=default_base_url)
@@ -1556,7 +1556,7 @@ class WorkloadSpecificationReader:
                         target_type = None
                     else:
                         target_type = None
-                        target_idx = self._r(doc_spec, "target-index",
+                        target_idx = self._r(doc_spec, "target-collection",
                                              mandatory=len(collections) > 0 and corpus_target_idx is None,
                                              default_value=corpus_target_idx,
                                              error_ctx=docs)
@@ -1571,7 +1571,7 @@ class WorkloadSpecificationReader:
                                              number_of_documents=num_docs,
                                              compressed_size_in_bytes=compressed_bytes,
                                              uncompressed_size_in_bytes=uncompressed_bytes,
-                                             target_index=target_idx, target_type=target_type,
+                                             target_collection=target_idx, target_type=target_type,
                                              meta_data=doc_meta_data)
                     corpus.documents.append(docs)
                 else:

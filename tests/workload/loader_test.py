@@ -708,21 +708,21 @@ class WorkloadPreparationTests(TestCase):
                     "target-type": "type",
                     "documents": [
                         {
-                            "target-index": "logs-181998",
+                            "target-collection": "logs-181998",
                             "source-file": "documents-181998.unparsed.json.bz2",
                             "document-count": 2708746,
                             "compressed-bytes": 13064317,
                             "uncompressed-bytes": 303920342
                         },
                         {
-                            "target-index": "logs-191998",
+                            "target-collection": "logs-191998",
                             "source-file": "documents-191998.unparsed.json.bz2",
                             "document-count": 9697882,
                             "compressed-bytes": 47211781,
                             "uncompressed-bytes": 1088378738
                         },
                         {
-                            "target-index": "logs-201998",
+                            "target-collection": "logs-201998",
                             "source-file": "documents-201998.unparsed.json.bz2",
                             "document-count": 13053463,
                             "compressed-bytes": 63174979,
@@ -735,21 +735,21 @@ class WorkloadPreparationTests(TestCase):
                     "target-type": "type",
                     "documents": [
                         {
-                            "target-index": "logs-181998",
+                            "target-collection": "logs-181998",
                             "source-file": "documents-181998.json.bz2",
                             "document-count": 2708746,
                             "compressed-bytes": 13815456,
                             "uncompressed-bytes": 363512754
                         },
                         {
-                            "target-index": "logs-191998",
+                            "target-collection": "logs-191998",
                             "source-file": "documents-191998.json.bz2",
                             "document-count": 9697882,
                             "compressed-bytes": 49439633,
                             "uncompressed-bytes": 1301732149
                         },
                         {
-                            "target-index": "logs-201998",
+                            "target-collection": "logs-201998",
                             "source-file": "documents-201998.json.bz2",
                             "document-count": 13053463,
                             "compressed-bytes": 65623436,

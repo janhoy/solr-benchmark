@@ -583,9 +583,7 @@ class ClusterEnvironmentInfo(TelemetryDevice):
     def on_benchmark_start(self):
         # noinspection PyBroadException
         try:
-            session = self.admin_client._get_session()
-            system_url = f"{self.admin_client.base_url}/api/node/system"
-            resp = session.get(system_url, timeout=30)
+            resp = self.admin_client.raw_request("GET", "/api/node/system")
             resp.raise_for_status()
             data = resp.json()
         except BaseException:

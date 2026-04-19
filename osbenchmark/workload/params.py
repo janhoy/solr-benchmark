@@ -499,7 +499,7 @@ class BulkIndexParamSource(ParamSource):
         for corpus in t.corpora:
             if corpus.name in corpora_names:
                 filtered_corpus = corpus.filter(source_format=workload.Documents.SOURCE_FORMAT_BULK,
-                                                target_indices=params.get("indices"))
+                                                target_collections=params.get("indices"))
                 if filtered_corpus.streaming_ingestion or \
                    filtered_corpus.number_of_documents(source_format=workload.Documents.SOURCE_FORMAT_BULK) > 0:
                     corpora.append(filtered_corpus)
@@ -659,8 +659,8 @@ def create_default_reader(corpus, docs, offset, num_lines, num_docs, batch_size,
     source = Slice(io.MmapSource, offset, num_lines, corpus, docs)
     target = None
     use_create = False
-    if docs.target_index:
-        target = docs.target_index
+    if docs.target_collection:
+        target = docs.target_collection
 
     if docs.includes_action_and_meta_data:
         return SourceOnlyIndexDataReader(docs.document_file, batch_size, bulk_size, source, target, docs.target_type)
@@ -685,7 +685,7 @@ def create_readers(num_clients, start_client_index, end_client_index, corpora, b
                 offset, num_docs, num_lines = bounds(docs.number_of_documents, start_client_index, end_client_index,
                                                      num_clients, docs.includes_action_and_meta_data)
                 if num_docs > 0:
-                    target = f"{docs.target_index}/{docs.target_type}" if docs.target_index else "/"
+                    target = f"{docs.target_collection}/{docs.target_type}" if docs.target_collection else "/"
                     logger.info("Task-relative clients at index [%d-%d] will bulk index [%d] docs starting from line offset [%d] for [%s] "
                                 "from corpus [%s].", start_client_index, end_client_index, num_docs, offset,
                                 target, corpus.name)
