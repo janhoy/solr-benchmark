@@ -355,7 +355,7 @@ class BuilderActor(actor.BenchmarkActor):
         self.logger.info("BuilderActor#receiveMessage poison(msg = [%s] sender = [%s])", str(msg.poisonMessage), str(sender))
         # something went wrong with a child actor (or another actor with which we have communicated)
         if isinstance(msg.poisonMessage, StartEngine):
-            failmsg = "Could not start benchmark candidate. Are OSB daemons on all targeted machines running?"
+            failmsg = "Could not start benchmark candidate. Are ASB daemons on all targeted machines running?"
         else:
             failmsg = msg.details
         self.logger.error(failmsg)
@@ -377,14 +377,14 @@ class BuilderActor(actor.BenchmarkActor):
 
         self.externally_provisioned = msg.external
         if self.externally_provisioned:
-            self.logger.info("Cluster will not be provisioned by OSB.")
+            self.logger.info("Cluster will not be provisioned by ASB.")
             self.status = "nodes_started"
             self.received_responses = []
             self.on_all_nodes_started()
             self.status = "cluster_started"
         else:
             console.info("Preparing for test run ...", flush=True)
-            self.logger.info("Cluster consisting of %s will be provisioned by OSB.", hosts)
+            self.logger.info("Cluster consisting of %s will be provisioned by ASB.", hosts)
             msg.hosts = hosts
             # Initialize the children array to have the right size to
             # ensure waiting for all responses
@@ -501,12 +501,12 @@ class Dispatcher(actor.BenchmarkActor):
 
     def receiveMsg_ActorSystemConventionUpdate(self, convmsg, sender):
         if not convmsg.remoteAdded:
-            self.logger.warning("Remote OSB node [%s] exited during NodeBuilderActor startup process.", convmsg.remoteAdminAddress)
+            self.logger.warning("Remote ASB node [%s] exited during NodeBuilderActor startup process.", convmsg.remoteAdminAddress)
             self.start_sender(actor.BenchmarkFailure(
-                "Remote OSB node [%s] has been shutdown prematurely." % convmsg.remoteAdminAddress))
+                "Remote ASB node [%s] has been shutdown prematurely." % convmsg.remoteAdminAddress))
         else:
             remote_ip = convmsg.remoteCapabilities.get('ip', None)
-            self.logger.info("Remote OSB node [%s] has started.", remote_ip)
+            self.logger.info("Remote ASB node [%s] has started.", remote_ip)
 
             for eachmsg in self.remotes[remote_ip]:
                 self.pending.append((self.createActor(NodeBuilderActor,
@@ -656,7 +656,7 @@ def create(cfg, metrics_store, node_ip, node_http_port, all_node_ips, all_node_i
                                   all_node_names, test_run_root_path, node_name))
         l = launcher.ProcessLauncher(cfg)
     elif external:
-        raise exceptions.BenchmarkAssertionError("Externally provisioned clusters should not need to be managed by OSB's builder")
+        raise exceptions.BenchmarkAssertionError("Externally provisioned clusters should not need to be managed by ASB's builder")
     elif docker:
         if len(plugins) > 0:
             raise exceptions.SystemSetupError("You cannot specify any plugins for Docker clusters. Please remove "

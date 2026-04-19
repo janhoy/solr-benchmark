@@ -432,7 +432,7 @@ class SolrClient(RequestContextHolder):
     # ------------------------------------------------------------------
 
     def info(self) -> dict:
-        """Return cluster info in an OSB-compatible shape: {name, version.number}."""
+        """Return cluster info in an ASB-compatible shape: {name, version.number}."""
         data = self._admin.info()
         return {
             "name": "Apache Solr",

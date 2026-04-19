@@ -80,7 +80,7 @@ class PrepareWorkload:
     """
     def __init__(self, cfg, workload):
         """
-        :param cfg: OSB internal configuration object.
+        :param cfg: ASB internal configuration object.
         :param workload: The workload to use.
         """
         self.config = cfg
@@ -1041,7 +1041,7 @@ class WorkerCoordinator:
         self.number_of_steps = len(allocator.join_points) - 1
         self.tasks_per_join_point = allocator.tasks_per_joinpoint
 
-        self.logger.info("OSB consists of [%d] steps executed by [%d] clients.",
+        self.logger.info("ASB consists of [%d] steps executed by [%d] clients.",
                          self.number_of_steps, len(self.allocations))
         # avoid flooding the log if there are too many clients
         if allocator.clients < 128:

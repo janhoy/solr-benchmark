@@ -50,7 +50,7 @@ __QUERY_RANDOMIZATION_INFOS = {}
 
 def param_source_for_operation(op_type, workload, params, task_name):
     try:
-        # we know that this can only be a OSB core parameter source
+        # we know that this can only be a ASB core parameter source
         return __PARAM_SOURCES_BY_OP[op_type](workload, params, operation_name=task_name)
     except KeyError:
         pass
@@ -172,7 +172,7 @@ class ParamSource:
 
     def partition(self, partition_index, total_partitions):
         """
-        This method will be invoked by OSB at the beginning of the lifecycle. It splits a parameter source per client. If the
+        This method will be invoked by ASB at the beginning of the lifecycle. It splits a parameter source per client. If the
         corresponding operation is idempotent, return `self` (e.g. for queries). If the corresponding operation has side-effects and it
         matters which client executes which part (e.g. an index operation from a source file), return the relevant part.
 
@@ -199,7 +199,7 @@ class ParamSource:
         * It will either run an operation for a pre-determined number of times or
         * It can run until the parameter source is exhausted.
 
-        In the former case, you should determine the number of times that `#params()` will be invoked. With that number, OSB can show
+        In the former case, you should determine the number of times that `#params()` will be invoked. With that number, ASB can show
         the progress made so far to the user. In the latter case, return ``None``.
 
         :return:  The "size" of this parameter source or ``None`` if should run eternally.
@@ -217,7 +217,7 @@ class ParamSource:
         """
         For use when a ParamSource does not propagate self._params but does use the cluster client under the hood
 
-        :return: all applicable parameters that are global to OSB and apply to the cluster client
+        :return: all applicable parameters that are global to ASB and apply to the cluster client
         """
         return {
             "request-timeout": self._params.get("request-timeout"),
@@ -1164,7 +1164,7 @@ class SolrBulkIndexParamSource(BulkIndexParamSource):
     Extends BulkIndexParamSource to inject a default ``collection`` from the workload
     when the operation does not specify one explicitly.
 
-    This mirrors OSB's own get_target() mechanism used by SearchParamSource, ensuring
+    This mirrors ASB's own get_target() mechanism used by SearchParamSource, ensuring
     that bulk-index operations work without an explicit ``collection`` param as long as
     the workload has exactly one collection defined.
     """
@@ -1183,7 +1183,7 @@ class SolrOptimizeParamSource(ParamSource):
     Param source for Solr optimize operations.
 
     Resolves the target collection via get_target() when not explicitly specified,
-    mirroring OSB's default-index mechanism.
+    mirroring ASB's default-index mechanism.
     """
 
     def __init__(self, workload, params, **kwargs):

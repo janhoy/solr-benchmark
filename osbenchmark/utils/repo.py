@@ -32,7 +32,7 @@ from osbenchmark.utils import io, git, console, versions
 
 class BenchmarkRepository:
     """
-    Manages OSB resources (e.g. cluster_configs or workloads).
+    Manages ASB resources (e.g. cluster_configs or workloads).
     """
 
     default = "default-cluster-config"
