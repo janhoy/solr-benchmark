@@ -68,7 +68,7 @@ The `body` is passed directly as a Solr JSON query body. Use standard [Solr JSON
 { "operation-type": "commit" }
 ```
 
-Issues a hard commit to Solr.
+Issues a hard commit to Solr. Also registered as `refresh`.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -135,11 +135,13 @@ Executes a cursor-paginated Solr search using Solr's `cursorMark` deep paginatio
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `collection` | (required) | Collection name |
+| `configset` | (collection name) | Configset name to use; defaults to the collection name |
 | `configset-path` | (none) | Path to local configset directory (relative to workload dir) |
 | `num-shards` | `1` | Number of shards |
 | `replication-factor` | `1` | Number of NRT replicas per shard |
 | `tlog-replicas` | `0` | Number of TLOG replicas per shard |
 | `pull-replicas` | `0` | Number of pull replicas per shard |
+| `delete-configset-on-error` | `true` | Delete uploaded configset if collection creation fails |
 
 ### delete-collection
 
@@ -149,6 +151,13 @@ Executes a cursor-paginated Solr search using Solr's `cursorMark` deep paginatio
   "collection": "my_collection"
 }
 ```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `collection` | (required) | Collection name to delete |
+| `configset` | (collection name) | Configset name to delete alongside the collection |
+| `delete-configset` | `true` | If `true`, also deletes the associated configset |
+| `ignore-missing` | `true` | If `true`, silently succeeds if the collection does not exist |
 
 ### raw-request
 
@@ -172,3 +181,10 @@ Executes an arbitrary HTTP request against the Solr Admin API (`/api/...` V2 end
 | `path` | (required) | API path, e.g. `/api/collections/my_coll/config` |
 | `method` | `GET` | HTTP method: `GET`, `POST`, `DELETE` |
 | `body` | (none) | Request body (JSON object) |
+| `headers` | `{}` | Additional HTTP headers |
+
+## Backup operations
+
+The following backup-related operation types are registered but not yet implemented in this release:
+`create-backup`, `restore-backup`, `create-backup-repository`, `delete-backup-repository`, `wait-for-backup-create`.
+Use `raw-request` to call the [Solr Backup V2 API](https://solr.apache.org/guide/solr/latest/configuration-guide/backups.html) directly.
