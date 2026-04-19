@@ -21,6 +21,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+#
+# Modifications copyright (C) 2026 The Apache Software Foundation
+# (Apache Solr contributors). Licensed under the Apache License, Version 2.0.
 
 from .loader import (
     list_workloads, workload_info, load_workload, load_workload_plugins, workload_repo, operation_parameters, set_absolute_data_path,

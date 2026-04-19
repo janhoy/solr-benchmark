@@ -22,6 +22,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+#
+# Modifications copyright (C) 2026 The Apache Software Foundation
+# (Apache Solr contributors). Licensed under the Apache License, Version 2.0.
 import logging
 import os
 import shlex

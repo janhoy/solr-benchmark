@@ -21,5 +21,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+#
+# Modifications copyright (C) 2026 The Apache Software Foundation
+# (Apache Solr contributors). Licensed under the Apache License, Version 2.0.
 
 # Empty placeholder. We just need this file to verify that solr-benchmark will recognize it as an install hook entry point.
