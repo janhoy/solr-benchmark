@@ -26,6 +26,7 @@ import asyncio
 import io
 import unittest.mock as mock
 from unittest import TestCase
+from unittest.mock import MagicMock
 
 import pytest
 from osbenchmark import client, exceptions
@@ -275,170 +276,55 @@ class AssertingRunnerTests(TestCase):
 
 
 class RawRequestRunnerTests(TestCase):
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
-    async def test_raises_missing_slash(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.transport.perform_request.return_value = as_future()
+    async def test_get_request(self):
+        mock_sc = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_sc.raw_request.return_value = mock_resp
+
         r = runner.RawRequest()
+        result = await r(mock_sc, {"method": "GET", "path": "/api/node/system"})
 
-        params = {
-            "path": "_cat/count"
-        }
+        mock_sc.raw_request.assert_called_once_with("GET", "/api/node/system", None, {})
+        self.assertEqual(200, result["http-status"])
+        self.assertEqual(1, result["weight"])
+        self.assertEqual("ops", result["unit"])
 
-        with mock.patch.object(r.logger, "error") as mocked_error_logger:
-            with self.assertRaises(exceptions.BenchmarkAssertionError) as ctx:
-                await r(opensearch, params)
-                self.assertEqual("RawRequest [_cat/count] failed. Path parameter must begin with a '/'.", ctx.exception.args[0])
-            mocked_error_logger.assert_has_calls([
-                mock.call("RawRequest failed. Path parameter: [%s] must begin with a '/'.", params["path"])
-            ])
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
-    async def test_issue_request_with_defaults(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.transport.perform_request.return_value = as_future()
+    async def test_post_with_body(self):
+        mock_sc = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_sc.raw_request.return_value = mock_resp
+
+        body = {"query": "*:*"}
         r = runner.RawRequest()
+        result = await r(mock_sc, {"method": "POST", "path": "/solr/test/query", "body": body})
 
-        params = {
-            "path": "/_cat/count"
-        }
-        await r(opensearch, params)
+        mock_sc.raw_request.assert_called_once_with("POST", "/solr/test/query", body, {})
+        self.assertEqual(200, result["http-status"])
 
-        opensearch.transport.perform_request.assert_called_once_with(method="GET",
-                                                             url="/_cat/count",
-                                                             headers=None,
-                                                             body=None,
-                                                             params={})
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
-    async def test_issue_delete_index(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.transport.perform_request.return_value = as_future()
+    async def test_default_method_is_get(self):
+        mock_sc = MagicMock()
+        mock_sc.raw_request.return_value = MagicMock(status_code=200)
+
         r = runner.RawRequest()
+        await r(mock_sc, {"path": "/api/cores"})
 
-        params = {
-            "method": "DELETE",
-            "path": "/twitter",
-            "ignore": [400, 404],
-            "request-params": {
-                "pretty": "true"
-            }
-        }
-        await r(opensearch, params)
+        mock_sc.raw_request.assert_called_once_with("GET", "/api/cores", None, {})
 
-        opensearch.transport.perform_request.assert_called_once_with(method="DELETE",
-                                                             url="/twitter",
-                                                             headers=None,
-                                                             body=None,
-                                                             params={"ignore": [400, 404], "pretty": "true"})
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
     @run_async
-    async def test_issue_create_index(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.transport.perform_request.return_value = as_future()
+    async def test_custom_headers(self):
+        mock_sc = MagicMock()
+        mock_sc.raw_request.return_value = MagicMock(status_code=200)
+
+        headers = {"Accept": "application/json"}
         r = runner.RawRequest()
+        await r(mock_sc, {"path": "/api/node/system", "headers": headers})
 
-        params = {
-            "method": "POST",
-            "path": "/twitter",
-            "body": {
-                "settings": {
-                    "index": {
-                        "number_of_replicas": 0
-                    }
-                }
-            }
-        }
-        await r(opensearch, params)
-
-        opensearch.transport.perform_request.assert_called_once_with(method="POST",
-                                                             url="/twitter",
-                                                             headers=None,
-                                                             body={
-                                                                 "settings": {
-                                                                     "index": {
-                                                                         "number_of_replicas": 0
-                                                                     }
-                                                                 }
-                                                             },
-                                                             params={})
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
-    @run_async
-    async def test_issue_msearch(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.transport.perform_request.return_value = as_future()
-        r = runner.RawRequest()
-
-        params = {
-            "path": "/_msearch",
-            "headers": {
-                "Content-Type": "application/x-ndjson"
-            },
-            "body": [
-                {"index": "test"},
-                {"query": {"match_all": {}}, "from": 0, "size": 10},
-                {"index": "test", "search_type": "dfs_query_then_fetch"},
-                {"query": {"match_all": {}}}
-            ]
-        }
-        await r(opensearch, params)
-
-        opensearch.transport.perform_request.assert_called_once_with(method="GET",
-                                                             url="/_msearch",
-                                                             headers={"Content-Type": "application/x-ndjson"},
-                                                             body=[
-                                                                 {"index": "test"},
-                                                                 {"query": {"match_all": {}}, "from": 0, "size": 10},
-                                                                 {"index": "test", "search_type": "dfs_query_then_fetch"},
-                                                                 {"query": {"match_all": {}}}
-                                                             ],
-                                                             params={})
-
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_end')
-    @mock.patch('osbenchmark.client.RequestContextHolder.on_client_request_start')
-    @mock.patch("tests.worker_coordinator.runner_test._FakeOSClient")
-    @run_async
-    async def test_raw_with_timeout_and_opaqueid(self, opensearch, on_client_request_start, on_client_request_end):
-        opensearch.transport.perform_request.return_value = as_future()
-        r = runner.RawRequest()
-
-        params = {
-            "path": "/_msearch",
-            "headers": {
-                "Content-Type": "application/x-ndjson"
-            },
-            "request-timeout": 3.0,
-            "opaque-id": "test-id1",
-            "body": [
-                {"index": "test"},
-                {"query": {"match_all": {}}, "from": 0, "size": 10},
-                {"index": "test", "search_type": "dfs_query_then_fetch"},
-                {"query": {"match_all": {}}}
-            ]
-        }
-        await r(opensearch, params)
-
-        opensearch.transport.perform_request.assert_called_once_with(method="GET",
-                                                             url="/_msearch",
-                                                             headers={"Content-Type": "application/x-ndjson",
-                                                                      "x-opaque-id": "test-id1"},
-                                                             body=[
-                                                                 {"index": "test"},
-                                                                 {"query": {"match_all": {}}, "from": 0, "size": 10},
-                                                                 {"index": "test", "search_type": "dfs_query_then_fetch"},
-                                                                 {"query": {"match_all": {}}}
-                                                             ],
-                                                             params={"request_timeout": 3.0})
+        mock_sc.raw_request.assert_called_once_with("GET", "/api/node/system", None, headers)
 
 
 class SleepTests(TestCase):

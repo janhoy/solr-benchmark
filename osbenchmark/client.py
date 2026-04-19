@@ -27,6 +27,7 @@
 
 import io
 import logging
+import time
 import zipfile
 from pathlib import Path
 
@@ -118,6 +119,26 @@ class SolrAdminClient:
         """Return the major version integer (9 or 10)."""
         version = self.get_version()
         return int(version.split(".")[0])
+
+    def wait_for_cluster_ready(self, timeout: int = 60, **kwargs) -> None:
+        """
+        Poll GET /api/node/system until Solr responds or timeout is exceeded.
+
+        Args:
+            timeout: Maximum seconds to wait (default 60).
+        """
+        deadline = time.monotonic() + timeout
+        last_exc = None
+        while time.monotonic() < deadline:
+            try:
+                self.info()
+                return
+            except Exception as exc:
+                last_exc = exc
+            time.sleep(2)
+        raise SolrClientError(
+            f"Solr cluster did not become ready within {timeout}s. Last error: {last_exc}"
+        )
 
     # ------------------------------------------------------------------
     # Configset management

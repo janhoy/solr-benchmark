@@ -46,7 +46,6 @@ __RUNNERS = {}
 def register_default_runners():
     # Engine-agnostic operations
     register_runner(workload.OperationType.Sleep, Sleep(), async_runner=True)
-    register_runner(workload.OperationType.RawRequest, RawRequest(), async_runner=True)
     register_runner(workload.OperationType.Composite, Composite(), async_runner=True)
     # Backup operations (TODO: port to Solr backup API)
     register_runner(workload.OperationType.CreateBackup, CreateBackup(), async_runner=True)
@@ -63,7 +62,7 @@ def register_default_runners():
     register_runner("wait-for-merges", SolrWaitForMerges(), async_runner=True)
     register_runner("create-collection", SolrCreateCollection(), async_runner=True)
     register_runner("delete-collection", SolrDeleteCollection(), async_runner=True)
-    register_runner("raw-request", SolrRawRequest(), async_runner=True)
+    register_runner("raw-request", RawRequest(), async_runner=True)
     _search_runner = SolrSearch()
     register_runner("paginated-search", _search_runner, async_runner=True)
     register_runner("scroll-search", _search_runner, async_runner=True)
@@ -447,30 +446,6 @@ def parse(text: BytesIO, props: List[str], lists: List[str] = None) -> dict:
     parsed.update(parsed_lists)
     return parsed
 
-
-class RawRequest(Runner):
-    async def __call__(self, client, params):
-        request_params, headers = self._transport_request_params(params)
-        if "ignore" in params:
-            request_params["ignore"] = params["ignore"]
-        path = mandatory(params, "path", self)
-        if not path.startswith("/"):
-            self.logger.error("RawRequest failed. Path parameter: [%s] must begin with a '/'.", path)
-            raise exceptions.BenchmarkAssertionError(f"RawRequest [{path}] failed. Path parameter must begin with a '/'.")
-        if not bool(headers):
-            #counter-intuitive, but preserves prior behavior
-            headers = None
-
-        request_context_holder.on_client_request_start()
-        await client.transport.perform_request(method=params.get("method", "GET"),
-                                           url=path,
-                                           headers=headers,
-                                           body=params.get("body"),
-                                           params=request_params)
-        request_context_holder.on_client_request_end()
-
-    def __repr__(self, *args, **kwargs):
-        return "raw-request"
 
 
 class Sleep(Runner):
@@ -1473,7 +1448,7 @@ class SolrDeleteCollection(SolrRunner):
 # Runner: raw-request
 # ---------------------------------------------------------------------------
 
-class SolrRawRequest(SolrRunner):
+class RawRequest(SolrRunner):
     """
     Send an arbitrary HTTP request to any Solr endpoint.
 
@@ -1500,4 +1475,4 @@ class SolrRawRequest(SolrRunner):
         }
 
     def __str__(self):
-        return "solr-raw-request"
+        return "raw-request"
