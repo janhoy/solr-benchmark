@@ -1044,19 +1044,15 @@ class TestRunStore:
         return int(self.cfg.opts("system", "list.test_runs.max_results"))
 
 
-# NOTE: An external test-run store is not supported in Solr Benchmark.
-# CompositeTestRunStore below is retained as a placeholder for a future
-# S3TestRunStore or similar external store integration. It is not wired into
-# any active code path. See TODO.md for details.
-
-# Does not inherit from TestRunStore as it is only a delegator with the same API.
+# NOT USED — retained as placeholder for a future external store (e.g. S3TestRunStore).
 class CompositeTestRunStore:
     """
     Placeholder delegating test-run store for a future external store integration
     (e.g. S3TestRunStore). Delegates writes to both an external store and the local
     file store; reads are served from the external store.
 
-    Not wired into any active code path in Solr Benchmark.
+    Not wired into any active code path. Does not inherit from TestRunStore —
+    it is a delegator with the same API.
     """
     def __init__(self, external_store, file_store):
         self.external_store = external_store
