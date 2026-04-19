@@ -1191,8 +1191,9 @@ class SolrSearch(SolrRunner):
     """
     Execute a Solr search query.
 
-    Mode 1 — Classic Solr params: uses ``q``, ``fl``, ``rows``, ``fq``, ``sort``, ``request-params``
-    Mode 2 — Solr JSON Query DSL: triggered when ``body`` is present (POST to /solr/{coll}/query)
+    - Classic Solr params: ``q``, ``fl``, ``rows``, ``fq``, ``sort``, ``request-params``
+    - Solr JSON Query body: when ``body`` is present, POSTs it to ``/solr/{collection}/query``
+      using the `Solr JSON Request API <https://solr.apache.org/guide/solr/latest/query-guide/json-request-api.html>`_.
     """
 
     async def __call__(self, client, params):

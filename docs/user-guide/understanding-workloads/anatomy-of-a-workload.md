@@ -294,11 +294,7 @@ example shows a realistic set of Solr Benchmark operations from an `nyc_taxis`-s
     "param-source": "solr-search-source",
     "collection": "nyc_taxis",
     "body": {
-      "query": {
-        "range": {
-          "total_amount": { "gte": 5, "lt": 15 }
-        }
-      },
+      "query": "total_amount:[5 TO 15}",
       "rows": 10
     }
   },
