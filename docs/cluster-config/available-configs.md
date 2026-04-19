@@ -26,7 +26,7 @@ solr-benchmark run --cluster-config defaults ...
 Sets the Solr JVM heap to 1 GB. Suitable for small workloads and testing.
 
 ```
-SOLR_HEAP: 1g
+heap_size: 1g
 ```
 
 **Usage:**
@@ -36,12 +36,27 @@ solr-benchmark run --cluster-config 1gheap ...
 
 ---
 
+## 2gheap
+
+Sets the Solr JVM heap to 2 GB.
+
+```
+heap_size: 2g
+```
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config 2gheap ...
+```
+
+---
+
 ## 4gheap
 
 Sets the Solr JVM heap to 4 GB. Suitable for larger workloads.
 
 ```
-SOLR_HEAP: 4g
+heap_size: 4g
 ```
 
 **Usage:**
@@ -51,14 +66,57 @@ solr-benchmark run --cluster-config 4gheap ...
 
 ---
 
-## g1gc
+## 8gheap
 
-Enables the G1 garbage collector with tuned settings and a 4 GB heap. Recommended for latency-sensitive benchmarks.
+Sets the Solr JVM heap to 8 GB.
 
 ```
-SOLR_HEAP: 4g
-GC_TUNE: -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1ReservePercent=15 \
-         -XX:InitiatingHeapOccupancyPercent=75
+heap_size: 8g
+```
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config 8gheap ...
+```
+
+---
+
+## 16gheap
+
+Sets the Solr JVM heap to 16 GB.
+
+```
+heap_size: 16g
+```
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config 16gheap ...
+```
+
+---
+
+## 24gheap
+
+Sets the Solr JVM heap to 24 GB.
+
+```
+heap_size: 24g
+```
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config 24gheap ...
+```
+
+---
+
+## g1gc
+
+Enables the G1 garbage collector. Recommended for latency-sensitive benchmarks.
+
+```
+use_g1_gc: true
 ```
 
 **Usage:**
@@ -70,16 +128,62 @@ solr-benchmark run --cluster-config g1gc ...
 
 ## parallelgc
 
-Enables the Parallel (throughput-optimized) garbage collector with a 4 GB heap.
+Enables the Parallel (throughput-optimized) garbage collector.
 
 ```
-SOLR_HEAP: 4g
-GC_TUNE: -XX:+UseParallelGC -XX:MaxGCPauseMillis=200
+use_cms_gc: false
+use_g1_gc: false
 ```
 
 **Usage:**
 ```bash
 solr-benchmark run --cluster-config parallelgc ...
+```
+
+Note: `parallelgc` is available in the `main` cluster config bundle but not in `1.0`.
+
+---
+
+## vanilla
+
+The base cluster configuration. All other heap and GC configs extend `vanilla`. Use this when you want to run Solr with no heap or GC overrides beyond ASB defaults.
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config vanilla ...
+```
+
+---
+
+## ea
+
+Mixin that enables Java assertions (`-ea`). Useful for debugging workload runs.
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config ea ...
+```
+
+---
+
+## fp
+
+Mixin that preserves JVM frame pointers. Required for accurate async-profiler CPU profiles.
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config fp ...
+```
+
+---
+
+## debug-non-safepoints
+
+Mixin that enables more accurate CPU profiling by recording non-safepoint debug information.
+
+**Usage:**
+```bash
+solr-benchmark run --cluster-config debug-non-safepoints ...
 ```
 
 ---
