@@ -68,7 +68,12 @@ The `body` is passed directly as a Solr JSON query body. Use standard [Solr JSON
 { "operation-type": "commit" }
 ```
 
-Issues a hard commit to Solr. Optional `collection` parameter.
+Issues a hard commit to Solr.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `collection` | (first collection in workload) | Target collection |
+| `soft-commit` | `false` | If `true`, issues a soft commit instead of a hard commit |
 
 ### optimize
 
@@ -77,6 +82,43 @@ Issues a hard commit to Solr. Optional `collection` parameter.
 ```
 
 Issues a force-merge (optimize) to reduce the segment count to `max-segments` (default: 1).
+
+### wait-for-merges
+
+```json
+{ "operation-type": "wait-for-merges" }
+```
+
+Polls the Solr node metrics API until no active merge operations remain across any core, or the timeout is reached.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `collection` | (first collection in workload) | Target collection |
+| `retry-wait-period` | `2.0` | Seconds between polling attempts |
+| `max-wait-seconds` | `3600` | Maximum seconds to wait before giving up |
+
+### paginated-search
+
+```json
+{
+  "operation-type": "paginated-search",
+  "q": "my query",
+  "rows": 100,
+  "sort": "id asc"
+}
+```
+
+Executes a cursor-paginated Solr search using Solr's `cursorMark` deep pagination API. Fetches all result pages and returns the total document count. Also registered as `scroll-search`.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `collection` | (first collection in workload) | Target collection |
+| `q` | `*:*` | Query string |
+| `rows` | `100` | Page size (documents per request) |
+| `sort` | `id asc` | Sort order — must include a uniqueKey field for cursor pagination to work |
+| `fl` | (none) | Field list to return |
+| `fq` | (none) | Filter query |
+| `request-params` | `{}` | Additional Solr query parameters |
 
 ### create-collection
 

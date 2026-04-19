@@ -48,8 +48,10 @@ A *configset* is a named set of Solr configuration files (primarily `schema.xml`
 |-----------|-------------|
 | `bulk-index` | Index a batch of documents from a corpus |
 | `search` | Execute a Solr query |
-| `commit` | Issue a hard commit to Solr |
+| `commit` | Issue a hard (or soft) commit to Solr |
 | `optimize` | Issue an optimize (force-merge) command |
+| `wait-for-merges` | Wait until all background merge operations finish |
+| `paginated-search` | Cursor-paginated search using `cursorMark` |
 | `create-collection` | Create a Solr collection |
 | `delete-collection` | Delete a Solr collection |
 | `raw-request` | Execute an arbitrary Solr Admin API request |
