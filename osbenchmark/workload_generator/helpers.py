@@ -127,8 +127,8 @@ class QueryProcessor:
         with self.queries as queries:
             try:
                 processed_queries = json.load(queries)
-                if isinstance(data, dict):
-                    data = [data]
+                if isinstance(processed_queries, dict):
+                    processed_queries = [processed_queries]
             except ValueError as err:
                 raise exceptions.SystemSetupError(f"Ensure JSON schema is valid and queries are contained in a list: {err}")
 
