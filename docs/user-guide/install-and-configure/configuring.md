@@ -145,8 +145,4 @@ the log file format, see the Python documentation:
 - [Logging handlers](https://docs.python.org/3/library/logging.handlers.html) — customizing where log output is written.
 
 By default, Solr Benchmark writes all log output to `~/.solr-benchmark/logs/benchmark.log`.
-You can also control the log level at runtime with the `--loglevel` flag:
-
-```bash
-solr-benchmark run --loglevel debug ...
-```
+Log level is controlled via `~/.solr-benchmark/logging.json`, not via a CLI flag.

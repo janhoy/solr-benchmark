@@ -23,8 +23,10 @@ Because Solr is pure Java, the distribution tarball is the same on every operati
 |--------|-------------|
 | `--distribution-version` | Solr version to download (e.g., `9.10.1`, `10.0.0`) |
 | `--distribution-repository` | Source repository (default: `release`) |
-| `--cluster-config-instance` | Cluster configuration instance to apply |
-| `--cluster-config-instance-params` | Comma-separated `key:value` variable overrides for the cluster configuration |
+| `--cluster-config` | Cluster configuration preset to apply |
+| `--cluster-config-params` | Comma-separated `key:value` variable overrides for the cluster configuration |
+| `--cluster-config-path` | Local path to a cluster configuration directory |
+| `--cluster-config-repository` | Git URL for a cluster configuration repository |
 
 ## Output
 

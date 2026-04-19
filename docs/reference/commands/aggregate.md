@@ -34,7 +34,7 @@ solr-benchmark run \
 
 ### Manual aggregation
 
-Run benchmarks separately, then combine specific runs by their test execution IDs:
+Run benchmarks separately, then combine specific runs by their test run IDs:
 
 ```bash
 # First, list recent test runs to get IDs
@@ -42,21 +42,21 @@ solr-benchmark list test-runs
 
 # Then aggregate the runs you want
 solr-benchmark aggregate \
-  --test-executions 20260101T120000Z,20260102T120000Z,20260103T120000Z
+  --test-runs 20260101T120000Z,20260102T120000Z,20260103T120000Z
 ```
 
 ## Syntax
 
 ```bash
-solr-benchmark aggregate --test-executions ID1,ID2[,...] [OPTIONS]
+solr-benchmark aggregate --test-runs ID1,ID2[,...] [OPTIONS]
 ```
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `--test-executions` | Comma-separated list of test execution IDs to aggregate |
-| `--test-execution-id` | Custom ID for the aggregated result (auto-generated if omitted) |
+| `--test-runs` | Comma-separated list of test run IDs to aggregate |
+| `--test-runs-id` | Custom ID for the aggregated result (auto-generated if omitted) |
 | `--results-file` | Path to write the aggregated results JSON |
 
 ## Output

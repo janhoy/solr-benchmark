@@ -22,18 +22,19 @@ solr-benchmark list [RESOURCE] [OPTIONS]
 | `workloads` | List workloads from the configured workloads repository |
 | `telemetry` | List available telemetry device names |
 | `pipelines` | List available pipeline names |
-| `test-procedures` | List challenges in a workload (requires `--workload` or `--workload-path`) |
 | `test-runs` | List past benchmark runs with their IDs, timestamps, and metadata |
+| `aggregated-results` | List past aggregated results |
+| `cluster-configs` | List available cluster configuration presets |
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `--workload` | Workload name (required for `list test-procedures`) |
+| `--workload` | Workload name (used with `list workloads`) |
 | `--workload-path` | Path to a local workload directory |
 | `--workload-repository` | Git URL for the workloads repository |
 | `--workload-revision` | Git revision of the workloads repository |
-| `--limit` | Maximum number of test-run results to show (default: `10`) |
+| `--limit` | Maximum number of entries to show (default: `10`; applies to `list test-runs`) |
 
 ## Examples
 
@@ -44,17 +45,26 @@ solr-benchmark list workloads
 # List available telemetry devices
 solr-benchmark list telemetry
 
-# List challenges in a workload
-solr-benchmark list test-procedures --workload nyc_taxis
-
 # List available pipelines
 solr-benchmark list pipelines
+
+# List available cluster config presets
+solr-benchmark list cluster-configs
 
 # List recent test runs (shows IDs for use with compare and aggregate)
 solr-benchmark list test-runs
 
 # List the 20 most recent test runs
 solr-benchmark list test-runs --limit 20
+
+# List aggregated results
+solr-benchmark list aggregated-results
 ```
 
-The `test-runs` output includes the test execution ID, timestamp, workload name, challenge, pipeline, and any user tags. Use the ID with `solr-benchmark compare` to compare two runs.
+To list the test procedures available in a workload, use `solr-benchmark info`:
+
+```bash
+solr-benchmark info --workload nyc_taxis
+```
+
+The `test-runs` output includes the test run ID, timestamp, workload name, test procedure, pipeline, and any user tags. Use the ID with `solr-benchmark compare` to compare two runs.

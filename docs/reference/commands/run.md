@@ -24,7 +24,7 @@ solr-benchmark run [OPTIONS]
 | `--workload-repository` | Git URL for the workloads repository (default: the configured repository) |
 | `--workload-revision` | Git revision (branch, tag, or commit) of the workloads repository |
 | `--workload-params` | Override workload Jinja2 parameters (comma-separated `key:value` pairs) |
-| `--challenge` | Challenge (test procedure) to run (default: the workload's default challenge) |
+| `--test-procedure` | Test procedure to run (default: the workload's default test procedure) |
 | `--include-tasks` | Comma-separated list of task names to run; all other tasks are skipped |
 | `--exclude-tasks` | Comma-separated list of task names to skip |
 | `--enable-assertions` | Enable task-level assertions defined in the workload |
@@ -55,10 +55,10 @@ solr-benchmark run [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--test-execution-id` | Custom unique ID for this run (auto-generated if omitted); used with `compare` |
+| `--test-run-id` | Custom unique ID for this run (auto-generated if omitted); used with `compare` |
 | `--user-tag` | Comma-separated `key:value` metadata attached to the run (e.g., `intention:baseline,heap:4g`) |
 | `--results-format` | Output format: `markdown` (default) or `csv` |
-| `--results-number-align` | Column alignment in the summary table: `right` (default), `left`, or `center` |
+| `--results-numbers-align` | Column alignment in the summary table: `right` (default), `left`, or `center` |
 | `--results-file` | Write the summary table to a file in addition to the default location |
 | `--show-in-results` | Which values to include in output: `available` (default), `all-percentiles`, or `all` |
 

@@ -23,7 +23,8 @@ solr-benchmark info --workload WORKLOAD [OPTIONS]
 | `--workload-path` | Path to a local workload directory |
 | `--workload-repository` | Git URL for the workloads repository |
 | `--workload-revision` | Git revision of the workloads repository |
-| `--challenge` | Show details for a specific challenge |
+| `--workload-params` | Comma-separated `key:value` Jinja2 parameter overrides |
+| `--test-procedure` | Show details for a specific test procedure |
 | `--include-tasks` | Comma-separated list of task names to display (others are hidden) |
 | `--exclude-tasks` | Comma-separated list of task names to hide from the output |
 
@@ -36,12 +37,12 @@ solr-benchmark info --workload nyc_taxis
 # Show information about a local workload
 solr-benchmark info --workload-path /path/to/my-workload
 
-# Show details for a specific challenge
-solr-benchmark info --workload nyc_taxis --challenge append-no-conflicts
+# Show details for a specific test procedure
+solr-benchmark info --workload nyc_taxis --test-procedure append-no-conflicts
 ```
 
 The output includes:
 - Workload description
-- Available challenges and their descriptions
+- Available test procedures and their descriptions
 - Corpora names and document counts
 - Default parameters and their values

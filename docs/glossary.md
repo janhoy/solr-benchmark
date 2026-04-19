@@ -10,11 +10,8 @@ nav_order: 100
 **Workload**
 A workload describes a benchmarking scenario: the data to load and the operations to run. A workload is defined by a `workload.json` file plus associated data, operation, and configset files. See [Understanding Workloads](user-guide/understanding-workloads/).
 
-**Challenge**
-Also called a *test procedure*: a specific sequence of operations within a workload. A workload can define multiple challenges (e.g., `append-no-conflicts`, `bulk-update`). Each challenge specifies which operations to run and their parameters. Select a challenge with `--challenge` when running the benchmark.
-
 **Test Procedure**
-Synonym for *Challenge*.
+A specific sequence of operations within a workload. A workload can define multiple test procedures (e.g., `append-no-conflicts`, `bulk-update`). Each test procedure specifies which operations to run and their parameters. Select a test procedure with `--test-procedure` when running the benchmark.
 
 **Pipeline**
 A sequence of phases that a benchmark run executes. Built-in pipelines:
@@ -27,7 +24,7 @@ A sequence of phases that a benchmark run executes. Built-in pipelines:
 Defines how an operation is executed: number of iterations, target throughput (operations per second), warmup iterations, and parallel client count.
 
 **Operation**
-A single benchmarking action, such as `bulk-index`, `search`, `commit`, or `optimize`. Operations are referenced from schedules in a challenge.
+A single benchmarking action, such as `bulk-index`, `search`, `commit`, or `optimize`. Operations are referenced from schedules in a test procedure.
 
 **Corpora**
 The dataset used by a workload. Corpora are defined in the workload and reference data files (typically gzip-compressed NDJSON).
