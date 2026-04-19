@@ -126,21 +126,6 @@ class DocumentCorpusTests(TestCase):
         self.assertEqual(1, len(filtered_corpus.documents))
         self.assertEqual("logs-02", filtered_corpus.documents[0].target_index)
 
-    def test_filter_documents_by_data_streams(self):
-        corpus = workload.DocumentCorpus("test", documents=[
-            workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK, number_of_documents=5,
-                            target_data_stream="logs-01"),
-            workload.Documents(source_format="other", number_of_documents=6, target_data_stream="logs-02"),
-            workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK, number_of_documents=7,
-                            target_data_stream="logs-03"),
-            workload.Documents(source_format=None, number_of_documents=8, target_data_stream=None)
-        ])
-
-        filtered_corpus = corpus.filter(target_data_streams=["logs-02"])
-        self.assertEqual("test", filtered_corpus.name)
-        self.assertEqual(1, len(filtered_corpus.documents))
-        self.assertEqual("logs-02", filtered_corpus.documents[0].target_data_stream)
-
     def test_filter_documents_by_format_and_indices(self):
         corpus = workload.DocumentCorpus("test", documents=[
             workload.Documents(source_format=workload.Documents.SOURCE_FORMAT_BULK, number_of_documents=5, target_index="logs-01"),
@@ -211,11 +196,9 @@ class OperationTypeTests(TestCase):
     def test_attributes(self):
         check_cluster_health = workload.OperationType.DeleteBackupRepository
         assert check_cluster_health.admin_op is True
-        assert check_cluster_health.serverless_status == workload.ServerlessStatus.Blocked
 
         bulk = workload.OperationType.Bulk
         assert bulk.admin_op is False
-        assert bulk.serverless_status == workload.ServerlessStatus.Public
 
 
 class TaskFilterTests(TestCase):

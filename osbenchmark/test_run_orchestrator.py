@@ -233,19 +233,9 @@ class BenchmarkCoordinator:
         # to load the workload we need to know the correct cluster distribution version. Usually, this value should be set
         # but there are rare cases (external pipeline and user did not specify the distribution version) where we need
         # to derive it ourselves. For source builds we always assume "master"
-        oss_distribution_version = "2.11.0"
         if not sources and not self.cfg.exists("builder", "distribution.version"):
             distribution_version = builder.cluster_distribution_version(self.cfg)
-            if distribution_version == 'oss':
-                self.logger.info("Automatically derived serverless collection, setting distribution version to 2.11.0")
-                distribution_version = oss_distribution_version
-                if not self.cfg.exists("worker_coordinator", "serverless.mode"):
-                    self.cfg.add(config.Scope.benchmark, "worker_coordinator", "serverless.mode", True)
-
-                if not self.cfg.exists("worker_coordinator", "serverless.operator"):
-                    self.cfg.add(config.Scope.benchmark, "worker_coordinator", "serverless.operator", True)
-            else:
-                self.logger.info("Automatically derived distribution version [%s]", distribution_version)
+            self.logger.info("Automatically derived distribution version [%s]", distribution_version)
             self.cfg.add(config.Scope.benchmark, "builder", "distribution.version", distribution_version)
             min_solr_version = versions.Version.from_string(version.minimum_solr_version())
             specified_version = versions.Version.from_string(distribution_version)
@@ -265,9 +255,6 @@ class BenchmarkCoordinator:
                     self.current_workload.name, test_procedure_name, PROGRAM_NAME))
         if self.current_test_procedure.user_info:
             console.info(self.current_test_procedure.user_info)
-
-        for info in self.current_test_procedure.serverless_info:
-            console.info(info)
 
         self.test_run = metrics.create_test_run(
             self.cfg, self.current_workload,

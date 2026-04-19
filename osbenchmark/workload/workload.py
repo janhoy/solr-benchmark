@@ -28,7 +28,7 @@
 import collections
 import numbers
 import re
-from enum import Enum, unique, auto, IntEnum
+from enum import Enum, unique, auto
 
 from osbenchmark import exceptions
 
@@ -96,7 +96,7 @@ class Documents:
     def __init__(self, source_format, document_file=None, document_file_parts=None, document_archive=None, base_url=None, source_url=None,
                  includes_action_and_meta_data=False,
                  number_of_documents=0, compressed_size_in_bytes=0, uncompressed_size_in_bytes=0, target_index=None,
-                 target_data_stream=None, target_type=None, meta_data=None):
+                 target_type=None, meta_data=None):
         """
 
         :param source_format: The format of these documents. Mandatory.
@@ -118,8 +118,6 @@ class Documents:
         :param uncompressed_size_in_bytes: The size in bytes of the benchmark document after decompressing it.
         Only useful if a document_archive is given (optional but recommended to be set).
         :param target_index: The index to target for bulk operations. May be ``None`` if ``includes_action_and_meta_data`` is ``False``.
-        :param target_data_stream: The data stream to target for bulk operations.
-        Maybe be ``None`` if ``includes_action_and_meta_data`` is ``False``.
         :param target_type: The document type to target for bulk operations. May be ``None`` if ``includes_action_and_meta_data``
                             is ``False``.
         :param meta_data: A dict containing key-value pairs with additional meta-data describing documents. Optional.
@@ -136,7 +134,6 @@ class Documents:
         self._compressed_size_in_bytes = compressed_size_in_bytes
         self._uncompressed_size_in_bytes = uncompressed_size_in_bytes
         self.target_index = target_index
-        self.target_data_stream = target_data_stream
         self.target_type = target_type
         self.meta_data = meta_data or {}
 
@@ -204,16 +201,16 @@ class Documents:
         return hash(self.source_format) ^ hash(self.document_file) ^ hash(self.document_archive) ^ hash(self.base_url) ^ \
                hash(self.source_url) ^ hash(self.includes_action_and_meta_data) ^ hash(self.number_of_documents) ^ \
                hash(self.compressed_size_in_bytes) ^ hash(self.uncompressed_size_in_bytes) ^ hash(self.target_index) ^ \
-               hash(self.target_data_stream) ^ hash(self.target_type) ^ hash(frozenset(self.meta_data.items()))
+               hash(self.target_type) ^ hash(frozenset(self.meta_data.items()))
 
     def __eq__(self, othr):
         return (isinstance(othr, type(self)) and
                 (self.source_format, self.document_file, self.document_archive, self.base_url, self.source_url,
                  self.includes_action_and_meta_data, self.number_of_documents, self.compressed_size_in_bytes,
-                 self.uncompressed_size_in_bytes, self.target_type, self.target_data_stream, self.target_type, self.meta_data) ==
-                (othr.source_format, othr.document_file, othr.document_archive, othr.base_url, self.source_url,
+                 self.uncompressed_size_in_bytes, self.target_index, self.target_type, self.meta_data) ==
+                (othr.source_format, othr.document_file, othr.document_archive, othr.base_url, othr.source_url,
                  othr.includes_action_and_meta_data, othr.number_of_documents, othr.compressed_size_in_bytes,
-                 othr.uncompressed_size_in_bytes, othr.target_type, othr.target_data_stream, othr.target_type, othr.meta_data))
+                 othr.uncompressed_size_in_bytes, othr.target_index, othr.target_type, othr.meta_data))
 
 
 class DocumentCorpus:
@@ -254,15 +251,13 @@ class DocumentCorpus:
                 return None
         return num
 
-    def filter(self, source_format=None, target_indices=None, target_data_streams=None):
+    def filter(self, source_format=None, target_indices=None):
         filtered = []
         for d in self.documents:
             # skip if source format or target index does not match
             if source_format and d.source_format != source_format:
                 continue
             if target_indices and d.target_index not in target_indices:
-                continue
-            if target_data_streams and d.target_data_stream not in target_data_streams:
                 continue
 
             filtered.append(d)
@@ -448,7 +443,6 @@ class TestProcedure:
         self.user_info = user_info
         self.default = default
         self.selected = selected
-        self.serverless_info = []
         self.auto_generated = auto_generated
         self.schedule = schedule if schedule else []
 
@@ -487,30 +481,24 @@ class AdminStatus(Enum):
 
 
 @unique
-class ServerlessStatus(IntEnum):
-    Blocked = auto()
-    Public = auto()
-
-@unique
 class OperationType(Enum):
     # for the time being we are not considering this action as administrative
-    Search = (3, AdminStatus.No, ServerlessStatus.Public)
-    Bulk = (4, AdminStatus.No, ServerlessStatus.Public)
-    RawRequest = (5, AdminStatus.No, ServerlessStatus.Public)
-    WaitForBackupCreate = (7, AdminStatus.No, ServerlessStatus.Blocked)
-    Composite = (8, AdminStatus.No, ServerlessStatus.Public)
+    Search = (3, AdminStatus.No)
+    Bulk = (4, AdminStatus.No)
+    RawRequest = (5, AdminStatus.No)
+    WaitForBackupCreate = (7, AdminStatus.No)
+    Composite = (8, AdminStatus.No)
 
     # administrative actions
-    Sleep = (32, AdminStatus.Yes, ServerlessStatus.Public)
-    DeleteBackupRepository = (33, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateBackupRepository = (34, AdminStatus.Yes, ServerlessStatus.Blocked)
-    CreateBackup = (35, AdminStatus.Yes, ServerlessStatus.Blocked)
-    RestoreBackup = (36, AdminStatus.Yes, ServerlessStatus.Blocked)
+    Sleep = (32, AdminStatus.Yes)
+    DeleteBackupRepository = (33, AdminStatus.Yes)
+    CreateBackupRepository = (34, AdminStatus.Yes)
+    CreateBackup = (35, AdminStatus.Yes)
+    RestoreBackup = (36, AdminStatus.Yes)
 
-    def __init__(self, op_id: int, admin_status: AdminStatus, serverless_status: ServerlessStatus):
+    def __init__(self, op_id: int, admin_status: AdminStatus):
         self.op_id = op_id
         self.admin_status = admin_status
-        self.serverless_status = serverless_status
 
     @property
     def admin_op(self):
@@ -550,28 +538,6 @@ class OperationType(Enum):
             return OperationType.Composite
         else:
             raise KeyError(f"No enum value for [{v}]")
-
-@unique
-class IndexCodec(Enum):
-    Default = "default"
-    BestCompression = "best_compression"
-    ZSTD = "zstd"
-    ZSTDNODICT = "zstd_no_dict"
-    QATDEFLATE = "qat_deflate"
-    QATLZ4 = "qat_lz4"
-
-    @classmethod
-    def is_codec_valid(cls, codec):
-        available_codecs = cls.get_available_codecs()
-        if codec.lower() in available_codecs:
-            return True
-
-        raise ValueError(f"Invalid index.codec value '{codec}'. Choose from available codecs: {available_codecs}")
-
-    @classmethod
-    def get_available_codecs(cls):
-        return list(map(lambda codec: codec.value, cls))
-
 
 class TaskNameFilter:
     def __init__(self, name):
@@ -825,10 +791,6 @@ class Operation:
     @property
     def include_in_reporting(self):
         return self.params.get("include-in-reporting", True)
-
-    @property
-    def run_on_serverless(self):
-        return self.params.get("serverless", None)
 
     def __hash__(self):
         return hash(self.name)

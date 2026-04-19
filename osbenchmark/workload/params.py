@@ -661,12 +661,6 @@ def create_default_reader(corpus, docs, offset, num_lines, num_docs, batch_size,
     use_create = False
     if docs.target_index:
         target = docs.target_index
-    elif docs.target_data_stream:
-        target = docs.target_data_stream
-        use_create = True
-        if id_conflicts != IndexIdConflict.NoConflicts:
-            # can only create docs in data streams
-            raise exceptions.BenchmarkError("Conflicts cannot be generated with append only data streams")
 
     if docs.includes_action_and_meta_data:
         return SourceOnlyIndexDataReader(docs.document_file, batch_size, bulk_size, source, target, docs.target_type)
@@ -692,8 +686,6 @@ def create_readers(num_clients, start_client_index, end_client_index, corpora, b
                                                      num_clients, docs.includes_action_and_meta_data)
                 if num_docs > 0:
                     target = f"{docs.target_index}/{docs.target_type}" if docs.target_index else "/"
-                    if docs.target_data_stream:
-                        target = docs.target_data_stream
                     logger.info("Task-relative clients at index [%d-%d] will bulk index [%d] docs starting from line offset [%d] for [%s] "
                                 "from corpus [%s].", start_client_index, end_client_index, num_docs, offset,
                                 target, corpus.name)
