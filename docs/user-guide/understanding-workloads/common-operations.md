@@ -78,13 +78,13 @@ Issues an optimize (force-merge) command to reduce the number of index segments.
 {
   "name": "optimize",
   "operation-type": "optimize",
-  "max-num-segments": 1
+  "max-segments": 1
 }
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `max-num-segments` | `1` | Target segment count after optimization |
+| `max-segments` | `1` | Target segment count after optimization |
 
 ## create-collection
 
@@ -96,8 +96,8 @@ Creates a Solr collection.
   "operation-type": "create-collection",
   "collection": "my_collection",
   "configset-path": "configsets/my_schema",
-  "shards": 1,
-  "nrt_replicas": 1
+  "num-shards": 1,
+  "replication-factor": 1
 }
 ```
 

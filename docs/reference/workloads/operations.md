@@ -7,7 +7,7 @@ nav_order: 100
 
 # operations
 
-Operations define the actions performed during a challenge. They are referenced from challenge schedules.
+Operations define the actions performed during a test procedure. They are referenced from test procedure schedules.
 
 ## Syntax
 
@@ -73,10 +73,10 @@ Issues a hard commit to Solr. Optional `collection` parameter.
 ### optimize
 
 ```json
-{ "operation-type": "optimize", "max-num-segments": 1 }
+{ "operation-type": "optimize", "max-segments": 1 }
 ```
 
-Issues a force-merge (optimize) to reduce the segment count to `max-num-segments` (default: 1).
+Issues a force-merge (optimize) to reduce the segment count to `max-segments` (default: 1).
 
 ### create-collection
 
@@ -85,10 +85,19 @@ Issues a force-merge (optimize) to reduce the segment count to `max-num-segments
   "operation-type": "create-collection",
   "collection": "my_collection",
   "configset-path": "configsets/my_schema",
-  "shards": 1,
-  "nrt_replicas": 1
+  "num-shards": 1,
+  "replication-factor": 1
 }
 ```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `collection` | (required) | Collection name |
+| `configset-path` | (none) | Path to local configset directory (relative to workload dir) |
+| `num-shards` | `1` | Number of shards |
+| `replication-factor` | `1` | Number of NRT replicas per shard |
+| `tlog-replicas` | `0` | Number of TLOG replicas per shard |
+| `pull-replicas` | `0` | Number of pull replicas per shard |
 
 ### delete-collection
 
