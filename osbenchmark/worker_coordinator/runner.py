@@ -1097,7 +1097,7 @@ def _parse_bulk_pairs(first_action_line, lines_iter):
 # Base runner with automatic error translation
 # ---------------------------------------------------------------------------
 
-class SolrRunner:
+class SolrRunner(Runner):
     """Base class for all Solr runners.
 
     Wraps ``__call__`` so that pysolr and requests exceptions are automatically
@@ -1448,7 +1448,7 @@ class SolrDeleteCollection(SolrRunner):
 # Runner: raw-request
 # ---------------------------------------------------------------------------
 
-class RawRequest(SolrRunner):
+class RawRequest(Runner):
     """
     Send an arbitrary HTTP request to any Solr endpoint.
 
