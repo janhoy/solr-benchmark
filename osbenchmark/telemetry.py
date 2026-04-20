@@ -25,7 +25,6 @@
 # Modifications copyright (C) 2026 The Apache Software Foundation
 # (Apache Solr contributors). Licensed under the Apache License, Version 2.0.
 
-import collections
 import json
 import logging
 import os
@@ -36,7 +35,6 @@ from abc import abstractmethod
 import tabulate
 
 from osbenchmark import metrics, time, exceptions
-from osbenchmark.metrics import MetaInfoScope
 from osbenchmark.utils import io, sysstats, console, process
 
 def list_telemetry():
@@ -605,8 +603,7 @@ class ClusterEnvironmentInfo(TelemetryDevice):
 
         # noinspection PyBroadException
         try:
-            cs_url = f"{self.admin_client.base_url}/solr/admin/collections?action=CLUSTERSTATUS&wt=json"
-            cs_resp = session.get(cs_url, timeout=30)
+            cs_resp = self.admin_client.raw_request("GET", "/solr/admin/collections?action=CLUSTERSTATUS&wt=json")
             cs_resp.raise_for_status()
             cluster = cs_resp.json().get("cluster", {})
             live_nodes = cluster.get("liveNodes", [])

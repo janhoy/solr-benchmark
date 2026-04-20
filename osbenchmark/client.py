@@ -400,7 +400,7 @@ class SolrAdminClient:
 # SolrClient — unified client used by runners and telemetry devices
 # ---------------------------------------------------------------------------
 
-class SolrClient(RequestContextHolder):
+class SolrClient(RequestContextHolder):  # pylint: disable=too-many-public-methods
     """
     Single unified Solr client. Wraps SolrAdminClient (admin/HTTP) and pysolr.Solr
     (indexing/search) as private implementation details.
@@ -499,11 +499,10 @@ class SolrClient(RequestContextHolder):
     def _get_pysolr(self, collection: str):
         """Return (lazily-created, cached) pysolr.Solr for the given collection."""
         import pysolr  # pylint: disable=import-outside-toplevel
-        import requests as _requests  # pylint: disable=import-outside-toplevel
         if collection not in self._pysolr_clients:
             scheme = "https" if self._tls else "http"
             url = f"{scheme}://{self._host}:{self._port}/solr/{collection}"
-            session = _requests.Session()
+            session = requests.Session()
             session.trust_env = False  # fork-safe on macOS (no CFNetwork proxy detection)
             if self._username and self._password:
                 session.auth = (self._username, self._password)

@@ -24,7 +24,6 @@
 #
 # Modifications copyright (C) 2026 The Apache Software Foundation
 # (Apache Solr contributors). Licensed under the Apache License, Version 2.0.
-import copy
 import os
 import random
 import re
@@ -3586,4 +3585,3 @@ class WorkloadProcessorRegistryTests(TestCase):
         ]
         actual_processors = [proc.__class__ for proc in tpr.processors]
         self.assertCountEqual(expected_processors, actual_processors)
-

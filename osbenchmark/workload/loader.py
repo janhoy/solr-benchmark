@@ -43,7 +43,6 @@ from jinja2 import meta, select_autoescape
 
 from osbenchmark import exceptions, time, PROGRAM_NAME, config, version
 from osbenchmark.workload import params, workload
-from osbenchmark.workload.workload import Parallel
 from osbenchmark.utils import io, collections, convert, net, console, modules, opts, repo
 
 
