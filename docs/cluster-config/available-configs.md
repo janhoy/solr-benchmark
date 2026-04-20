@@ -8,10 +8,10 @@ nav_order: 2
 
 ## defaults
 
-No overrides applied. Solr uses its built-in default settings.
+Sets the Java heap to 1 GB (`heap_size=1g`). This is the baseline configuration that all other heap-size configs extend.
 
 ```
-SOLR_HEAP: (Solr default, typically 512m)
+heap_size: 1g
 ```
 
 **Usage:**

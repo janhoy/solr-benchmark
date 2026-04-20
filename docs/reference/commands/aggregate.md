@@ -85,7 +85,7 @@ The aggregated result includes additional statistical fields compared to a singl
 | `overall_max` | True maximum value across all runs |
 | `mean_rsd` | Mean relative standard deviation (%) — lower is better; indicates how consistent the runs were |
 
-Aggregated results are saved to a separate `aggregated_results` folder under `~/.solr-benchmark/results/`.
+Aggregated results are saved to `~/.solr-benchmark/benchmarks/aggregated_results/<aggregated-id>/`.
 
 ## See also
 

@@ -31,7 +31,7 @@ The `"collections"` array in `workload.json` defines the Solr collections to cre
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `name` | string | Yes | — | The collection name. Must be a valid Solr collection name. |
-| `configset-path` | string | Yes | — | Path relative to the workload directory pointing to a configset directory containing `schema.xml` and `solrconfig.xml`. |
+| `configset-path` | string | No | — | Path relative to the workload directory pointing to a configset directory. If provided, the configset is uploaded to Solr/ZooKeeper before the collection is created. If omitted, the configset named by `configset` (or the collection name) must already exist on the server. |
 | `num-shards` | integer | No | `1` | Number of shards for the collection. |
 | `replication-factor` | integer | No | `1` | Number of NRT (near-real-time) replicas per shard. NRT replicas participate in leader elections. |
 | `tlog-replicas` | integer | No | `0` | Number of TLOG replicas per shard. TLOG replicas buffer updates in a transaction log. |
@@ -56,7 +56,7 @@ The `"collections"` array in `workload.json` defines the Solr collections to cre
 
 ## Notes
 
-- The `configset-path` directory must contain at minimum `schema.xml` and `solrconfig.xml`.
+- When `configset-path` is provided, the directory must contain at minimum `schema.xml` and `solrconfig.xml`.
 - For SolrCloud, the configset is uploaded to ZooKeeper before the collection is created.
 - If the collection already exists when the benchmark starts, it is deleted and recreated so that benchmarks are repeatable.
 - See the [Apache Solr Reference Guide: Collections API](https://solr.apache.org/guide/solr/latest/deployment-guide/collections-api.html) for background.

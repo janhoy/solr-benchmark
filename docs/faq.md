@@ -49,7 +49,7 @@ solr-benchmark run --test-mode ...
 ```
 
 **Where are results stored?**
-Results are stored as JSON and CSV files in `~/.solr-benchmark/results/` by default.
+Results from individual benchmark runs are stored in `~/.solr-benchmark/benchmarks/test-runs/<run-id>/`. Aggregated results (from the `aggregate` command or multi-iteration runs) go to `~/.solr-benchmark/benchmarks/aggregated_results/<id>/`.
 
 **Does Apache Solr Benchmark support distributed (multi-machine) benchmarking?**
 Yes. Use the daemon mode (`solr-benchmarkd`) on worker nodes and the coordinator on the driver node. See [Working with Workloads](user-guide/working-with-workloads/) for details.

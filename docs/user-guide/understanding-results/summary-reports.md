@@ -98,10 +98,10 @@ The error rate is the fraction of operations that returned an error response, ex
 
 ## Result files
 
-Results are saved to `~/.solr-benchmark/results/` after each run:
+Results are saved to `~/.solr-benchmark/benchmarks/test-runs/` after each run:
 
 ```
-~/.solr-benchmark/results/
+~/.solr-benchmark/benchmarks/test-runs/
 └── 20260220_143052_a34ff090/
     ├── test_run.json   ← complete metrics record (JSON)
     ├── results.csv     ← key metrics in CSV format

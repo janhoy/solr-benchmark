@@ -21,8 +21,9 @@ solr-benchmark compare --baseline BASELINE_ID --contender CONTENDER_ID
 |--------|-------------|
 | `--baseline` | Test execution ID of the baseline run |
 | `--contender` | Test execution ID of the contender run |
+| `--percentiles` | Comma-separated list of latency percentiles to report (e.g., `50,90,99,99.9`) |
 | `--results-format` | Output format: `markdown` (default) or `csv` |
-| `--results-numbers-align` | Column alignment in the output table: `right` (default), `left`, or `center` |
+| `--results-numbers-align` | Column alignment in the output table: `right` (default), `left`, `center`, or `decimal` |
 | `--results-file` | Write the comparison table to a file in addition to console output |
 | `--show-in-results` | Which values to include: `available` (default), `all-percentiles`, or `all` |
 

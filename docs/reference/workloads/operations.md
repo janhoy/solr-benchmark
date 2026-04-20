@@ -45,8 +45,13 @@ Operations can be defined inline in a schedule or in a top-level `"operations"` 
 | `bulk-size` | `500` | Number of documents per batch |
 | `collection` | (first collection in workload) | Target collection |
 | `corpora` | (all corpora) | Corpus name to index from |
+| `commit` | `false` | If `true`, issue a hard commit to Solr after each batch |
 
 ### search
+
+The `search` operation supports two styles.
+
+**JSON body style** — passes a full Solr JSON Request API object:
 
 ```json
 {
@@ -60,7 +65,33 @@ Operations can be defined inline in a schedule or in a top-level `"operations"` 
 }
 ```
 
-The `body` is passed directly as a Solr JSON query body. Use standard [Solr JSON Request API](https://solr.apache.org/guide/solr/latest/query-guide/json-request-api.html) syntax.
+**Classic params style** — individual Solr query parameters as top-level fields:
+
+```json
+{
+  "operation-type": "search",
+  "q": "city:New York",
+  "fl": "id,name",
+  "rows": 10,
+  "fq": "type:restaurant",
+  "sort": "score desc",
+  "request-params": {
+    "defType": "edismax"
+  },
+  "collection": "my_collection"
+}
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `body` | (none) | Full Solr JSON query body ([JSON Request API](https://solr.apache.org/guide/solr/latest/query-guide/json-request-api.html) format). Takes precedence over classic params if both are present |
+| `q` | `*:*` | Query string (classic params style) |
+| `fl` | (none) | Field list to return |
+| `rows` | (none) | Number of documents to return |
+| `fq` | (none) | Filter query |
+| `sort` | (none) | Sort order |
+| `request-params` | `{}` | Additional Solr query parameters appended to the request |
+| `collection` | (first collection in workload) | Target collection |
 
 ### commit
 
@@ -182,6 +213,59 @@ Executes an arbitrary HTTP request against the Solr Admin API (`/api/...` V2 end
 | `method` | `GET` | HTTP method: `GET`, `POST`, `DELETE` |
 | `body` | (none) | Request body (JSON object) |
 | `headers` | `{}` | Additional HTTP headers |
+
+### sleep
+
+```json
+{ "operation-type": "sleep", "duration": 5 }
+```
+
+Pauses the schedule for the specified number of seconds. Useful between tasks that need a settling period (for example, after a commit before running queries).
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `duration` | (required) | Seconds to sleep |
+
+### composite
+
+```json
+{
+  "operation-type": "composite",
+  "operations": [
+    { "operation-type": "bulk-index", "bulk-size": 500 },
+    { "operation-type": "commit" }
+  ]
+}
+```
+
+Groups multiple operations into a single logical unit. Operations within the composite execute sequentially; the composite completes when all child operations finish. Useful for measuring end-to-end latency of a multi-step sequence.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `operations` | (required) | Array of operation definitions to execute in sequence |
+
+### retry wrapper
+
+Any operation can be wrapped with retry logic by adding retry parameters directly to the operation definition:
+
+```json
+{
+  "operation-type": "bulk-index",
+  "bulk-size": 500,
+  "retries": 3,
+  "retry-wait-period": 0.5,
+  "retry-on-timeout": true,
+  "retry-on-error": true
+}
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `retries` | `0` | Number of times to retry on failure |
+| `retry-until-success` | `false` | If `true`, retry indefinitely until the operation succeeds |
+| `retry-wait-period` | `0.5` | Seconds to wait between retry attempts |
+| `retry-on-timeout` | `true` | Retry when a timeout error occurs |
+| `retry-on-error` | `false` | Retry when any other error occurs |
 
 ## Backup operations
 

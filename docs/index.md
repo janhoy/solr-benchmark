@@ -21,7 +21,7 @@ Use Apache Solr Benchmark to measure the performance of your Apache Solr cluster
 - **Flexible workloads** — load pre-built workloads from [janhoy/solr-benchmark-workloads](https://github.com/janhoy/solr-benchmark-workloads) or create your own
 - **Workload converter** — convert existing OpenSearch Benchmark workloads to Solr format with the `convert-workload` command
 - **Telemetry** — collect JVM, node, and collection-level metrics from Solr during a run
-- **Result storage** — results saved as JSON and CSV to `~/.solr-benchmark/results/`
+- **Result storage** — results saved as JSON and CSV to `~/.solr-benchmark/benchmarks/test-runs/`
 
 ## Source code
 

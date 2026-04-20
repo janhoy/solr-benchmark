@@ -6,7 +6,7 @@ nav_order: 40
 
 # Summary Report Format
 
-Apache Solr Benchmark saves results in JSON and CSV format to `~/.solr-benchmark/results/<run-id>/`.
+Apache Solr Benchmark saves results in JSON and CSV format to `~/.solr-benchmark/benchmarks/test-runs/<run-id>/`.
 
 ## JSON format
 
@@ -57,13 +57,13 @@ The `results.csv` file contains the same data in tabular form, with one row per 
 
 ## Run metadata
 
-Each run also produces a `run-metadata.json` file:
+Each run also produces a `test_run.json` file alongside the results:
 
 ```json
 {
   "test_execution_id": "20240115T120000Z",
   "workload": "nyc_taxis",
-  "challenge": "append-no-conflicts",
+  "test_procedure": "append-no-conflicts",
   "pipeline": "benchmark-only",
   "target_hosts": ["localhost:8983"],
   "start_time": "2024-01-15T12:00:00Z",

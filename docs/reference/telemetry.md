@@ -6,7 +6,7 @@ nav_order: 45
 
 # Telemetry Devices
 
-Apache Solr Benchmark includes telemetry devices for collecting server-side metrics. Six devices are always enabled. Eight additional devices can be enabled on demand with `--telemetry`.
+Apache Solr Benchmark includes telemetry devices for collecting server-side metrics. Six devices are **always enabled** and collect metrics automatically without any flags. One additional device (`disk-io`) runs automatically on provisioned pipelines. Eight further devices can be enabled on demand with `--telemetry`.
 
 Both Solr 9.x (JSON format) and Solr 10.x (Prometheus text format) are supported. Format detection is automatic via the HTTP `Content-Type` header.
 
@@ -16,10 +16,7 @@ Both Solr 9.x (JSON format) and Solr 10.x (Prometheus text format) are supported
 
 Collects JVM statistics from each Solr node via the Solr metrics API.
 
-**Enable:**
-```bash
-solr-benchmark run --telemetry solr-jvm-stats ...
-```
+**Always active.** No `--telemetry` flag required.
 
 **Metrics collected:**
 
@@ -44,10 +41,7 @@ solr-benchmark run --telemetry solr-jvm-stats ...
 
 Collects Solr node-level and OS statistics.
 
-**Enable:**
-```bash
-solr-benchmark run --telemetry solr-node-stats ...
-```
+**Always active.** No `--telemetry` flag required.
 
 **Metrics collected:**
 
@@ -68,10 +62,7 @@ solr-benchmark run --telemetry solr-node-stats ...
 
 Collects per-collection document count, segment count, and deleted doc count.
 
-**Enable:**
-```bash
-solr-benchmark run --telemetry solr-collection-stats ...
-```
+**Always active.** No `--telemetry` flag required.
 
 **Metrics collected** (all tagged with `collection` metadata):
 
@@ -82,7 +73,7 @@ solr-benchmark run --telemetry solr-collection-stats ...
 | `segment_count` | count | Number of Lucene segments |
 | `index_size_bytes` | bytes | Total index size on disk |
 
-**Notes:** Collection stats are polled every 30 seconds (configurable). Uses both the Collections API and the Luke request handler (`/admin/luke`) for full statistics.
+**Notes:** Collection stats are polled every 30 seconds by default. Override with `--telemetry-params collection-stats-sample-interval:60`. Uses both the Collections API and the Luke request handler (`/admin/luke`) for full statistics.
 
 ---
 
@@ -90,10 +81,7 @@ solr-benchmark run --telemetry solr-collection-stats ...
 
 Collects query latency percentiles and filter cache hit ratio.
 
-**Enable:**
-```bash
-solr-benchmark run --telemetry solr-query-stats ...
-```
+**Always active.** No `--telemetry` flag required.
 
 **Metrics collected:**
 
@@ -112,10 +100,7 @@ solr-benchmark run --telemetry solr-query-stats ...
 
 Collects update handler and merge metrics.
 
-**Enable:**
-```bash
-solr-benchmark run --telemetry solr-indexing-stats ...
-```
+**Always active.** No `--telemetry` flag required.
 
 **Metrics collected:**
 
@@ -133,10 +118,7 @@ solr-benchmark run --telemetry solr-indexing-stats ...
 
 Collects hit/miss/eviction and memory statistics for the three primary Solr caches.
 
-**Enable:**
-```bash
-solr-benchmark run --telemetry solr-cache-stats ...
-```
+**Always active.** No `--telemetry` flag required.
 
 **Metrics collected** (all tagged with `cache` metadata: `queryResultCache`, `filterCache`, `documentCache`):
 
@@ -147,6 +129,23 @@ solr-benchmark run --telemetry solr-cache-stats ...
 | `cache_evictions_total` | count | Cache evictions since Solr start |
 | `cache_memory_bytes` | bytes | RAM used by this cache |
 | `cache_hit_ratio` | ratio | Hit ratio (0.0–1.0) |
+
+---
+
+## Always-on provisioned-pipeline device
+
+The following device activates automatically when using the `docker` or `from-distribution` pipeline. It cannot be disabled and does not need to be listed in `--telemetry`.
+
+### disk-io
+
+Measures disk I/O consumed by the Solr process during the benchmark run.
+
+**Pipeline:** `docker` or `from-distribution` (always active; not available on `benchmark-only`)
+
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `disk_io_read_bytes` | bytes | Bytes read by the Solr process |
+| `disk_io_write_bytes` | bytes | Bytes written by the Solr process |
 
 ---
 
@@ -255,36 +254,31 @@ The heap dump is written to `heap_at_exit_{pid}.hprof` in the benchmark log dire
 
 ---
 
-### disk-io
-
-Measures disk I/O consumed by the Solr process during the benchmark run. Always active on provisioned pipelines (not opt-in).
-
-**Pipeline:** `docker` or `from-distribution` (always active)
-
-| Metric | Unit | Description |
-|--------|------|-------------|
-| `disk_io_read_bytes` | bytes | Bytes read by the Solr process |
-| `disk_io_write_bytes` | bytes | Bytes written by the Solr process |
-
----
-
 ## Using multiple devices
 
+The six always-on devices collect metrics automatically — no flags required:
+
 ```bash
-# Always-on devices (no --telemetry needed):
+# Always-on devices activate without any --telemetry flag:
 solr-benchmark run \
   --pipeline benchmark-only \
   --target-hosts localhost:8983 \
   --workload nyc_taxis
+```
 
-# Add optional REST devices on any pipeline:
+Add optional REST devices on any pipeline:
+
+```bash
 solr-benchmark run \
   --pipeline benchmark-only \
   --target-hosts localhost:8983 \
   --workload nyc_taxis \
   --telemetry segment-stats,shard-stats,cluster-environment-info
+```
 
-# Add JVM profiling devices on provisioned pipelines:
+Add JVM profiling devices on provisioned pipelines:
+
+```bash
 solr-benchmark run \
   --pipeline docker \
   --distribution-version 9.10.1 \
@@ -294,4 +288,4 @@ solr-benchmark run \
 
 ## Telemetry output location
 
-Telemetry metrics are written to the same `results.json` file as workload metrics, under a `"telemetry"` key alongside the standard per-task metrics.
+Telemetry metrics are written to the metrics store alongside all other benchmark metrics. When using the filesystem store, they are recorded in `metrics.jsonl` in the test run directory (`~/.solr-benchmark/benchmarks/test-runs/<run-id>/`). See [Filesystem Metrics Store](metrics/filesystem-metrics-store.html) for the file format.

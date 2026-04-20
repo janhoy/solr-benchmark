@@ -36,10 +36,10 @@ The coordinator and workers communicate over the network. All machines must be a
 On each worker machine, start the benchmark daemon:
 
 ```bash
-solr-benchmark daemon --worker-ip WORKER_IP
+solr-benchmarkd start --node-ip WORKER_IP --coordinator-ip COORDINATOR_IP
 ```
 
-Replace `WORKER_IP` with the IP address of that worker machine.
+Replace `WORKER_IP` with the IP address of that worker machine and `COORDINATOR_IP` with the IP address of the machine that will run `solr-benchmark run`.
 
 ### Run the benchmark from the coordinator
 
@@ -63,15 +63,15 @@ The corpus is partitioned by line ranges in the NDJSON data files. Each worker r
 
 ```bash
 # On worker-1 (192.168.1.10):
-solr-benchmark daemon --worker-ip 192.168.1.10
+solr-benchmarkd start --node-ip 192.168.1.10 --coordinator-ip 192.168.1.1
 
 # On worker-2 (192.168.1.11):
-solr-benchmark daemon --worker-ip 192.168.1.11
+solr-benchmarkd start --node-ip 192.168.1.11 --coordinator-ip 192.168.1.1
 
 # On worker-3 (192.168.1.12):
-solr-benchmark daemon --worker-ip 192.168.1.12
+solr-benchmarkd start --node-ip 192.168.1.12 --coordinator-ip 192.168.1.1
 
-# On the coordinator:
+# On the coordinator (192.168.1.1):
 solr-benchmark run \
   --workload nyc_taxis \
   --pipeline benchmark-only \
@@ -79,6 +79,22 @@ solr-benchmark run \
   --worker-ips 192.168.1.10,192.168.1.11,192.168.1.12 \
   --user-tag "workers:3"
 ```
+
+## Stopping workers
+
+When the benchmark is complete, stop each worker daemon:
+
+```bash
+solr-benchmarkd stop --node-ip 192.168.1.10 --coordinator-ip 192.168.1.1
+```
+
+Check daemon status on any worker:
+
+```bash
+solr-benchmarkd status
+```
+
+See the [solr-benchmarkd reference](../../reference/commands/benchmarkd.html) for full daemon documentation.
 
 ## When to use distributed load
 
