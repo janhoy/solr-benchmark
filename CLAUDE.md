@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Prerequisites: `pyenv`, JDK 21, Docker, `docker-compose`, `jq`
 
+Optional: `pbzip2` (parallel bzip2 — install via `apt install pbzip2` or `brew install pbzip2`).
+Without it, `.bz2` corpus decompression falls back to Python stdlib (slower).
+
 ```bash
 make develop          # Install Python 3.10 via pyenv, create .venv, install all deps
 source .venv/bin/activate  # Activate virtual environment

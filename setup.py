@@ -185,8 +185,7 @@ setup(name="solr-benchmark",
       # However, with the pattern ">=3.5.*,<=3.8.*", the version "3.8.0" is not accepted. Therefore, we match
       # the minor version after the last supported one (i.e. if 3.8 is the last supported, we'll emit "<3.9")
       python_requires=">={},<{}".format(first_supported_version, first_unsupported_version),
-      package_data={"": ["*.json", "*.yml"],
-                    "osbenchmark": ["decompressors/*"]},
+      package_data={"": ["*.json", "*.yml"]},
       install_requires=install_requires,
       test_suite="tests",
       tests_require=tests_require,
@@ -199,7 +198,7 @@ setup(name="solr-benchmark",
               "solr-benchmarkd=osbenchmark.benchmarkd:main",
           ],
       },
-      scripts=['scripts/expand-data-corpus.py', 'scripts/pbzip2' ],
+      scripts=['scripts/expand-data-corpus.py'],
       classifiers=[
           "Topic :: System :: Benchmark",
           "Development Status :: 5 - Production/Stable",

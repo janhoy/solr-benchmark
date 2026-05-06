@@ -46,6 +46,9 @@ Before installing Solr Benchmark, ensure the following software is available on 
   automatically before the run.
 - **JDK 21** — required for the `--pipeline=from-distribution` pipeline, which downloads and
   installs a Solr release locally.
+- **pbzip2** *(optional)* — parallel bzip2 decompressor for faster decompression of `.bz2`
+  corpora. Install via `apt install pbzip2` or `brew install pbzip2`. If absent, Solr Benchmark
+  falls back to Python's standard `bz2` library automatically (slower but fully functional).
 
 ### Checking software dependencies
 
